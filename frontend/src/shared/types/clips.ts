@@ -28,6 +28,16 @@ export interface DemoStorageStats {
   total_size_bytes: number;
 }
 
+export interface GameInfoStatus {
+  status: "normal" | "abnormal" | "unavailable";
+  clean: boolean;
+  has_backup: boolean;
+  can_repair: boolean;
+  gameinfo_path?: string;
+  backup_path?: string;
+  message?: string;
+}
+
 export interface ClipParameterOverrides {
   killer_pre_seconds?: number;
   killer_post_seconds?: number;

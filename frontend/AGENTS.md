@@ -32,6 +32,7 @@
 - Must：`ClipSettings.launch_resolution` 需与后端保持一致，允许值 `16:9|4:3|4:3_1280x960`（`4:3` 代表 `1440x1080`，`4:3_1280x960` 代表 `1280x960`）。
 - Must：`ClipSettings.hide_all_ui` 需与后端保持一致，默认 `false`；开启时生成插件 JSON bootstrap 写入 `cl_draw_only_deathnotices 1`，关闭时不写入该命令。
 - Must：调用 `GeneratePluginJSONBatchAndLaunchHLAE` 时允许传递可选 `debug.keep_intermediate_files`，用于控制是否保留录制中间产物（仅会话级生效）。
+- Must：设置页 gameinfo 状态以 `GetGameInfoStatus` 返回值为准；`status=normal` 显示“配置文件正常”，`status=abnormal` 显示“配置文件异常”，仅当 `can_repair=true` 时显示修复按钮并调用 `RepairGameInfoFromBackup`。
 - Must Not：在前端新增与后端冲突的“本地自定义状态枚举”替代后端状态。
 
 ## UI 状态映射

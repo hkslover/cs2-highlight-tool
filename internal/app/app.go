@@ -132,6 +132,11 @@ func (a *App) Startup(ctx context.Context) {
 	if err := a.produceW.Start(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("start produce websocket server failed: %v", err))
 	}
+	if a.dataDir != "" {
+		if err := a.ensureCleanGameInfoBackup(); err != nil {
+			wruntime.LogError(ctx, fmt.Sprintf("backup clean gameinfo failed: %v", err))
+		}
+	}
 
 	a.serviceMu.Lock()
 	svc := a.service

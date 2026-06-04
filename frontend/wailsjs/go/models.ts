@@ -48,12 +48,14 @@ export namespace app {
 	    auto_add_victim_view: boolean;
 	    enable_voice: boolean;
 	    record_fps: number;
+	    record_quality: string;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
 	    launch_resolution: string;
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
+	    hide_all_ui: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClipSettings(source);
@@ -68,12 +70,30 @@ export namespace app {
 	        this.auto_add_victim_view = source["auto_add_victim_view"];
 	        this.enable_voice = source["enable_voice"];
 	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
 	        this.launch_resolution = source["launch_resolution"];
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
+	        this.hide_all_ui = source["hide_all_ui"];
+	    }
+	}
+	export class DemoStorageStats {
+	    demo_dir: string;
+	    demo_count: number;
+	    total_size_bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DemoStorageStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.demo_dir = source["demo_dir"];
+	        this.demo_count = source["demo_count"];
+	        this.total_size_bytes = source["total_size_bytes"];
 	    }
 	}
 	export class EditConcatClip {
@@ -159,6 +179,30 @@ export namespace app {
 	        this.moved = source["moved"];
 	        this.failed = source["failed"];
 	        this.errors = source["errors"];
+	    }
+	}
+	export class GameInfoStatus {
+	    status: string;
+	    clean: boolean;
+	    has_backup: boolean;
+	    can_repair: boolean;
+	    gameinfo_path?: string;
+	    backup_path?: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GameInfoStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.clean = source["clean"];
+	        this.has_backup = source["has_backup"];
+	        this.can_repair = source["can_repair"];
+	        this.gameinfo_path = source["gameinfo_path"];
+	        this.backup_path = source["backup_path"];
+	        this.message = source["message"];
 	    }
 	}
 	export class GeneratePluginJSONBatchDebug {
@@ -644,6 +688,20 @@ export namespace app {
 	        this.error = source["error"];
 	    }
 	}
+	export class WorkspaceValidateResult {
+	    ok: boolean;
+	    errorMessage: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceValidateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.errorMessage = source["errorMessage"];
+	    }
+	}
 
 }
 
@@ -683,6 +741,7 @@ export namespace config {
 	    victim_post_seconds: number;
 	    auto_add_victim_view: boolean;
 	    record_fps: number;
+	    record_quality: string;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
@@ -692,6 +751,7 @@ export namespace config {
 	    launch_resolution: string;
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
+	    hide_all_ui: boolean;
 	    clip_action_settings?: ClipActionSettings;
 	
 	    static createFrom(source: any = {}) {
@@ -715,6 +775,7 @@ export namespace config {
 	        this.victim_post_seconds = source["victim_post_seconds"];
 	        this.auto_add_victim_view = source["auto_add_victim_view"];
 	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
@@ -724,6 +785,7 @@ export namespace config {
 	        this.launch_resolution = source["launch_resolution"];
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
+	        this.hide_all_ui = source["hide_all_ui"];
 	        this.clip_action_settings = this.convertValues(source["clip_action_settings"], ClipActionSettings);
 	    }
 	

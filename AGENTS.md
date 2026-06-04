@@ -102,12 +102,15 @@
 - `GetDemoStorageStats`（递归统计 `<dataDir>/demo`，返回 `demo_dir`、Demo 文件数量 `demo_count`、所有文件总字节数 `total_size_bytes`）
 - `OpenDemoDirectory`（确保 `<dataDir>/demo` 存在并打开目录位置）
 - `ClearDemoDirectory`（删除 `<dataDir>/demo` 下所有直接子项，保留 demo 目录本身，并返回清理后的统计）
+- `GetGameInfoStatus`（读取当前 CS2 `gameinfo.gi` 状态，返回 `status=normal|abnormal|unavailable`、`clean`、`has_backup`、`can_repair`、`gameinfo_path`、`backup_path`、`message`；`abnormal` 表示当前文件包含 `csgo/plugin`）
+- `RepairGameInfoFromBackup`（仅使用 `<dataDir>/backups/gameinfo/gameinfo.gi` 中不包含 `csgo/plugin` 的原版备份恢复当前 CS2 `gameinfo.gi`，恢复后返回最新状态）
 - `GetProduceHistorySnapshot` 返回的 `items[]` 新增可选字段：`history_type=produce_clip|edited_video`、`source_label`（用于区分录制片段与剪辑成片来源）
 - `config.json` 新增持久化字段：`fivee_player_name`（5E 导入页查询 ID 缓存，保存 5E domain ID）
 - `config.json` 新增持久化字段：`record_quality`（录制质量，取值 `standard|high|ultra`，默认 `high`）
 - `config.json` 新增持久化字段：`ffmpeg_detected_preset`、`ffmpeg_detected_encoders[]`、`ffmpeg_detected_at`（启动阶段 FFmpeg 能力探测缓存，供 `video_preset=auto` 与编码回退使用）
 - `config.json` 新增持久化字段：`hide_all_ui`（隐藏所有 UI，默认 `false`）
 - 应用数据根目录约定：Windows 默认 `<dataDir>=%LOCALAPPDATA%/CS2 Highlight Tool`；`config.json`、组件目录、demo、projects、outputs、temp、updates、logs 均位于 `<dataDir>`。`<exeDir>` 仅用于定位当前程序本体与自更新替换目标。
+- CS2 `gameinfo.gi` 原版备份约定：工具启动或录制注入前，只在当前 `gameinfo.gi` 不包含 `csgo/plugin` 时写入 `<dataDir>/backups/gameinfo/gameinfo.gi`；不得用包含 `csgo/plugin` 的文件覆盖该长期备份。
 - 关键事件名（前后端协作契约）：
 - `startup_state_changed`
 - `download_progress`

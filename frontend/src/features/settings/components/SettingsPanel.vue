@@ -83,6 +83,43 @@
       </n-space>
     </n-card>
 
+    <n-card size="small" :bordered="true" class="section-card">
+      <template #header>
+        <span class="section-title">{{ t("main.settings.gameinfo_title") }}</span>
+      </template>
+
+      <n-space vertical :size="12">
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.gameinfo_status") }}</span>
+          <n-tag :type="gameInfoStatusTagType" size="small">
+            {{ gameInfoStatusLabel }}
+          </n-tag>
+        </div>
+        <div class="path-text">{{ gameInfoStatus.gameinfo_path || t("main.settings.gameinfo_path_missing") }}</div>
+        <div class="path-text">{{ t("main.settings.gameinfo_backup_path", { path: gameInfoStatus.backup_path || "-" }) }}</div>
+        <div class="setting-actions">
+          <n-button size="small" :loading="gameInfoLoading" @click="loadGameInfoStatus">
+            {{ t("main.settings.outputs_refresh") }}
+          </n-button>
+          <n-button
+            v-if="gameInfoStatus.status === 'abnormal' && gameInfoStatus.can_repair"
+            size="small"
+            type="warning"
+            :loading="repairingGameInfo"
+            @click="repairGameInfo"
+          >
+            {{ t("main.settings.gameinfo_repair") }}
+          </n-button>
+        </div>
+        <n-alert v-if="gameInfoStatus.status === 'abnormal'" type="warning" :bordered="false">
+          {{ gameInfoStatus.message || t("main.settings.gameinfo_abnormal") }}
+        </n-alert>
+        <n-alert v-else-if="gameInfoStatus.status === 'unavailable'" type="info" :bordered="false">
+          {{ gameInfoStatus.message || t("main.settings.gameinfo_unavailable") }}
+        </n-alert>
+      </n-space>
+    </n-card>
+
     <StorageDirectoryCard
       :title="t('main.settings.outputs_title')"
       :primary-value="outputsStats.video_count"
@@ -145,7 +182,7 @@ import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
-import type { ClipSettings, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
+import type { ClipSettings, DemoStorageStats, GameInfoStatus, OutputsStorageStats } from "@/shared/types";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
 
 const props = withDefaults(
@@ -161,10 +198,12 @@ const AUTO_SAVE_DELAY_MS = 500;
 const saving = ref(false);
 const outputsLoading = ref(false);
 const demoLoading = ref(false);
+const gameInfoLoading = ref(false);
 const openingOutputsDir = ref(false);
 const openingDemoDir = ref(false);
 const clearingOutputs = ref(false);
 const clearingDemo = ref(false);
+const repairingGameInfo = ref(false);
 const errorMessage = ref("");
 const successMessage = ref("");
 const syncingSettings = ref(false);
@@ -200,6 +239,15 @@ const demoStats = reactive<DemoStorageStats>({
   demo_count: 0,
   total_size_bytes: 0,
 });
+const gameInfoStatus = reactive<GameInfoStatus>({
+  status: "unavailable",
+  clean: false,
+  has_backup: false,
+  can_repair: false,
+  gameinfo_path: "",
+  backup_path: "",
+  message: "",
+});
 const presetOptions = computed(() => [
   { label: t("main.settings.video_preset_auto"), value: "auto" },
   { label: t("main.settings.video_preset_c1"), value: "c1" },
@@ -222,6 +270,26 @@ const editQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_high"), value: "high" },
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
+const gameInfoStatusLabel = computed(() => {
+  switch (gameInfoStatus.status) {
+    case "normal":
+      return t("main.settings.gameinfo_normal");
+    case "abnormal":
+      return t("main.settings.gameinfo_abnormal");
+    default:
+      return t("main.settings.gameinfo_unavailable");
+  }
+});
+const gameInfoStatusTagType = computed<"success" | "warning" | "default">(() => {
+  switch (gameInfoStatus.status) {
+    case "normal":
+      return "success";
+    case "abnormal":
+      return "warning";
+    default:
+      return "default";
+  }
+});
 
 watch(
   () => props.active,
@@ -233,6 +301,7 @@ watch(
     void loadSettings();
     void loadOutputsStats();
     void loadDemoStats();
+    void loadGameInfoStatus();
   },
   { immediate: true },
 );
@@ -297,6 +366,22 @@ async function loadDemoStats() {
     errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
     demoLoading.value = false;
+  }
+}
+
+async function loadGameInfoStatus() {
+  if (!props.active || gameInfoLoading.value) {
+    return;
+  }
+  gameInfoLoading.value = true;
+  errorMessage.value = "";
+  try {
+    const next = await callBackend<GameInfoStatus>("GetGameInfoStatus");
+    Object.assign(gameInfoStatus, next);
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    gameInfoLoading.value = false;
   }
 }
 
@@ -396,6 +481,24 @@ async function clearDemoDirectory() {
   }
 }
 
+async function repairGameInfo() {
+  if (repairingGameInfo.value) {
+    return;
+  }
+  repairingGameInfo.value = true;
+  errorMessage.value = "";
+  successMessage.value = "";
+  try {
+    const next = await callBackend<GameInfoStatus>("RepairGameInfoFromBackup");
+    Object.assign(gameInfoStatus, next);
+    message.success(t("main.settings.gameinfo_repair_success"));
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    repairingGameInfo.value = false;
+  }
+}
+
 async function applySettingsFromBackend(next: ClipSettings) {
   syncingSettings.value = true;
   Object.assign(settings, next);
@@ -490,6 +593,19 @@ function formatBytes(bytes: number): string {
 
 .preset-select {
   width: 220px;
+}
+
+.path-text {
+  color: #8f9a92;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.setting-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 </style>

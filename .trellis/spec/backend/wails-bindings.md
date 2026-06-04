@@ -2,6 +2,99 @@
 
 Concrete contracts for Go methods exposed through `internal/app.App` and consumed by `window.go.app.App.*`.
 
+## Scenario: CS2 Gameinfo Clean Backup and Repair Contract
+
+### 1. Scope / Trigger
+
+- Trigger: Produce mode temporarily injects `csgo/plugin` into CS2 `gameinfo.gi`, and abnormal app exits can leave the file modified.
+- Scope: `internal/app` Wails bindings, `internal/producegame` gameinfo helpers, app data backup storage, and Settings UI status/repair actions.
+- Boundary: App startup / produce preparation -> clean backup creation; Settings UI -> `GetGameInfoStatus()` / `RepairGameInfoFromBackup()` -> current CS2 `gameinfo.gi`.
+
+### 2. Signatures
+
+```go
+func (a *App) GetGameInfoStatus() (*GameInfoStatus, error)
+func (a *App) RepairGameInfoFromBackup() (*GameInfoStatus, error)
+
+type GameInfoStatus struct {
+    Status       string `json:"status"`
+    Clean        bool   `json:"clean"`
+    HasBackup    bool   `json:"has_backup"`
+    CanRepair    bool   `json:"can_repair"`
+    GameInfoPath string `json:"gameinfo_path,omitempty"`
+    BackupPath   string `json:"backup_path,omitempty"`
+    Message      string `json:"message,omitempty"`
+}
+```
+
+Frontend shared type:
+
+```ts
+status: "normal" | "abnormal" | "unavailable";
+```
+
+### 3. Contracts
+
+- Long-lived clean backup path is `<dataDir>/backups/gameinfo/gameinfo.gi`.
+- Backup creation may run on app startup and before produce injection.
+- A backup may be created or refreshed only from a current `gameinfo.gi` that does not contain `csgo/plugin`.
+- Current status values:
+  - `normal`: current `gameinfo.gi` is found and does not contain `csgo/plugin`.
+  - `abnormal`: current `gameinfo.gi` is found and contains `csgo/plugin`.
+  - `unavailable`: current CS2/gameinfo path cannot be resolved; this is non-fatal for status display.
+- `can_repair=true` only when current status is `abnormal` and a clean long-lived backup exists.
+- Repair must copy the long-lived backup to the current CS2 `gameinfo.gi` path, then return a fresh status snapshot.
+- Existing per-session `.cs2ht_produce.bak` rollback stays unchanged and is still used for normal produce lifecycle cleanup.
+
+### 4. Validation & Error Matrix
+
+- CS2 path/gameinfo unresolved during status -> return `status=unavailable`, not an error.
+- CS2 path/gameinfo unresolved during repair -> return an error because there is no target to restore.
+- Current gameinfo contains `csgo/plugin` during backup creation -> do not write or overwrite long-lived backup.
+- Backup file missing during repair -> return `未找到可用于修复的 gameinfo 原版备份`.
+- Backup file contains `csgo/plugin` during repair -> return `gameinfo 原版备份包含 csgo/plugin，无法用于修复`.
+- Filesystem copy/read failure -> wrap with Chinese user-facing context and `%w`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: first startup after CS2 is configured and gameinfo is clean writes `<dataDir>/backups/gameinfo/gameinfo.gi`.
+- Good: CS2 updates a clean gameinfo file; the next backup pass refreshes the long-lived backup from the new clean file.
+- Base: produce session still writes and cleans `.cs2ht_produce.bak` for in-session rollback.
+- Bad: abnormal leftover `Game\tcsgo/plugin` overwrites the long-lived clean backup.
+- Bad: repair uses a hardcoded Valve template instead of the user's clean backup.
+
+### 6. Tests Required
+
+- `internal/app`: clean current file creates long-lived backup under the data dir.
+- `internal/app`: injected current file does not overwrite an existing clean backup.
+- `internal/app`: clean current file refreshes an existing backup.
+- `internal/app`: status reports abnormal and repair restores the clean backup.
+- `internal/app`: repair rejects a backup containing `csgo/plugin`.
+- `go test ./...` and `cd frontend && npm run build` must pass after adding the Wails methods and Settings UI calls.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+if strings.Contains(currentGameInfo, "csgo/plugin") {
+    _ = copyFile(gameInfoPath, cleanBackupPath)
+}
+```
+
+This preserves the already-injected state as the "original" and makes the repair button restore the broken file.
+
+#### Correct
+
+```go
+if producegame.HasPluginSearchPath(currentGameInfo) {
+    return nil
+}
+return copyFileWithReplace(gameInfoPath, cleanBackupPath)
+```
+
+Only clean current files are allowed to create or refresh the long-lived repair backup.
+
 ## Scenario: Startup FFmpeg Reinstall Probe Cancellation Contract
 
 ### 1. Scope / Trigger

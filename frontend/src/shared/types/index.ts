@@ -30,6 +30,7 @@ export type {
 export type {
   ClipSettings,
   DemoStorageStats,
+  GameInfoStatus,
   OutputsStorageStats,
   ClipParameterOverrides,
   GeneratePluginSelectedItem,

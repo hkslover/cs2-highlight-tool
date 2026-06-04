@@ -56,7 +56,7 @@ func ResolveGameInfoPath(cs2Exe string, cs2Dir string) (string, error) {
 // and true on success, or the original content and false if no injection point
 // could be found.
 func InjectPluginSearchPath(content string) (string, bool) {
-	if strings.Contains(content, "Game\tcsgo/plugin") {
+	if HasPluginSearchPath(content) {
 		return content, true
 	}
 	lines := strings.Split(content, "\n")
@@ -78,4 +78,10 @@ func InjectPluginSearchPath(content string) (string, bool) {
 		return replaced, true
 	}
 	return content, false
+}
+
+// HasPluginSearchPath reports whether gameinfo.gi content already references
+// the tool-managed csgo/plugin search path.
+func HasPluginSearchPath(content string) bool {
+	return strings.Contains(strings.ToLower(content), "csgo/plugin")
 }

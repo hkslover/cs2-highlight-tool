@@ -28,6 +28,13 @@
 - Must：导出日志路径继续遵守脱敏规则（URL 参数、认证信息、home path 前缀）。
 - Must Not：在日志中输出明文 token、密钥、认证头或用户真实 home 目录。
 
+## CS2 gameinfo 保护约束
+- Must：长期原版备份路径固定为 `<dataDir>/backups/gameinfo/gameinfo.gi`。
+- Must：只有当前 `gameinfo.gi` 不包含 `csgo/plugin` 时，才允许创建或刷新长期原版备份。
+- Must：`RepairGameInfoFromBackup` 必须拒绝使用包含 `csgo/plugin` 的备份文件恢复游戏目录。
+- Must：保留录制会话级 `.cs2ht_produce.bak` 备份/恢复链路，长期原版备份只用于异常退出后的手动修复。
+- Must Not：用硬编码模板重建 Valve 默认 `gameinfo.gi`。
+
 ## 统一更新源约束
 - Must：启动阶段优先请求统一 Release API 快照，再由各组件消费快照。
 - Must：每次启动都需实时进行 GeoIP 检测并获取 `country_code`；统一更新源固定为 `github`；不得依赖 `config.json` 持久化地区结果。
