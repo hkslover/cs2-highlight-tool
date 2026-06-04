@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 31
+- **Total Sessions**: 32
 - **Last Active**: 2026-06-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1052 | Active |
+| `journal-1.md` | ~1085 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 32 | 2026-06-04 | Gameinfo backup repair | `407e28c` | `main` |
 | 31 | 2026-06-04 | Gate startup self-update flow | `b3fe33f`, `9073b17` | `main` |
 | 30 | 2026-06-03 | FFmpeg reinstall probe cancellation | `404f1d6` | `main` |
 | 29 | 2026-06-03 | Startup download cancellation | `cdd6d29` | `main` |

@@ -132,7 +132,9 @@ Split 8 largest frontend files into 16 smaller files:\n- ProducePage.vue (1042â†
 
 ### Main Changes
 
-(Add details)
+- Added a long-lived clean `gameinfo.gi` backup under `<dataDir>/backups/gameinfo/gameinfo.gi`.
+- Added Settings status/repair UI backed by `GetGameInfoStatus` and `RepairGameInfoFromBackup`.
+- Added regression tests and updated Wails bindings plus contract docs.
 
 ### Git Commits
 
@@ -143,7 +145,8 @@ Split 8 largest frontend files into 16 smaller files:\n- ProducePage.vue (1042â†
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `go test ./...`
+- [OK] `cd frontend && npm run build`
 
 ### Status
 
@@ -1038,6 +1041,39 @@ Changed startup checks so app self-update is evaluated before component setup, d
 |------|---------|
 | `b3fe33f` | (see git log) |
 | `9073b17` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 32: Gameinfo backup repair
+
+**Date**: 2026-06-04
+**Task**: Gameinfo backup repair
+**Branch**: `main`
+
+### Summary
+
+Added persistent clean gameinfo backup, Settings health/repair UI, Wails bindings, tests, and contract docs for restoring CS2 gameinfo after abnormal exits.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `407e28c` | (see git log) |
 
 ### Testing
 
