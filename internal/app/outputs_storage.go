@@ -167,3 +167,42 @@ func isOutputVideoFile(path string) bool {
 func isDemoFile(path string) bool {
 	return strings.EqualFold(filepath.Ext(path), ".dem")
 }
+
+// LogStorageStats describes the current log storage state.
+type LogStorageStats struct {
+	LogDir         string `json:"log_dir"`
+	LogCount       int    `json:"log_count"`
+	TotalSizeBytes int64  `json:"total_size_bytes"`
+}
+
+// GetLogStorageStats returns statistics about the logs directory.
+func (a *App) GetLogStorageStats() (*LogStorageStats, error) {
+	logDir := a.dataPath("logs")
+	return collectLogStorageStats(logDir)
+}
+
+// ClearLogs removes all log files from the logs directory.
+func (a *App) ClearLogs() (*LogStorageStats, error) {
+	logDir := a.dataPath("logs")
+	if err := clearManagedDirectory(logDir, "日志目录"); err != nil {
+		return nil, err
+	}
+	return collectLogStorageStats(logDir)
+}
+
+func collectLogStorageStats(dir string) (*LogStorageStats, error) {
+	stats := &LogStorageStats{LogDir: dir}
+	err := collectManagedDirectoryStats(dir, "日志目录", func(path string) {
+		if isLogFile(path) {
+			stats.LogCount++
+		}
+	}, &stats.TotalSizeBytes)
+	if err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
+func isLogFile(path string) bool {
+	return strings.HasPrefix(filepath.Base(path), "cs2ht-") && strings.EqualFold(filepath.Ext(path), ".log")
+}

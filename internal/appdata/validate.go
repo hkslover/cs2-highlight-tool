@@ -6,20 +6,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 const (
-	// MaxDataDirLength 数据目录路径最大长度（字符）。
-	MaxDataDirLength = 200
+	// MaxDataDirLength 数据目录路径最大长度（字符）。Windows MAX_PATH 为 260。
+	MaxDataDirLength = 260
 
 	// probeFileName 可写探针文件名。
 	probeFileName = ".cs2ht_init_probe"
 )
 
-// 字符白名单：A-Z a-z 0-9 _ - . : \ /
-var dataDirAllowedCharsRe = regexp.MustCompile(`^[A-Za-z0-9_\-.:\\/]+$`)
 
 // ValidateDataDir 按 7 条规则顺序校验用户选择的数据目录。
 // 校验通过返回 nil；失败返回分类的中文错误信息，便于前端精准提示。
@@ -42,7 +39,7 @@ func ValidateDataDir(path string) error {
 		return err
 	}
 
-	// 4. 长度 ≤ 100
+	// 4. 长度 ≤ 260
 	if len(path) > MaxDataDirLength {
 		return fmt.Errorf("路径长度超过 %d 字符", MaxDataDirLength)
 	}
@@ -60,25 +57,11 @@ func ValidateDataDir(path string) error {
 	return nil
 }
 
-// validateDataDirChars 按"中文/非 ASCII"、"空格"、"非法符号"分类报错。
+// validateDataDirChars 检测 Windows 非法字符 < > " | ? *
 func validateDataDirChars(path string) error {
-	// 先检测非 ASCII（含中文）
-	for _, r := range path {
-		if r > 127 {
-			return errors.New("路径不能包含中文或非 ASCII 字符")
-		}
-	}
-	// 空格
-	if strings.ContainsRune(path, ' ') {
-		return errors.New("路径不能包含空格")
-	}
 	// Windows 非法字符 < > " | ? *
 	if strings.ContainsAny(path, `<>"|?*`) {
 		return errors.New(`路径不能包含非法符号 < > " | ? *`)
-	}
-	// 其他符号（白名单之外）
-	if !dataDirAllowedCharsRe.MatchString(path) {
-		return errors.New("路径包含不允许的字符（仅支持字母、数字、下划线、连字符、点、冒号和路径分隔符）")
 	}
 	return nil
 }

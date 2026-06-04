@@ -8,9 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
 	"cs2-highlight-tool-v2/internal/clipsjson"
 	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/demo"
+	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 	"cs2-highlight-tool-v2/internal/plugingen"
 	"cs2-highlight-tool-v2/internal/producews"
 
@@ -332,6 +335,15 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		}
 		return result, nil
 	}
+	if err := a.preparePovForProduce(); err != nil {
+		result.LaunchStarted = false
+		result.LaunchError = err.Error()
+		result.LaunchedDemoPath = launchDemoPath
+		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		}
+		return result, nil
+	}
 
 	cs2PID, err := a.launchHLAEGame()
 	if err != nil {
@@ -416,6 +428,23 @@ func (a *App) generatePluginJSONInternal(
 		return nil, nil, err
 	}
 
+	// 如果 FFmpeg 能力检测数据为空，尝试同步快速检测以确保 GPU 加速可用
+	if cfg.FFmpegDetectedPreset == "" && len(cfg.FFmpegDetectedEncoders) == 0 {
+		ffmpegExe := config.JoinExe(config.CleanPath(cfg.FFmpegDir), "ffmpeg.exe")
+		if ffmpegExe != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			caps, detectErr := ffmpegprofile.DetectCapabilities(ctx, ffmpegExe, nil)
+			cancel()
+			if detectErr == nil && !caps.IsEmpty() {
+				resolved := ffmpegprofile.ResolveProfile(ffmpegprofile.UserPresetAuto, caps)
+				cfg.FFmpegDetectedPreset = resolved.SelectedProfile.ID
+				cfg.FFmpegDetectedEncoders = caps.AvailableEncoders()
+				cfg.FFmpegDetectedAt = time.Now().UTC().Format(time.RFC3339)
+				_ = config.Save(a.configPath(), cfg)
+			}
+		}
+	}
+
 	actionSettings := config.ResolveClipActionSettings(cfg)
 	clipSettings := normalizeClipSettings(ClipSettings{
 		KillerPreSeconds:   cfg.KillerPreSeconds,
@@ -492,6 +521,7 @@ func (a *App) generatePluginJSONInternal(
 		HideAllUI:                 clipSettings.HideAllUI,
 		ForcePerPassVoiceCommands: hasVoiceOverride,
 		ForcePerPassXrayCommands:  hasSpecShowXrayOverride,
+		LaunchResolution:          cfg.LaunchResolution,
 	})
 	if err != nil {
 		return nil, nil, err

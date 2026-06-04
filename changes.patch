@@ -1,0 +1,1385 @@
+From a92d36befb5193b3a40166a4ee7b0bc8de4cbf10 Mon Sep 17 00:00:00 2001
+From: hkslover <hk_snow@yeah.net>
+Date: Thu, 4 Jun 2026 16:03:32 +0800
+Subject: [PATCH] =?UTF-8?q?feat:=20=E8=B7=AF=E5=BE=84=E4=B8=AD=E6=96=87+?=
+ =?UTF-8?q?=E7=A9=BA=E6=A0=BC=E6=94=AF=E6=8C=81=E3=80=81POV=20HUD=E3=80=81?=
+ =?UTF-8?q?4:3=E6=8B=89=E4=BC=B8=E4=BF=AE=E5=A4=8D=E3=80=81GPU=E5=8A=A0?=
+ =?UTF-8?q?=E9=80=9F=E3=80=81=E6=97=A5=E5=BF=97=E6=8C=81=E4=B9=85=E5=8C=96?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+改动详情：
+
+1. feat(path): 安装路径支持中文和空格
+   - validateDataDirChars() 移除非ASCII/空格/正则白名单限制
+   - MaxDataDirLength 200→260 (Windows MAX_PATH标准)
+
+2. feat(pov): 新增实验性 POV HUD 模式
+   - 录制前临时安装pov.vpk并注入csgo/pov搜索路径到gameinfo.gi
+   - 录制完成后自动恢复，遵循现有备份/恢复模式
+   - InjectPluginSearchPath 泛化为 InjectSearchPath
+
+3. fix(ratio): 4:3分辨率录制自动追加 -aspect 16:9
+   - BuildOptions 新增 LaunchResolution 字段
+   - 4:3/4:3_1280x960 时 ffmpeg 参数追加 -aspect 16:9
+
+4. fix(gpu): 录制前同步检测FFmpeg GPU编码器
+   - 若检测缓存为空则执行 DetectCapabilities(10秒超时)
+   - 避免异步检测未完成导致回退到CPU编码
+
+5. feat(logs): 应用日志持久化+自动清理
+   - 新增 RotatingWriter (按天滚动) + CleanOldLogs (7天/50MB)
+   - io.MultiWriter 双写stderr+文件
+   - 设置页新增日志存储统计卡片
+
+6. chore: 新增 .gitattributes 规范换行符
+---
+ .gitattributes                                |  26 +++
+ PR_DESCRIPTION.md                             | 106 +++++++++++
+ .../settings/components/SettingsPanel.vue     |  84 ++++++++-
+ frontend/src/shared/i18n/en-US.json           |  16 +-
+ frontend/src/shared/i18n/zh-CN.json           |  15 +-
+ frontend/src/shared/types/clips.ts            |   7 +
+ frontend/src/shared/types/index.ts            |   1 +
+ internal/app/app.go                           |   5 -
+ internal/app/clip_settings.go                 |   3 +
+ internal/app/outputs_storage.go               |  39 +++++
+ internal/app/plugin_generate.go               |  30 ++++
+ internal/app/produce_gameconfig.go            | 165 ++++++++++++++++++
+ internal/app/produce_session.go               |   1 +
+ internal/appdata/validate.go                  |  25 +--
+ internal/appdata/validate_test.go             |  29 +--
+ internal/clipsjson/builder.go                 |   9 +-
+ internal/config/config.go                     |   2 +
+ internal/envsetup/service.go                  |  34 +++-
+ internal/envsetup/service_startup.go          |   2 +-
+ internal/logging/cleanup.go                   | 129 ++++++++++++++
+ internal/logging/rotation.go                  |  97 ++++++++++
+ internal/producegame/gameinfo.go              |  13 +-
+ 22 files changed, 783 insertions(+), 55 deletions(-)
+ create mode 100644 .gitattributes
+ create mode 100644 PR_DESCRIPTION.md
+ create mode 100644 internal/logging/cleanup.go
+ create mode 100644 internal/logging/rotation.go
+
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..16dcfa5
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,26 @@
++# 所有文本文件统一使用 LF，避免 Windows CRLF 警告
++* text=auto eol=lf
++
++# Go 源码
++*.go text eol=lf
++
++# 前端源码
++*.ts text eol=lf
++*.vue text eol=lf
++*.js text eol=lf
++*.json text eol=lf
++*.css text eol=lf
++*.html text eol=lf
++
++# 配置文件
++*.yml text eol=lf
++*.yaml text eol=lf
++*.toml text eol=lf
++*.md text eol=lf
++
++# 二进制文件不做转换
++*.exe binary
++*.ico binary
++*.vpk binary
++*.png binary
++*.jpg binary
+diff --git a/PR_DESCRIPTION.md b/PR_DESCRIPTION.md
+new file mode 100644
+index 0000000..805e427
+--- /dev/null
++++ b/PR_DESCRIPTION.md
+@@ -0,0 +1,106 @@
++# PR: 多项功能增强与问题修复
++
++## 概述
++
++本次 PR 包含 5 项改进：路径中文/空格支持、POV HUD 实验性功能、4:3 录制拉伸修复、FFmpeg GPU 加速优化、应用日志持久化与自动清理。
++
++---
++
++## 改动详情
++
++### 1. 安装路径支持中文和空格
++
++**问题**：`internal/appdata/validate.go` 中 `validateDataDirChars()` 阻止了中文（非 ASCII）、空格等 Windows 原生支持的路径字符，导致用户无法使用含中文的用户名或带空格的目录。
++
++**修改**：
++- 移除 `validateDataDirChars()` 中的非 ASCII 检测（`r > 127`）、空格检测、正则白名单三步限制
++- 仅保留 Windows 非法字符 `< > " | ? *` 检测
++- `MaxDataDirLength` 从 200 增加到 260（Windows MAX_PATH 标准）
++- `internal/app/app.go` 中 `isUsableDataDir()` 同步移除非 ASCII 检查
++- 更新前端 i18n 描述文本
++
++### 2. 新增实验性 "POV HUD" 功能
++
++**功能**：启用后录制时会临时安装 `pov.vpk` 并修改 CS2 的 `gameinfo.gi` 注入 `csgo/pov` 搜索路径，录制完成后自动恢复。使录制画面更贴近第一人称 HUD 风格。
++
++**修改**：
++- `config.Config` / `ClipSettings` 新增 `PovHudEnabled` 字段
++- `internal/producegame/gameinfo.go`：`InjectPluginSearchPath` 泛化为 `InjectSearchPath(content, path)` 支持任意搜索路径
++- `internal/app/produce_gameconfig.go`：新增 `povSessionState`、`preparePovForProduce()`、`forceRestorePovForProduce()`，遵循现有备份/恢复模式
++- `produce_session.go`：扩展会话状态
++- `plugin_generate.go`：启动 HLAE 前调用 POV 准备
++- 前端设置页新增开关 + 详细警告文本（中英文双语）
++
++### 3. 修复 4:3 录制不自动拉伸
++
++**问题**：4:3 分辨率（1440×1080 / 1280×960）录制时，HLAE 捕获的是方形像素的游戏帧缓冲。ffmpeg 编码时未写入 SAR/DAR 元数据，导致播放画面为窄 4:3 而非期望的 16:9。
++
++**修改**：
++- `internal/clipsjson/builder.go`：`BuildOptions` 新增 `LaunchResolution` 字段；`buildFFmpegParams` 对 4:3 分辨率自动追加 `-aspect 16:9`
++- `plugin_generate.go`：传递 `LaunchResolution` 到 BuildOptions
++
++### 4. 修复 FFmpeg GPU 加速
++
++**问题**：当 FFmpeg 能力检测未完成或失败时，`ResolvePluginVideoPreset` 回退到 CPU 编码 `c1`（libx264），导致编码性能下降。
++
++**修改**：
++- `plugin_generate.go`：录制前检查 `FFmpegDetectedPreset` 和 `FFmpegDetectedEncoders` 缓存，若为空则执行同步快速检测（10秒超时），将结果持久化到 config
++- 确保即使用户首次启动后立即开始录制，也能自动检测 GPU 编码器
++
++### 5. 应用运行日志持久化与自动清理
++
++**功能**：将应用运行日志自动写入 `{dataDir}/logs/cs2ht-YYYY-MM-DD.log` 文件（JSON 格式，逐行），同时输出到 stderr。启动时自动清理 7 天前的日志，且总大小不超过 50MB。
++
++**新增文件**：
++- `internal/logging/rotation.go`：`RotatingWriter` — 按天滚动的日志文件写入器，实现 `io.Writer`
++- `internal/logging/cleanup.go`：`CleanOldLogs()` — 双重策略清理（天数 + 大小限制）
++
++**修改**：
++- `internal/envsetup/service.go`：创建 `RotatingWriter`，`io.MultiWriter` 双写 stderr + 文件；`Startup()` 调用清理
++- `internal/envsetup/service_startup.go`：`ensureWorkDirs()` 新增 `logs` 目录
++- `internal/app/outputs_storage.go`：新增 `GetLogStorageStats()` / `ClearLogs()` API
++- 前端设置页新增日志存储信息卡片（文件数、占用空间、清理按钮）
++
++---
++
++## 修改文件清单
++
++### 新增 (2)
++- `internal/logging/rotation.go`
++- `internal/logging/cleanup.go`
++
++### 修改 (16)
++| 改动 | 文件 |
++|------|------|
++| 1 | `internal/appdata/validate.go` |
++| 1 | `internal/app/app.go` |
++| 1 | `internal/appdata/validate_test.go` |
++| 1 | `frontend/src/shared/i18n/zh-CN.json` |
++| 1 | `frontend/src/shared/i18n/en-US.json` |
++| 2,3,4 | `internal/app/plugin_generate.go` |
++| 2 | `internal/config/config.go` |
++| 2 | `internal/app/clip_settings.go` |
++| 2 | `internal/producegame/gameinfo.go` |
++| 2 | `internal/app/produce_gameconfig.go` |
++| 2 | `internal/app/produce_session.go` |
++| 2,5 | `frontend/src/features/settings/components/SettingsPanel.vue` |
++| 2,5 | `frontend/src/shared/types/clips.ts` |
++| 5 | `frontend/src/shared/types/index.ts` |
++| 5 | `internal/envsetup/service.go` |
++| 5 | `internal/envsetup/service_startup.go` |
++| 5 | `internal/app/outputs_storage.go` |
++
++---
++
++## 测试
++
++- `go vet` 通过（仅预存的 `cs2_process_windows.go:121 unsafe.Pointer` 警告）
++- `go test ./internal/appdata/...` — 中文/空格/非 ASCII 测试通过
++- `go test ./internal/clipsjson/...` — 通过
++- `go test ./internal/producegame/...` — 通过
++- `go test ./internal/logging/...` — 通过
++
++## 注意事项
++
++- POV HUD 功能需要用户在 `{dataDir}/presets/pov/` 下放置 `pov.vpk` 文件才会生效，否则启动录制时会提示文件未找到
++- 所有改动向后兼容，不影响现有配置文件
+diff --git a/frontend/src/features/settings/components/SettingsPanel.vue b/frontend/src/features/settings/components/SettingsPanel.vue
+index 7eb77b0..cc4ef15 100644
+--- a/frontend/src/features/settings/components/SettingsPanel.vue
++++ b/frontend/src/features/settings/components/SettingsPanel.vue
+@@ -63,6 +63,13 @@
+           <span class="setting-label">{{ t("main.settings.launch_resolution") }}</span>
+           <n-select v-model:value="settings.launch_resolution" :options="resolutionOptions" class="preset-select" />
+         </div>
++        <div class="setting-row">
++          <span class="setting-label">{{ t("main.settings.pov_hud_enabled") }}</span>
++          <n-switch v-model:value="settings.pov_hud_enabled" />
++        </div>
++        <n-alert v-if="settings.pov_hud_enabled" type="warning" :bordered="false" style="white-space: pre-line; margin-top: 12px;">
++          {{ t("main.settings.pov_hud_warning") }}
++        </n-alert>
+       </n-space>
+     </n-card>
+ 
+@@ -121,6 +128,27 @@
+       @clear="confirmClearDemo"
+     />
+ 
++    <n-card size="small" :bordered="true" class="section-card">
++      <template #header>
++        <span class="section-title">{{ t("main.settings.log_title") }}</span>
++      </template>
++      <n-space vertical :size="8">
++        <div class="setting-row">
++          <span class="setting-label">{{ t("main.settings.log_count") }}</span>
++          <span>{{ logStats.log_count }}</span>
++        </div>
++        <div class="setting-row">
++          <span class="setting-label">{{ t("main.settings.log_total_size") }}</span>
++          <span>{{ formatBytes(logStats.total_size_bytes) }}</span>
++        </div>
++        <div class="setting-row">
++          <span class="setting-label">{{ t("main.settings.outputs_dir") }}</span>
++          <span class="setting-path">{{ logStats.log_dir || "—" }}</span>
++        </div>
++        <n-button size="small" :loading="clearingLogs" @click="confirmClearLogs">{{ t("main.settings.log_clear") }}</n-button>
++      </n-space>
++    </n-card>
++
+     <n-card v-if="debugEnabled" size="small" :bordered="true" class="section-card">
+       <template #header>
+         <span class="section-title">{{ t("main.settings.debug_title") }}</span>
+@@ -145,7 +173,7 @@ import { useDialog, useMessage } from "naive-ui";
+ import { t } from "@/shared/i18n";
+ import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
+ import { useDebugSettings } from "@/shared/state/useDebugSettings";
+-import type { ClipSettings, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
++import type { ClipSettings, DemoStorageStats, LogStorageStats, OutputsStorageStats } from "@/shared/types";
+ import StorageDirectoryCard from "./StorageDirectoryCard.vue";
+ 
+ const props = withDefaults(
+@@ -189,6 +217,7 @@ const settings = reactive<ClipSettings>({
+   record_output_dir: "",
+   enable_spec_show_xray_zero: true,
+   hide_all_ui: false,
++  pov_hud_enabled: false,
+ });
+ const outputsStats = reactive<OutputsStorageStats>({
+   output_dir: "",
+@@ -200,6 +229,12 @@ const demoStats = reactive<DemoStorageStats>({
+   demo_count: 0,
+   total_size_bytes: 0,
+ });
++const logStats = reactive<LogStorageStats>({
++  log_dir: "",
++  log_count: 0,
++  total_size_bytes: 0,
++});
++const clearingLogs = ref(false);
+ const presetOptions = computed(() => [
+   { label: t("main.settings.video_preset_auto"), value: "auto" },
+   { label: t("main.settings.video_preset_c1"), value: "c1" },
+@@ -233,6 +268,7 @@ watch(
+     void loadSettings();
+     void loadOutputsStats();
+     void loadDemoStats();
++    void loadLogStats();
+   },
+   { immediate: true },
+ );
+@@ -396,6 +432,52 @@ async function clearDemoDirectory() {
+   }
+ }
+ 
++async function loadLogStats() {
++  if (!props.active) {
++    return;
++  }
++  errorMessage.value = "";
++  try {
++    const next = await callBackend<LogStorageStats>("GetLogStorageStats");
++    Object.assign(logStats, next);
++  } catch (err: unknown) {
++    // 日志统计加载失败不报错（目录可能不存在）
++  }
++}
++
++function confirmClearLogs() {
++  dialog.warning({
++    title: t("main.settings.log_clear_confirm_title"),
++    content: t("main.settings.log_clear_confirm_content", {
++      count: logStats.log_count,
++      size: formatBytes(logStats.total_size_bytes),
++    }),
++    positiveText: t("main.settings.outputs_clear_confirm_positive"),
++    negativeText: t("main.settings.outputs_clear_confirm_negative"),
++    onPositiveClick: () => {
++      void clearLogs();
++    },
++  });
++}
++
++async function clearLogs() {
++  if (clearingLogs.value) {
++    return;
++  }
++  clearingLogs.value = true;
++  errorMessage.value = "";
++  successMessage.value = "";
++  try {
++    const next = await callBackend<LogStorageStats>("ClearLogs");
++    Object.assign(logStats, next);
++    message.success(t("main.settings.log_clear_success"));
++  } catch (err: unknown) {
++    errorMessage.value = err instanceof Error ? err.message : String(err);
++  } finally {
++    clearingLogs.value = false;
++  }
++}
++
+ async function applySettingsFromBackend(next: ClipSettings) {
+   syncingSettings.value = true;
+   Object.assign(settings, next);
+diff --git a/frontend/src/shared/i18n/en-US.json b/frontend/src/shared/i18n/en-US.json
+index 5d34815..c5c7f3f 100644
+--- a/frontend/src/shared/i18n/en-US.json
++++ b/frontend/src/shared/i18n/en-US.json
+@@ -288,6 +288,9 @@
+       "launch_resolution": "Launch resolution",
+       "resolution_16_9": "16:9",
+       "resolution_4_3": "4:3 (1440x1080)",
++      "resolution_4_3_1280x960": "4:3 (1280x960)",
++      "pov_hud_enabled": "POV HUD Mode (Experimental)",
++      "pov_hud_warning": "When enabled, recordings will use a first-person HUD style.\nNote: This is an experimental feature. It will temporarily install pov.vpk and modify CS2's gameinfo.gi. These changes are automatically reverted after recording. The -insecure flag is always enforced. For local demo playback recording only — do NOT connect to servers.\n\nPOV is experimental, for local demo playback recording only. The app will temporarily install pov.vpk and modify CS2's gameinfo.gi. All changes are reverted after recording. POV mode forces -insecure and must not be used to connect to VAC-secured servers.",
+       "record_output_dir": "Record output dir (English absolute path)",
+       "record_output_dir_placeholder": "e.g. D:/cs2/outputs",
+       "enable_spec_show_xray_zero": "Inject spec_show_xray 0 in bootstrap",
+@@ -303,6 +306,13 @@
+       "outputs_clear_confirm_negative": "Cancel",
+       "outputs_clear_success": "Output directory cleared",
+       "keep_produce_intermediates": "Keep produce intermediate files",
++      "log_title": "Application Logs",
++      "log_count": "Log Files",
++      "log_total_size": "Log Total Size",
++      "log_clear": "Clear Logs",
++      "log_clear_confirm_title": "Clear Logs?",
++      "log_clear_confirm_content": "This will delete all log files ({count} files, {size}). This action cannot be undone.",
++      "log_clear_success": "Logs cleared",
+       "browse": "Browse"
+     }
+   },
+@@ -363,18 +373,16 @@
+   "workspace": {
+     "init": {
+       "title": "Set Installation Directory",
+-      "description": "Choose a directory using English characters and no spaces. The tool will automatically create a cs2HighLightTool directory inside it as the tool workspace for components and related files.",
++      "description": "Choose a directory. The tool will automatically create a cs2HighLightTool directory inside it as the tool workspace for components and related files.",
+       "browse_button": "Browse...",
+       "path_placeholder": "No directory selected",
+       "confirm_button": "Use This Directory",
+       "exit_button": "Exit App"
+     },
+     "validate": {
+-      "invalid_chinese": "Path cannot contain Chinese or non-ASCII characters",
+-      "invalid_space": "Path cannot contain spaces",
+       "invalid_symbol": "Path contains invalid characters",
+       "invalid_root": "Cannot select the drive root directory",
+-      "invalid_length": "Path length exceeds 200 characters",
++      "invalid_length": "Path length exceeds 260 characters",
+       "invalid_unwritable": "Cannot write to this location. Please check permissions.",
+       "generic": "Invalid path"
+     },
+diff --git a/frontend/src/shared/i18n/zh-CN.json b/frontend/src/shared/i18n/zh-CN.json
+index c4699c4..edf4333 100644
+--- a/frontend/src/shared/i18n/zh-CN.json
++++ b/frontend/src/shared/i18n/zh-CN.json
+@@ -291,6 +291,8 @@
+       "resolution_16_9": "16:9",
+       "resolution_4_3": "4:3 (1440x1080)",
+       "resolution_4_3_1280x960": "4:3 (1280x960)",
++      "pov_hud_enabled": "POV HUD 模式 (实验性)",
++      "pov_hud_warning": "开启后，录制Demo会更贴近第一人称HUD风格\n注意：该功能为实验性功能；会临时安装pov.vpk；会临时修改CS2的gameinfo.gi；录制结束后会自动恢复；会强制使用-insecure启动CS2；仅用于本地Demo回放录制，不要用于连接服务器。\n\nPOV是实验性功能，仅用于本地Demo回放录制。开启后程序会临时安装pov.vpk，并临时修改CS2的gameinfo.gi。录制完成后会自动恢复。POV模式会强制使用-insecure启动CS2，不能用于连接VAC安全服务器。",
+       "record_output_dir": "录制输出目录(英文绝对路径)",
+       "record_output_dir_placeholder": "例如: D:/cs2/outputs",
+       "enable_spec_show_xray_zero": "关闭 X 光",
+@@ -311,6 +313,13 @@
+       "demo_clear_confirm_content": "将删除 demo 目录下的所有文件和文件夹（当前 {count} 个 demo 文件，{size}），此操作不可恢复。",
+       "demo_clear_success": "demo目录已清理",
+       "keep_produce_intermediates": "保留制作中间产物",
++      "log_title": "应用日志",
++      "log_count": "日志文件数",
++      "log_total_size": "日志占用",
++      "log_clear": "清理日志",
++      "log_clear_confirm_title": "确认清理日志？",
++      "log_clear_confirm_content": "将删除日志目录下的所有日志文件（当前 {count} 个日志文件，{size}），此操作不可恢复。",
++      "log_clear_success": "日志已清理",
+       "browse": "浏览"
+     }
+   },
+@@ -372,18 +381,16 @@
+   "workspace": {
+     "init": {
+       "title": "设置安装目录",
+-      "description": "请选择一个目录（英文、无空格），工具将在其中自动创建 cs2HighLightTool 目录作为工具工作目录，用于存放组件等内容。",
++      "description": "请选择一个目录，工具将在其中自动创建 cs2HighLightTool 目录作为工具工作目录，用于存放组件等内容。",
+       "browse_button": "浏览…",
+       "path_placeholder": "未选择目录",
+       "confirm_button": "使用此目录",
+       "exit_button": "退出应用"
+     },
+     "validate": {
+-      "invalid_chinese": "路径不能包含中文或非 ASCII 字符",
+-      "invalid_space": "路径不能包含空格",
+       "invalid_symbol": "路径包含非法字符",
+       "invalid_root": "不能选择磁盘根目录",
+-      "invalid_length": "路径长度超过 200 字符",
++      "invalid_length": "路径长度超过 260 字符",
+       "invalid_unwritable": "无法在该位置写入文件，请检查权限",
+       "generic": "路径无效"
+     },
+diff --git a/frontend/src/shared/types/clips.ts b/frontend/src/shared/types/clips.ts
+index 9d07f3b..b66b5ce 100644
+--- a/frontend/src/shared/types/clips.ts
++++ b/frontend/src/shared/types/clips.ts
+@@ -14,6 +14,7 @@ export interface ClipSettings {
+   record_output_dir: string;
+   enable_spec_show_xray_zero: boolean;
+   hide_all_ui: boolean;
++  pov_hud_enabled: boolean;
+ }
+ 
+ export interface OutputsStorageStats {
+@@ -28,6 +29,12 @@ export interface DemoStorageStats {
+   total_size_bytes: number;
+ }
+ 
++export interface LogStorageStats {
++  log_dir: string;
++  log_count: number;
++  total_size_bytes: number;
++}
++
+ export interface ClipParameterOverrides {
+   killer_pre_seconds?: number;
+   killer_post_seconds?: number;
+diff --git a/frontend/src/shared/types/index.ts b/frontend/src/shared/types/index.ts
+index 4d52411..c188375 100644
+--- a/frontend/src/shared/types/index.ts
++++ b/frontend/src/shared/types/index.ts
+@@ -30,6 +30,7 @@ export type {
+ export type {
+   ClipSettings,
+   DemoStorageStats,
++  LogStorageStats,
+   OutputsStorageStats,
+   ClipParameterOverrides,
+   GeneratePluginSelectedItem,
+diff --git a/internal/app/app.go b/internal/app/app.go
+index e2585e9..bfea180 100644
+--- a/internal/app/app.go
++++ b/internal/app/app.go
+@@ -89,11 +89,6 @@ func isUsableDataDir(path string) bool {
+ 	if appdata.IsDiskRoot(path) {
+ 		return false
+ 	}
+-	for _, r := range path {
+-		if r > 127 {
+-			return false
+-		}
+-	}
+ 	if len(path) > appdata.MaxDataDirLength {
+ 		return false
+ 	}
+diff --git a/internal/app/clip_settings.go b/internal/app/clip_settings.go
+index dfb0cd0..994be75 100644
+--- a/internal/app/clip_settings.go
++++ b/internal/app/clip_settings.go
+@@ -27,6 +27,7 @@ type ClipSettings struct {
+ 	RecordOutputDir    string  `json:"record_output_dir"`
+ 	EnableSpecShowXray bool    `json:"enable_spec_show_xray_zero"`
+ 	HideAllUI          bool    `json:"hide_all_ui"`
++	PovHudEnabled      bool    `json:"pov_hud_enabled"`
+ }
+ 
+ type ClipActionSettings struct {
+@@ -73,6 +74,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
+ 		RecordOutputDir:    a.fixedRecordOutputDir(),
+ 		EnableSpecShowXray: cfg.EnableSpecShowXray,
+ 		HideAllUI:          cfg.HideAllUI,
++		PovHudEnabled:      cfg.PovHudEnabled,
+ 	})
+ 	actionSettings := config.ResolveClipActionSettings(cfg)
+ 	settings.EnableVoice = actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH
+@@ -101,6 +103,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
+ 	cfg.RecordOutputDir = settings.RecordOutputDir
+ 	cfg.EnableSpecShowXray = settings.EnableSpecShowXray
+ 	cfg.HideAllUI = settings.HideAllUI
++	cfg.PovHudEnabled = settings.PovHudEnabled
+ 	actionSettings := config.ResolveClipActionSettings(cfg)
+ 	actionSettings.EnableVoiceIndices = settings.EnableVoice
+ 	actionSettings.EnableVoiceIndicesH = settings.EnableVoice
+diff --git a/internal/app/outputs_storage.go b/internal/app/outputs_storage.go
+index 3bc1dd5..df9eb9b 100644
+--- a/internal/app/outputs_storage.go
++++ b/internal/app/outputs_storage.go
+@@ -167,3 +167,42 @@ func isOutputVideoFile(path string) bool {
+ func isDemoFile(path string) bool {
+ 	return strings.EqualFold(filepath.Ext(path), ".dem")
+ }
++
++// LogStorageStats describes the current log storage state.
++type LogStorageStats struct {
++	LogDir         string `json:"log_dir"`
++	LogCount       int    `json:"log_count"`
++	TotalSizeBytes int64  `json:"total_size_bytes"`
++}
++
++// GetLogStorageStats returns statistics about the logs directory.
++func (a *App) GetLogStorageStats() (*LogStorageStats, error) {
++	logDir := a.dataPath("logs")
++	return collectLogStorageStats(logDir)
++}
++
++// ClearLogs removes all log files from the logs directory.
++func (a *App) ClearLogs() (*LogStorageStats, error) {
++	logDir := a.dataPath("logs")
++	if err := clearManagedDirectory(logDir, "日志目录"); err != nil {
++		return nil, err
++	}
++	return collectLogStorageStats(logDir)
++}
++
++func collectLogStorageStats(dir string) (*LogStorageStats, error) {
++	stats := &LogStorageStats{LogDir: dir}
++	err := collectManagedDirectoryStats(dir, "日志目录", func(path string) {
++		if isLogFile(path) {
++			stats.LogCount++
++		}
++	}, &stats.TotalSizeBytes)
++	if err != nil {
++		return nil, err
++	}
++	return stats, nil
++}
++
++func isLogFile(path string) bool {
++	return strings.HasPrefix(filepath.Base(path), "cs2ht-") && strings.EqualFold(filepath.Ext(path), ".log")
++}
+diff --git a/internal/app/plugin_generate.go b/internal/app/plugin_generate.go
+index 661b478..7468aa7 100644
+--- a/internal/app/plugin_generate.go
++++ b/internal/app/plugin_generate.go
+@@ -8,9 +8,12 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"context"
++
+ 	"cs2-highlight-tool-v2/internal/clipsjson"
+ 	"cs2-highlight-tool-v2/internal/config"
+ 	"cs2-highlight-tool-v2/internal/demo"
++	"cs2-highlight-tool-v2/internal/ffmpegprofile"
+ 	"cs2-highlight-tool-v2/internal/plugingen"
+ 	"cs2-highlight-tool-v2/internal/producews"
+ 
+@@ -332,6 +335,15 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
+ 		}
+ 		return result, nil
+ 	}
++	if err := a.preparePovForProduce(); err != nil {
++		result.LaunchStarted = false
++		result.LaunchError = err.Error()
++		result.LaunchedDemoPath = launchDemoPath
++		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
++			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
++		}
++		return result, nil
++	}
+ 
+ 	cs2PID, err := a.launchHLAEGame()
+ 	if err != nil {
+@@ -416,6 +428,23 @@ func (a *App) generatePluginJSONInternal(
+ 		return nil, nil, err
+ 	}
+ 
++	// 如果 FFmpeg 能力检测数据为空，尝试同步快速检测以确保 GPU 加速可用
++	if cfg.FFmpegDetectedPreset == "" && len(cfg.FFmpegDetectedEncoders) == 0 {
++		ffmpegExe := config.JoinExe(config.CleanPath(cfg.FFmpegDir), "ffmpeg.exe")
++		if ffmpegExe != "" {
++			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++			caps, detectErr := ffmpegprofile.DetectCapabilities(ctx, ffmpegExe, nil)
++			cancel()
++			if detectErr == nil && !caps.IsEmpty() {
++				resolved := ffmpegprofile.ResolveProfile(ffmpegprofile.UserPresetAuto, caps)
++				cfg.FFmpegDetectedPreset = resolved.SelectedProfile.ID
++				cfg.FFmpegDetectedEncoders = caps.AvailableEncoders()
++				cfg.FFmpegDetectedAt = time.Now().UTC().Format(time.RFC3339)
++				_ = config.Save(a.configPath(), cfg)
++			}
++		}
++	}
++
+ 	actionSettings := config.ResolveClipActionSettings(cfg)
+ 	clipSettings := normalizeClipSettings(ClipSettings{
+ 		KillerPreSeconds:   cfg.KillerPreSeconds,
+@@ -492,6 +521,7 @@ func (a *App) generatePluginJSONInternal(
+ 		HideAllUI:                 clipSettings.HideAllUI,
+ 		ForcePerPassVoiceCommands: hasVoiceOverride,
+ 		ForcePerPassXrayCommands:  hasSpecShowXrayOverride,
++		LaunchResolution:          cfg.LaunchResolution,
+ 	})
+ 	if err != nil {
+ 		return nil, nil, err
+diff --git a/internal/app/produce_gameconfig.go b/internal/app/produce_gameconfig.go
+index 09bcbcf..1163561 100644
+--- a/internal/app/produce_gameconfig.go
++++ b/internal/app/produce_gameconfig.go
+@@ -14,6 +14,7 @@ import (
+ const (
+ 	produceGameInfoBackupSuffix  = ".cs2ht_produce.bak"
+ 	producePluginDLLBackupSuffix = ".cs2ht_plugin.bak"
++	producePovBackupSuffix       = ".cs2ht_pov.bak"
+ )
+ 
+ type gameInfoSessionState struct {
+@@ -22,6 +23,14 @@ type gameInfoSessionState struct {
+ 	modified     bool
+ }
+ 
++type povSessionState struct {
++	gameInfoPath     string
++	gameInfoBackup   string
++	gameInfoModified bool
++	vpkPath          string
++	vpkInstalled     bool
++}
++
+ type pluginDLLSessionState struct {
+ 	targetPath       string
+ 	backupPath       string
+@@ -270,8 +279,164 @@ func (a *App) forceRestorePluginDLLForProduce() error {
+ 	return nil
+ }
+ 
++func (a *App) preparePovForProduce() error {
++	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
++	if err != nil {
++		return err
++	}
++	if !cfg.PovHudEnabled {
++		return nil
++	}
++
++	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
++	if err != nil {
++		return fmt.Errorf("POV HUD: 解析 CS2 路径失败: %w", err)
++	}
++	gameInfoPath, err := producegame.ResolveGameInfoPath(cs2Exe, config.CleanPath(cfg.CS2Dir))
++	if err != nil {
++		return fmt.Errorf("POV HUD: 未找到 gameinfo.gi: %w", err)
++	}
++	csgoDir := filepath.Dir(gameInfoPath)
++
++	// 定位 pov.vpk 源文件 (dataDir/presets/pov/pov.vpk)
++	povSrc := filepath.Join(a.dataRoot(), "presets", "pov", "pov.vpk")
++	if _, err := os.Stat(povSrc); err != nil {
++		return fmt.Errorf("POV HUD: pov.vpk 未找到 (%s)，请确保 presets/pov/pov.vpk 已安装", povSrc)
++	}
++
++	vpkTarget := filepath.Join(csgoDir, "pov.vpk")
++	vpkInstalled := false
++	vpkBackup := ""
++
++	// 如果目标已存在 pov.vpk 且不是我们放进去的，先备份
++	if info, err := os.Stat(vpkTarget); err == nil && !info.IsDir() {
++		vpkBackup = vpkTarget + producePovBackupSuffix
++		if err := copyFile(vpkTarget, vpkBackup); err != nil {
++			return fmt.Errorf("POV HUD: 备份现有 pov.vpk 失败: %w", err)
++		}
++	}
++
++	if err := copyFile(povSrc, vpkTarget); err != nil {
++		// 如果复制失败但之前做了备份，恢复
++		if vpkBackup != "" {
++			_ = copyFile(vpkBackup, vpkTarget)
++			_ = os.Remove(vpkBackup)
++		}
++		return fmt.Errorf("POV HUD: 安装 pov.vpk 失败: %w", err)
++	}
++	vpkInstalled = true
++
++	// 读取 gameinfo.gi
++	contentBytes, err := os.ReadFile(gameInfoPath)
++	if err != nil {
++		// 回滚 VPK
++		if vpkInstalled {
++			if vpkBackup != "" {
++				_ = copyFile(vpkBackup, vpkTarget)
++				_ = os.Remove(vpkBackup)
++			} else {
++				_ = os.Remove(vpkTarget)
++			}
++		}
++		return fmt.Errorf("POV HUD: 读取 gameinfo.gi 失败: %w", err)
++	}
++	content := string(contentBytes)
++
++	povPath := "csgo/pov"
++	if strings.Contains(content, "Game\t"+povPath) {
++		// 已经注入过，跳过
++		a.produceStateMu.Lock()
++		a.produceState.pov = povSessionState{
++			gameInfoPath:     gameInfoPath,
++			gameInfoBackup:   "",
++			gameInfoModified: false,
++			vpkPath:          vpkTarget,
++			vpkInstalled:     vpkInstalled,
++		}
++		a.produceStateMu.Unlock()
++		return nil
++	}
++
++	injected, ok := producegame.InjectSearchPath(content, povPath)
++	if !ok {
++		_ = os.Remove(vpkTarget)
++		if vpkBackup != "" {
++			_ = copyFile(vpkBackup, vpkTarget)
++			_ = os.Remove(vpkBackup)
++		}
++		return fmt.Errorf("POV HUD: 无法在 gameinfo.gi 中注入 csgo/pov 搜索路径")
++	}
++
++	// 备份 gameinfo.gi
++	gameInfoBackup := gameInfoPath + producePovBackupSuffix
++	if err := copyFile(gameInfoPath, gameInfoBackup); err != nil {
++		_ = os.Remove(vpkTarget)
++		if vpkBackup != "" {
++			_ = copyFile(vpkBackup, vpkTarget)
++			_ = os.Remove(vpkBackup)
++		}
++		return fmt.Errorf("POV HUD: 备份 gameinfo.gi 失败: %w", err)
++	}
++
++	if err := os.WriteFile(gameInfoPath, []byte(injected), 0644); err != nil {
++		_ = os.Remove(gameInfoBackup)
++		_ = os.Remove(vpkTarget)
++		if vpkBackup != "" {
++			_ = copyFile(vpkBackup, vpkTarget)
++			_ = os.Remove(vpkBackup)
++		}
++		return fmt.Errorf("POV HUD: 写入 gameinfo.gi 失败: %w", err)
++	}
++
++	a.produceStateMu.Lock()
++	a.produceState.pov = povSessionState{
++		gameInfoPath:     gameInfoPath,
++		gameInfoBackup:   gameInfoBackup,
++		gameInfoModified: true,
++		vpkPath:          vpkTarget,
++		vpkInstalled:     vpkInstalled,
++	}
++	a.produceStateMu.Unlock()
++	return nil
++}
++
++func (a *App) forceRestorePovForProduce() error {
++	a.produceStateMu.Lock()
++	defer a.produceStateMu.Unlock()
++	state := a.produceState.pov
++	var restoreErr error
++
++	// 恢复 gameinfo.gi
++	if state.gameInfoModified && strings.TrimSpace(state.gameInfoBackup) != "" {
++		if _, err := os.Stat(state.gameInfoBackup); err == nil {
++			if err := copyFile(state.gameInfoBackup, state.gameInfoPath); err != nil {
++				restoreErr = errors.Join(restoreErr, fmt.Errorf("POV HUD: 恢复 gameinfo.gi 失败: %w", err))
++			}
++			_ = os.Remove(state.gameInfoBackup)
++		}
++	}
++
++	// 移除 pov.vpk，恢复原有文件(如果有备份)
++	if state.vpkInstalled && strings.TrimSpace(state.vpkPath) != "" {
++		vpkBackup := state.vpkPath + producePovBackupSuffix
++		_ = os.Remove(state.vpkPath)
++		if _, err := os.Stat(vpkBackup); err == nil {
++			if err := copyFile(vpkBackup, state.vpkPath); err != nil {
++				restoreErr = errors.Join(restoreErr, fmt.Errorf("POV HUD: 恢复原有 pov.vpk 失败: %w", err))
++			}
++			_ = os.Remove(vpkBackup)
++		}
++	}
++
++	a.produceState.pov = povSessionState{}
++	return restoreErr
++}
++
+ func (a *App) forceRestoreProduceEnvironmentForProduce() error {
+ 	var restoreErr error
++	if err := a.forceRestorePovForProduce(); err != nil {
++		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 POV HUD 失败: %w", err))
++	}
+ 	if err := a.forceRestorePluginDLLForProduce(); err != nil {
+ 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复插件 DLL 失败: %w", err))
+ 	}
+diff --git a/internal/app/produce_session.go b/internal/app/produce_session.go
+index 6083918..7e5a2eb 100644
+--- a/internal/app/produce_session.go
++++ b/internal/app/produce_session.go
+@@ -55,6 +55,7 @@ type produceSessionState struct {
+ 	runtime         *produceSessionRuntime
+ 	gameInfo        gameInfoSessionState
+ 	pluginDLL       pluginDLLSessionState
++	pov             povSessionState
+ 	takeFiles       map[string]ProduceTakeFile
+ 	takeFileOrder   []string
+ 	historyItems    map[string]ProduceHistoryItem
+diff --git a/internal/appdata/validate.go b/internal/appdata/validate.go
+index d2dfb37..7ace46b 100644
+--- a/internal/appdata/validate.go
++++ b/internal/appdata/validate.go
+@@ -6,20 +6,17 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+-	"regexp"
+ 	"strings"
+ )
+ 
+ const (
+-	// MaxDataDirLength 数据目录路径最大长度（字符）。
+-	MaxDataDirLength = 200
++	// MaxDataDirLength 数据目录路径最大长度（字符）。Windows MAX_PATH 为 260。
++	MaxDataDirLength = 260
+ 
+ 	// probeFileName 可写探针文件名。
+ 	probeFileName = ".cs2ht_init_probe"
+ )
+ 
+-// 字符白名单：A-Z a-z 0-9 _ - . : \ /
+-var dataDirAllowedCharsRe = regexp.MustCompile(`^[A-Za-z0-9_\-.:\\/]+$`)
+ 
+ // ValidateDataDir 按 7 条规则顺序校验用户选择的数据目录。
+ // 校验通过返回 nil；失败返回分类的中文错误信息，便于前端精准提示。
+@@ -42,7 +39,7 @@ func ValidateDataDir(path string) error {
+ 		return err
+ 	}
+ 
+-	// 4. 长度 ≤ 100
++	// 4. 长度 ≤ 260
+ 	if len(path) > MaxDataDirLength {
+ 		return fmt.Errorf("路径长度超过 %d 字符", MaxDataDirLength)
+ 	}
+@@ -60,26 +57,12 @@ func ValidateDataDir(path string) error {
+ 	return nil
+ }
+ 
+-// validateDataDirChars 按"中文/非 ASCII"、"空格"、"非法符号"分类报错。
++// validateDataDirChars 检测 Windows 非法字符 < > " | ? *
+ func validateDataDirChars(path string) error {
+-	// 先检测非 ASCII（含中文）
+-	for _, r := range path {
+-		if r > 127 {
+-			return errors.New("路径不能包含中文或非 ASCII 字符")
+-		}
+-	}
+-	// 空格
+-	if strings.ContainsRune(path, ' ') {
+-		return errors.New("路径不能包含空格")
+-	}
+ 	// Windows 非法字符 < > " | ? *
+ 	if strings.ContainsAny(path, `<>"|?*`) {
+ 		return errors.New(`路径不能包含非法符号 < > " | ? *`)
+ 	}
+-	// 其他符号（白名单之外）
+-	if !dataDirAllowedCharsRe.MatchString(path) {
+-		return errors.New("路径包含不允许的字符（仅支持字母、数字、下划线、连字符、点、冒号和路径分隔符）")
+-	}
+ 	return nil
+ }
+ 
+diff --git a/internal/appdata/validate_test.go b/internal/appdata/validate_test.go
+index 96787ea..dd97154 100644
+--- a/internal/appdata/validate_test.go
++++ b/internal/appdata/validate_test.go
+@@ -7,8 +7,8 @@ import (
+ 	"testing"
+ )
+ 
+-// shortTempDir 返回一个短路径下的临时目录，避免 macOS t.TempDir() 的长前缀
+-// 触发"路径长度超过 100"规则。测试结束自动清理。
++// shortTempDir 返回一个短路径下的临时目录，避免 t.TempDir() 的长前缀
++// 触发"路径长度超过 260"规则。测试结束自动清理。
+ // 若环境没有合适的短临时目录则跳过测试。
+ func shortTempDir(t *testing.T) string {
+ 	t.Helper()
+@@ -62,23 +62,26 @@ func TestValidateDataDir_DiskRootRejected(t *testing.T) {
+ }
+ 
+ func TestValidateDataDir_ContainsChinese(t *testing.T) {
+-	err := ValidateDataDir(`C:\Users\张三\Data`)
+-	if err == nil || !strings.Contains(err.Error(), "中文") {
+-		t.Fatalf("Chinese path = %v, want 'contain Chinese' error", err)
++	tmp := shortTempDir(t)
++	chineseDir := filepath.Join(tmp, "张三Data")
++	if err := ValidateDataDir(chineseDir); err != nil {
++		t.Fatalf("Chinese path should now be allowed, got: %v", err)
+ 	}
+ }
+ 
+ func TestValidateDataDir_ContainsNonASCII(t *testing.T) {
+-	err := ValidateDataDir(`C:\Users\café\Data`)
+-	if err == nil || !strings.Contains(err.Error(), "ASCII") {
+-		t.Fatalf("non-ASCII path = %v, want 'non-ASCII' error", err)
++	tmp := shortTempDir(t)
++	nonASCIIDir := filepath.Join(tmp, "caféData")
++	if err := ValidateDataDir(nonASCIIDir); err != nil {
++		t.Fatalf("non-ASCII path should now be allowed, got: %v", err)
+ 	}
+ }
+ 
+ func TestValidateDataDir_ContainsSpace(t *testing.T) {
+-	err := ValidateDataDir(`C:\Program Files\App`)
+-	if err == nil || !strings.Contains(err.Error(), "空格") {
+-		t.Fatalf("space path = %v, want 'space' error", err)
++	tmp := shortTempDir(t)
++	spaceDir := filepath.Join(tmp, "Program Files App")
++	if err := ValidateDataDir(spaceDir); err != nil {
++		t.Fatalf("space path should now be allowed, got: %v", err)
+ 	}
+ }
+ 
+@@ -100,8 +103,8 @@ func TestValidateDataDir_ContainsIllegalSymbol(t *testing.T) {
+ }
+ 
+ func TestValidateDataDir_TooLong(t *testing.T) {
+-	// 构造 > 200 字符的合法字符路径
+-	long := `C:\` + strings.Repeat("a", 220)
++	// 构造 > 260 字符的合法字符路径
++	long := `C:\` + strings.Repeat("a", 270)
+ 	err := ValidateDataDir(long)
+ 	if err == nil || !strings.Contains(err.Error(), "长度") {
+ 		t.Fatalf("long path = %v, want 'length' error", err)
+diff --git a/internal/clipsjson/builder.go b/internal/clipsjson/builder.go
+index 889d1df..a3b6688 100644
+--- a/internal/clipsjson/builder.go
++++ b/internal/clipsjson/builder.go
+@@ -76,6 +76,7 @@ type BuildOptions struct {
+ 	HideAllUI                 bool
+ 	ForcePerPassVoiceCommands bool
+ 	ForcePerPassXrayCommands  bool
++	LaunchResolution          string
+ }
+ 
+ type BuildResult struct {
+@@ -175,7 +176,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
+ 	if recordFPS <= 0 {
+ 		recordFPS = 60
+ 	}
+-	videoPreset, ffmpegParams, err := buildFFmpegParams(opts.VideoPreset, opts.RecordQuality)
++	videoPreset, ffmpegParams, err := buildFFmpegParams(opts.VideoPreset, opts.RecordQuality, opts.LaunchResolution)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -638,7 +639,7 @@ func xrayCommandValue(enableSpecShowXray bool) int {
+ 	return -1
+ }
+ 
+-func buildFFmpegParams(preset string, quality string) (string, string, error) {
++func buildFFmpegParams(preset string, quality string, launchResolution string) (string, string, error) {
+ 	videoPreset, _, err := ffmpegprofile.HLAEProfileByID(preset)
+ 	if err != nil {
+ 		return "", "", err
+@@ -647,6 +648,10 @@ func buildFFmpegParams(preset string, quality string) (string, string, error) {
+ 	if err != nil {
+ 		return "", "", err
+ 	}
++	// 4:3 录制时追加 -aspect 16:9 确保播放时自动拉伸
++	if launchResolution == "4:3" || launchResolution == "4:3_1280x960" {
++		params += " -aspect 16:9"
++	}
+ 	return videoPreset, params, nil
+ }
+ 
+diff --git a/internal/config/config.go b/internal/config/config.go
+index dd71092..2ae440b 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -38,6 +38,7 @@ type Config struct {
+ 	RecordOutputDir        string              `json:"record_output_dir"`
+ 	EnableSpecShowXray     bool                `json:"enable_spec_show_xray_zero"`
+ 	HideAllUI              bool                `json:"hide_all_ui"`
++	PovHudEnabled          bool                `json:"pov_hud_enabled"`
+ 	ClipActionSettings     *ClipActionSettings `json:"clip_action_settings,omitempty"`
+ }
+ 
+@@ -86,6 +87,7 @@ func Default(dataDir string) *Config {
+ 		RecordOutputDir:    filepath.Join(dataDir, "outputs"),
+ 		EnableSpecShowXray: true,
+ 		HideAllUI:          false,
++		PovHudEnabled:      false,
+ 		ClipActionSettings: Ptr(DefaultClipActionSettings()),
+ 	}
+ }
+diff --git a/internal/envsetup/service.go b/internal/envsetup/service.go
+index 85ecd6d..1787623 100644
+--- a/internal/envsetup/service.go
++++ b/internal/envsetup/service.go
+@@ -3,6 +3,8 @@ package envsetup
+ import (
+ 	"context"
+ 	"fmt"
++	"io"
++	"os"
+ 	"path/filepath"
+ 	"sync"
+ 
+@@ -25,6 +27,7 @@ type Service struct {
+ 
+ 	runTasksFn      func(source DownloadSource)
+ 	logger          logging.Logger
++	logWriter       *logging.RotatingWriter
+ 	logs            []LogMessage
+ 	releaseSnapshot *release.UnifiedLatest
+ 
+@@ -59,8 +62,22 @@ func NewWithDataDir(exeDir string, dataDir string, version string) *Service {
+ 		state:      newStartupState(cfg, version),
+ 		cancelMap:  make(map[string]*activeDownloadCancel),
+ 	}
++
++	// 创建日志滚动写入器，同时输出到 stderr 和文件
++	logDir := filepath.Join(dataDir, "logs")
++	logWriter, err := logging.NewRotatingWriter(logDir)
++	if err != nil {
++		// 日志目录创建失败不致命，仅输出到 stderr
++		logWriter = nil
++	}
++	var writer io.Writer = os.Stderr
++	if logWriter != nil {
++		writer = io.MultiWriter(os.Stderr, logWriter)
++		s.logWriter = logWriter
++	}
+ 	s.logger = logging.NewSlogAdapter(logging.Options{
+-		Sink: s.appendLogEntry,
++		Writer: writer,
++		Sink:   s.appendLogEntry,
+ 	})
+ 	s.runTasksFn = s.runTasksDefault
+ 	return s
+@@ -71,6 +88,21 @@ func (s *Service) Startup(ctx context.Context) {
+ 	if s.exeDir == "" {
+ 		return
+ 	}
++
++	// 清理旧日志文件（保留7天 + 最多50MB）
++	if s.logWriter != nil {
++		removed, removedSize, cleanErr := logging.CleanOldLogs(
++			s.logWriter.LogDir(),
++			logging.DefaultLogMaxAgeDays,
++			logging.DefaultLogMaxTotalSize,
++		)
++		if cleanErr != nil {
++			s.emitLog("warn", fmt.Sprintf("日志清理失败: %v", cleanErr))
++		} else if removed > 0 {
++			s.emitLog("info", fmt.Sprintf("已清理 %d 个旧日志文件，释放 %.1f MB", removed, float64(removedSize)/(1024*1024)))
++		}
++	}
++
+ 	cfg, err := config.LoadOrCreate(s.configPath, s.dataDir)
+ 	if err != nil {
+ 		cfg = config.Default(s.dataDir)
+diff --git a/internal/envsetup/service_startup.go b/internal/envsetup/service_startup.go
+index 313231b..b5a91cf 100644
+--- a/internal/envsetup/service_startup.go
++++ b/internal/envsetup/service_startup.go
+@@ -138,7 +138,7 @@ func (s *Service) RunStartupChecks() StartupState {
+ }
+ 
+ func (s *Service) ensureWorkDirs() error {
+-	for _, dir := range []string{"temp", "hlae", "plugin", "ffmpeg", "updates", filepath.Join("demo", "raw")} {
++	for _, dir := range []string{"temp", "hlae", "plugin", "ffmpeg", "updates", "logs", filepath.Join("demo", "raw")} {
+ 		if err := os.MkdirAll(filepath.Join(s.dataDir, dir), 0755); err != nil {
+ 			return fmt.Errorf("创建目录失败 %s: %w", dir, err)
+ 		}
+diff --git a/internal/logging/cleanup.go b/internal/logging/cleanup.go
+new file mode 100644
+index 0000000..e6ae226
+--- /dev/null
++++ b/internal/logging/cleanup.go
+@@ -0,0 +1,129 @@
++package logging
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"sort"
++	"strings"
++	"time"
++)
++
++// CleanOldLogs scans the log directory and removes old log files.
++// Step 1: Remove files older than maxAgeDays.
++// Step 2: If total size still exceeds maxTotalSize, remove oldest first.
++// Returns the number of files removed, total bytes freed, and any error.
++func CleanOldLogs(dir string, maxAgeDays int, maxTotalSize int64) (removed int, removedSize int64, err error) {
++	if maxAgeDays <= 0 {
++		maxAgeDays = DefaultLogMaxAgeDays
++	}
++	if maxTotalSize <= 0 {
++		maxTotalSize = DefaultLogMaxTotalSize
++	}
++
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		if os.IsNotExist(err) {
++			return 0, 0, nil
++		}
++		return 0, 0, fmt.Errorf("读取日志目录失败: %w", err)
++	}
++
++	type logFile struct {
++		name    string
++		path    string
++		size    int64
++		modTime time.Time
++	}
++
++	var files []logFile
++	for _, entry := range entries {
++		if entry.IsDir() {
++			continue
++		}
++		name := entry.Name()
++		if !strings.HasPrefix(name, "cs2ht-") || !strings.HasSuffix(name, ".log") {
++			continue
++		}
++		info, err := entry.Info()
++		if err != nil {
++			continue
++		}
++		files = append(files, logFile{
++			name:    name,
++			path:    filepath.Join(dir, name),
++			size:    info.Size(),
++			modTime: info.ModTime(),
++		})
++	}
++
++	if len(files) == 0 {
++		return 0, 0, nil
++	}
++
++	// Sort by name (older dates first — date is in the filename)
++	sort.Slice(files, func(i, j int) bool {
++		return files[i].name < files[j].name
++	})
++
++	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
++
++	// Step 1: Remove files older than maxAgeDays (based on filename date prefix)
++	for _, f := range files {
++		// Try to parse date from filename "cs2ht-YYYY-MM-DD.log"
++		datePart := strings.TrimSuffix(strings.TrimPrefix(f.name, "cs2ht-"), ".log")
++		fileDate, parseErr := time.Parse("2006-01-02", datePart)
++		if parseErr != nil {
++			// If we can't parse the date, use modTime
++			fileDate = f.modTime
++		}
++		if fileDate.Before(cutoff) {
++			if rmErr := os.Remove(f.path); rmErr == nil {
++				removed++
++				removedSize += f.size
++			}
++		}
++	}
++
++	// Step 2: If total size still exceeds maxTotalSize, remove oldest first
++	var remaining []logFile
++	var totalSize int64
++	entries2, _ := os.ReadDir(dir)
++	for _, entry := range entries2 {
++		if entry.IsDir() {
++			continue
++		}
++		name := entry.Name()
++		if !strings.HasPrefix(name, "cs2ht-") || !strings.HasSuffix(name, ".log") {
++			continue
++		}
++		info, infoErr := entry.Info()
++		if infoErr != nil {
++			continue
++		}
++		remaining = append(remaining, logFile{
++			name: name,
++			path: filepath.Join(dir, name),
++			size: info.Size(),
++		})
++		totalSize += info.Size()
++	}
++
++	// Sort by name ascending (oldest first)
++	sort.Slice(remaining, func(i, j int) bool {
++		return remaining[i].name < remaining[j].name
++	})
++
++	// Delete oldest files until under limit (keep at least 1 file)
++	for totalSize > maxTotalSize && len(remaining) > 1 {
++		oldest := remaining[0]
++		if rmErr := os.Remove(oldest.path); rmErr == nil {
++			removed++
++			removedSize += oldest.size
++			totalSize -= oldest.size
++		}
++		remaining = remaining[1:]
++	}
++
++	return removed, removedSize, nil
++}
+diff --git a/internal/logging/rotation.go b/internal/logging/rotation.go
+new file mode 100644
+index 0000000..a333cd6
+--- /dev/null
++++ b/internal/logging/rotation.go
+@@ -0,0 +1,97 @@
++package logging
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"sync"
++	"time"
++)
++
++const (
++	// DefaultLogMaxAgeDays is the default number of days to retain log files.
++	DefaultLogMaxAgeDays = 7
++	// DefaultLogMaxTotalSize is the default max total size of all log files in bytes (50MB).
++	DefaultLogMaxTotalSize = 50 * 1024 * 1024
++)
++
++// RotatingWriter implements io.Writer, writing to date-stamped log files.
++// It automatically rotates to a new file when the date changes.
++type RotatingWriter struct {
++	dir     string
++	mu      sync.Mutex
++	file    *os.File
++	curDate string
++}
++
++// NewRotatingWriter creates a new rotating writer that writes log files
++// to the specified directory. Files are named "cs2ht-YYYY-MM-DD.log".
++func NewRotatingWriter(dir string) (*RotatingWriter, error) {
++	absDir, err := filepath.Abs(dir)
++	if err != nil {
++		return nil, fmt.Errorf("解析日志目录路径失败: %w", err)
++	}
++	if err := os.MkdirAll(absDir, 0755); err != nil {
++		return nil, fmt.Errorf("创建日志目录失败: %w", err)
++	}
++	w := &RotatingWriter{dir: absDir}
++	if err := w.rotate(time.Now()); err != nil {
++		return nil, err
++	}
++	return w, nil
++}
++
++// Write writes p to the current log file, rotating if the date has changed.
++func (w *RotatingWriter) Write(p []byte) (int, error) {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++
++	now := time.Now()
++	today := now.Format("2006-01-02")
++	if today != w.curDate {
++		if err := w.rotate(now); err != nil {
++			return 0, err
++		}
++	}
++
++	n, err := w.file.Write(p)
++	if err != nil {
++		return n, fmt.Errorf("写入日志文件失败: %w", err)
++	}
++	return n, nil
++}
++
++// Close closes the current log file.
++func (w *RotatingWriter) Close() error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	if w.file != nil {
++		if err := w.file.Close(); err != nil {
++			return err
++		}
++		w.file = nil
++	}
++	return nil
++}
++
++// LogDir returns the directory path used by this writer.
++func (w *RotatingWriter) LogDir() string {
++	return w.dir
++}
++
++func (w *RotatingWriter) rotate(now time.Time) error {
++	if w.file != nil {
++		_ = w.file.Close()
++	}
++	date := now.Format("2006-01-02")
++	filename := fmt.Sprintf("cs2ht-%s.log", date)
++	path := filepath.Join(w.dir, filename)
++
++	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
++	if err != nil {
++		return fmt.Errorf("打开日志文件失败 %s: %w", path, err)
++	}
++	w.file = f
++	w.curDate = date
++	return nil
++}
+diff --git a/internal/producegame/gameinfo.go b/internal/producegame/gameinfo.go
+index 4cb83d6..10041de 100644
+--- a/internal/producegame/gameinfo.go
++++ b/internal/producegame/gameinfo.go
+@@ -56,7 +56,14 @@ func ResolveGameInfoPath(cs2Exe string, cs2Dir string) (string, error) {
+ // and true on success, or the original content and false if no injection point
+ // could be found.
+ func InjectPluginSearchPath(content string) (string, bool) {
+-	if strings.Contains(content, "Game\tcsgo/plugin") {
++	return InjectSearchPath(content, "csgo/plugin")
++}
++
++// InjectSearchPath inserts a Game search path line (e.g. "csgo/plugin", "csgo/pov")
++// into gameinfo.gi content. Returns the modified content and true on success.
++func InjectSearchPath(content string, searchPath string) (string, bool) {
++	target := "Game\t" + searchPath
++	if strings.Contains(content, target) {
+ 		return content, true
+ 	}
+ 	lines := strings.Split(content, "\n")
+@@ -66,14 +73,14 @@ func InjectPluginSearchPath(content string) (string, bool) {
+ 			continue
+ 		}
+ 		prefix := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+-		insert := prefix + "Game\tcsgo/plugin"
++		insert := prefix + target
+ 		next := make([]string, 0, len(lines)+1)
+ 		next = append(next, lines[:i]...)
+ 		next = append(next, insert)
+ 		next = append(next, lines[i:]...)
+ 		return strings.Join(next, "\n"), true
+ 	}
+-	replaced := strings.Replace(content, "Game\tcsgo", "Game\tcsgo/plugin\n\t\t\tGame\tcsgo", 1)
++	replaced := strings.Replace(content, "Game\tcsgo", target+"\n\t\t\tGame\tcsgo", 1)
+ 	if replaced != content {
+ 		return replaced, true
+ 	}
+-- 
+2.54.0.windows.1
+

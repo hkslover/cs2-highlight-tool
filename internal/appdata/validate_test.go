@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// shortTempDir 返回一个短路径下的临时目录，避免 macOS t.TempDir() 的长前缀
-// 触发"路径长度超过 100"规则。测试结束自动清理。
+// shortTempDir 返回一个短路径下的临时目录，避免 t.TempDir() 的长前缀
+// 触发"路径长度超过 260"规则。测试结束自动清理。
 // 若环境没有合适的短临时目录则跳过测试。
 func shortTempDir(t *testing.T) string {
 	t.Helper()
@@ -62,23 +62,26 @@ func TestValidateDataDir_DiskRootRejected(t *testing.T) {
 }
 
 func TestValidateDataDir_ContainsChinese(t *testing.T) {
-	err := ValidateDataDir(`C:\Users\张三\Data`)
-	if err == nil || !strings.Contains(err.Error(), "中文") {
-		t.Fatalf("Chinese path = %v, want 'contain Chinese' error", err)
+	tmp := shortTempDir(t)
+	chineseDir := filepath.Join(tmp, "张三Data")
+	if err := ValidateDataDir(chineseDir); err != nil {
+		t.Fatalf("Chinese path should now be allowed, got: %v", err)
 	}
 }
 
 func TestValidateDataDir_ContainsNonASCII(t *testing.T) {
-	err := ValidateDataDir(`C:\Users\café\Data`)
-	if err == nil || !strings.Contains(err.Error(), "ASCII") {
-		t.Fatalf("non-ASCII path = %v, want 'non-ASCII' error", err)
+	tmp := shortTempDir(t)
+	nonASCIIDir := filepath.Join(tmp, "caféData")
+	if err := ValidateDataDir(nonASCIIDir); err != nil {
+		t.Fatalf("non-ASCII path should now be allowed, got: %v", err)
 	}
 }
 
 func TestValidateDataDir_ContainsSpace(t *testing.T) {
-	err := ValidateDataDir(`C:\Program Files\App`)
-	if err == nil || !strings.Contains(err.Error(), "空格") {
-		t.Fatalf("space path = %v, want 'space' error", err)
+	tmp := shortTempDir(t)
+	spaceDir := filepath.Join(tmp, "Program Files App")
+	if err := ValidateDataDir(spaceDir); err != nil {
+		t.Fatalf("space path should now be allowed, got: %v", err)
 	}
 }
 
@@ -100,8 +103,8 @@ func TestValidateDataDir_ContainsIllegalSymbol(t *testing.T) {
 }
 
 func TestValidateDataDir_TooLong(t *testing.T) {
-	// 构造 > 200 字符的合法字符路径
-	long := `C:\` + strings.Repeat("a", 220)
+	// 构造 > 260 字符的合法字符路径
+	long := `C:\` + strings.Repeat("a", 270)
 	err := ValidateDataDir(long)
 	if err == nil || !strings.Contains(err.Error(), "长度") {
 		t.Fatalf("long path = %v, want 'length' error", err)

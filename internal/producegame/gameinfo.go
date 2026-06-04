@@ -56,7 +56,14 @@ func ResolveGameInfoPath(cs2Exe string, cs2Dir string) (string, error) {
 // and true on success, or the original content and false if no injection point
 // could be found.
 func InjectPluginSearchPath(content string) (string, bool) {
-	if strings.Contains(content, "Game\tcsgo/plugin") {
+	return InjectSearchPath(content, "csgo/plugin")
+}
+
+// InjectSearchPath inserts a Game search path line (e.g. "csgo/plugin", "csgo/pov")
+// into gameinfo.gi content. Returns the modified content and true on success.
+func InjectSearchPath(content string, searchPath string) (string, bool) {
+	target := "Game\t" + searchPath
+	if strings.Contains(content, target) {
 		return content, true
 	}
 	lines := strings.Split(content, "\n")
@@ -66,14 +73,14 @@ func InjectPluginSearchPath(content string) (string, bool) {
 			continue
 		}
 		prefix := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-		insert := prefix + "Game\tcsgo/plugin"
+		insert := prefix + target
 		next := make([]string, 0, len(lines)+1)
 		next = append(next, lines[:i]...)
 		next = append(next, insert)
 		next = append(next, lines[i:]...)
 		return strings.Join(next, "\n"), true
 	}
-	replaced := strings.Replace(content, "Game\tcsgo", "Game\tcsgo/plugin\n\t\t\tGame\tcsgo", 1)
+	replaced := strings.Replace(content, "Game\tcsgo", target+"\n\t\t\tGame\tcsgo", 1)
 	if replaced != content {
 		return replaced, true
 	}

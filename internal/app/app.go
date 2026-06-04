@@ -89,11 +89,6 @@ func isUsableDataDir(path string) bool {
 	if appdata.IsDiskRoot(path) {
 		return false
 	}
-	for _, r := range path {
-		if r > 127 {
-			return false
-		}
-	}
 	if len(path) > appdata.MaxDataDirLength {
 		return false
 	}
