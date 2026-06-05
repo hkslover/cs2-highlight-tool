@@ -138,7 +138,7 @@ func (s *Service) RunStartupChecks() StartupState {
 }
 
 func (s *Service) ensureWorkDirs() error {
-	for _, dir := range []string{"temp", "hlae", "plugin", "ffmpeg", "updates", filepath.Join("demo", "raw")} {
+	for _, dir := range []string{"temp", "hlae", "plugin", "ffmpeg", "updates", "logs", filepath.Join("demo", "raw")} {
 		if err := os.MkdirAll(filepath.Join(s.dataDir, dir), 0755); err != nil {
 			return fmt.Errorf("创建目录失败 %s: %w", dir, err)
 		}
