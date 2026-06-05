@@ -160,7 +160,9 @@
       "no_materials_for_demo": "No selected materials for this DEM",
       "no_demo": "Please import and parse a demo first",
       "no_round_kills": "This player has no kill clips",
-      "round_title": "Round {round} ({kills} kills)"
+      "round_title": "Round {round} ({kills} kills)",
+      "record_round": "Record Round",
+      "round_record_tag": "Round Record"
     },
     "produce": {
       "title": "Produce",
@@ -288,6 +290,9 @@
       "launch_resolution": "Launch resolution",
       "resolution_16_9": "16:9",
       "resolution_4_3": "4:3 (1440x1080)",
+      "resolution_4_3_1280x960": "4:3 (1280x960)",
+      "pov_hud_enabled": "POV HUD Mode (Experimental)",
+      "pov_hud_warning": "When enabled, recordings will use a first-person HUD style.\nNote: This is an experimental feature. It will temporarily install pov.vpk and modify CS2's gameinfo.gi. These changes are automatically reverted after recording. The -insecure flag is always enforced. For local demo playback recording only — do NOT connect to servers.\n\nPOV is experimental, for local demo playback recording only. The app will temporarily install pov.vpk and modify CS2's gameinfo.gi. All changes are reverted after recording. POV mode forces -insecure and must not be used to connect to VAC-secured servers.",
       "record_output_dir": "Record output dir (English absolute path)",
       "record_output_dir_placeholder": "e.g. D:/cs2/outputs",
       "enable_spec_show_xray_zero": "Inject spec_show_xray 0 in bootstrap",
@@ -303,6 +308,13 @@
       "outputs_clear_confirm_negative": "Cancel",
       "outputs_clear_success": "Output directory cleared",
       "keep_produce_intermediates": "Keep produce intermediate files",
+      "log_title": "Application Logs",
+      "log_count": "Log Files",
+      "log_total_size": "Log Total Size",
+      "log_clear": "Clear Logs",
+      "log_clear_confirm_title": "Clear Logs?",
+      "log_clear_confirm_content": "This will delete all log files ({count} files, {size}). This action cannot be undone.",
+      "log_clear_success": "Logs cleared",
       "browse": "Browse"
     }
   },
@@ -363,18 +375,16 @@
   "workspace": {
     "init": {
       "title": "Set Installation Directory",
-      "description": "Choose a directory using English characters and no spaces. The tool will automatically create a cs2HighLightTool directory inside it as the tool workspace for components and related files.",
+      "description": "Choose a directory. The tool will automatically create a cs2HighLightTool directory inside it as the tool workspace for components and related files.",
       "browse_button": "Browse...",
       "path_placeholder": "No directory selected",
       "confirm_button": "Use This Directory",
       "exit_button": "Exit App"
     },
     "validate": {
-      "invalid_chinese": "Path cannot contain Chinese or non-ASCII characters",
-      "invalid_space": "Path cannot contain spaces",
       "invalid_symbol": "Path contains invalid characters",
       "invalid_root": "Cannot select the drive root directory",
-      "invalid_length": "Path length exceeds 200 characters",
+      "invalid_length": "Path length exceeds 260 characters",
       "invalid_unwritable": "Cannot write to this location. Please check permissions.",
       "generic": "Invalid path"
     },

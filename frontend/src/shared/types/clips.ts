@@ -14,6 +14,7 @@ export interface ClipSettings {
   record_output_dir: string;
   enable_spec_show_xray_zero: boolean;
   hide_all_ui: boolean;
+  pov_hud_enabled: boolean;
 }
 
 export interface OutputsStorageStats {
@@ -28,6 +29,12 @@ export interface DemoStorageStats {
   total_size_bytes: number;
 }
 
+export interface LogStorageStats {
+  log_dir: string;
+  log_count: number;
+  total_size_bytes: number;
+}
+
 export interface ClipParameterOverrides {
   killer_pre_seconds?: number;
   killer_post_seconds?: number;
@@ -35,6 +42,7 @@ export interface ClipParameterOverrides {
   victim_post_seconds?: number;
   enable_voice?: boolean;
   enable_spec_show_xray_zero?: boolean;
+  record_full_round?: boolean;
 }
 
 export interface GeneratePluginSelectedItem {
@@ -97,6 +105,7 @@ export interface ProduceTakePlan {
   view: string;
   spec_mode: number;
   kill_ids: string[];
+  record_full_round?: boolean;
 }
 
 export interface ProduceTakeFile {

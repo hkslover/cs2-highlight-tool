@@ -66,7 +66,10 @@
                     <div class="material-head">
                       <div class="material-tags-row">
                         <n-space align="center" size="small" class="view-tags">
-                          <n-tag size="small" type="success" :bordered="false">
+                          <n-tag v-if="item.clip_overrides?.record_full_round" size="small" type="info" :bordered="false">
+                            {{ t("main.clips.round_record_tag") }}
+                          </n-tag>
+                          <n-tag v-else size="small" type="success" :bordered="false">
                             {{ t("main.clips.killer_view") }}
                           </n-tag>
                           <n-tag v-if="item.include_victim" size="small" type="warning" :bordered="false">
@@ -222,6 +225,15 @@
                   :name="String(round.round)"
                   :title="t('main.clips.round_title', { round: round.round, kills: round.kills.length })"
                 >
+                  <template #header-extra>
+                    <n-button
+                      size="tiny"
+                      secondary
+                      @click.stop="addRoundKills(round)"
+                    >
+                      {{ t("main.clips.record_round") }}
+                    </n-button>
+                  </template>
                   <n-space vertical :size="8">
                     <div
                       v-for="kill in round.kills"
@@ -320,6 +332,7 @@ const clipSettings = ref<ClipSettings>({
   record_output_dir: "",
   enable_spec_show_xray_zero: true,
   hide_all_ui: false,
+  pov_hud_enabled: false,
 });
 
 type ClipOverrideNumberKey =
@@ -439,6 +452,17 @@ function handlePlayerChange(next: string | number | null) {
 
 function addKill(kill: DemoClipKill) {
   addMaterialSelection(activeDemoEntry.value, kill, autoAddVictimView.value);
+}
+
+function addRoundKills(round: { round: number; kills: DemoClipKill[] }) {
+  const entry = activeDemoEntry.value;
+  if (!entry || !round.kills.length) return;
+  // 整回合一刀不剪：仅用第一个击杀锚定回合，不切割
+  const firstKill = round.kills[0];
+  if (!isKillSelectedInDemo(entry, firstKill.id)) {
+    addMaterialSelection(entry, firstKill, false);
+  }
+  updateMaterialClipOverrides(entry, firstKill.id, { record_full_round: true });
 }
 
 function toggleKillSelection(kill: DemoClipKill) {

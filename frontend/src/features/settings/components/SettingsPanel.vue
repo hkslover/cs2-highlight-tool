@@ -63,6 +63,13 @@
           <span class="setting-label">{{ t("main.settings.launch_resolution") }}</span>
           <n-select v-model:value="settings.launch_resolution" :options="resolutionOptions" class="preset-select" />
         </div>
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.pov_hud_enabled") }}</span>
+          <n-switch v-model:value="settings.pov_hud_enabled" />
+        </div>
+        <n-alert v-if="settings.pov_hud_enabled" type="warning" :bordered="false" style="white-space: pre-line; margin-top: 12px;">
+          {{ t("main.settings.pov_hud_warning") }}
+        </n-alert>
       </n-space>
     </n-card>
 
@@ -121,6 +128,27 @@
       @clear="confirmClearDemo"
     />
 
+    <n-card size="small" :bordered="true" class="section-card">
+      <template #header>
+        <span class="section-title">{{ t("main.settings.log_title") }}</span>
+      </template>
+      <n-space vertical :size="8">
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.log_count") }}</span>
+          <span>{{ logStats.log_count }}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.log_total_size") }}</span>
+          <span>{{ formatBytes(logStats.total_size_bytes) }}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.outputs_dir") }}</span>
+          <span class="setting-path">{{ logStats.log_dir || "—" }}</span>
+        </div>
+        <n-button size="small" :loading="clearingLogs" @click="confirmClearLogs">{{ t("main.settings.log_clear") }}</n-button>
+      </n-space>
+    </n-card>
+
     <n-card v-if="debugEnabled" size="small" :bordered="true" class="section-card">
       <template #header>
         <span class="section-title">{{ t("main.settings.debug_title") }}</span>
@@ -145,7 +173,7 @@ import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
-import type { ClipSettings, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
+import type { ClipSettings, DemoStorageStats, LogStorageStats, OutputsStorageStats } from "@/shared/types";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
 
 const props = withDefaults(
@@ -189,6 +217,7 @@ const settings = reactive<ClipSettings>({
   record_output_dir: "",
   enable_spec_show_xray_zero: true,
   hide_all_ui: false,
+  pov_hud_enabled: false,
 });
 const outputsStats = reactive<OutputsStorageStats>({
   output_dir: "",
@@ -200,6 +229,12 @@ const demoStats = reactive<DemoStorageStats>({
   demo_count: 0,
   total_size_bytes: 0,
 });
+const logStats = reactive<LogStorageStats>({
+  log_dir: "",
+  log_count: 0,
+  total_size_bytes: 0,
+});
+const clearingLogs = ref(false);
 const presetOptions = computed(() => [
   { label: t("main.settings.video_preset_auto"), value: "auto" },
   { label: t("main.settings.video_preset_c1"), value: "c1" },
@@ -233,6 +268,7 @@ watch(
     void loadSettings();
     void loadOutputsStats();
     void loadDemoStats();
+    void loadLogStats();
   },
   { immediate: true },
 );
@@ -393,6 +429,52 @@ async function clearDemoDirectory() {
     errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
     clearingDemo.value = false;
+  }
+}
+
+async function loadLogStats() {
+  if (!props.active) {
+    return;
+  }
+  errorMessage.value = "";
+  try {
+    const next = await callBackend<LogStorageStats>("GetLogStorageStats");
+    Object.assign(logStats, next);
+  } catch (err: unknown) {
+    // 日志统计加载失败不报错（目录可能不存在）
+  }
+}
+
+function confirmClearLogs() {
+  dialog.warning({
+    title: t("main.settings.log_clear_confirm_title"),
+    content: t("main.settings.log_clear_confirm_content", {
+      count: logStats.log_count,
+      size: formatBytes(logStats.total_size_bytes),
+    }),
+    positiveText: t("main.settings.outputs_clear_confirm_positive"),
+    negativeText: t("main.settings.outputs_clear_confirm_negative"),
+    onPositiveClick: () => {
+      void clearLogs();
+    },
+  });
+}
+
+async function clearLogs() {
+  if (clearingLogs.value) {
+    return;
+  }
+  clearingLogs.value = true;
+  errorMessage.value = "";
+  successMessage.value = "";
+  try {
+    const next = await callBackend<LogStorageStats>("ClearLogs");
+    Object.assign(logStats, next);
+    message.success(t("main.settings.log_clear_success"));
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    clearingLogs.value = false;
   }
 }
 
