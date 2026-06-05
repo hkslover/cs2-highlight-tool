@@ -76,6 +76,7 @@ type BuildOptions struct {
 	HideAllUI                 bool
 	ForcePerPassVoiceCommands bool
 	ForcePerPassXrayCommands  bool
+	LaunchResolution          string
 }
 
 type BuildResult struct {
@@ -175,7 +176,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 	if recordFPS <= 0 {
 		recordFPS = 60
 	}
-	videoPreset, ffmpegParams, err := buildFFmpegParams(opts.VideoPreset, opts.RecordQuality)
+	videoPreset, ffmpegParams, err := buildFFmpegParams(opts.VideoPreset, opts.RecordQuality, opts.LaunchResolution)
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +639,7 @@ func xrayCommandValue(enableSpecShowXray bool) int {
 	return -1
 }
 
-func buildFFmpegParams(preset string, quality string) (string, string, error) {
+func buildFFmpegParams(preset string, quality string, launchResolution string) (string, string, error) {
 	videoPreset, _, err := ffmpegprofile.HLAEProfileByID(preset)
 	if err != nil {
 		return "", "", err
@@ -646,6 +647,9 @@ func buildFFmpegParams(preset string, quality string) (string, string, error) {
 	params, err := ffmpegprofile.BuildRecordingEncodeArgs(videoPreset, quality)
 	if err != nil {
 		return "", "", err
+	}
+	if launchResolution == "4:3" || launchResolution == "4:3_1280x960" {
+		params += " -aspect 16:9"
 	}
 	return videoPreset, params, nil
 }
