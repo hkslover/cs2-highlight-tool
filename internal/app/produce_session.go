@@ -55,6 +55,7 @@ type produceSessionState struct {
 	runtime         *produceSessionRuntime
 	gameInfo        gameInfoSessionState
 	pluginDLL       pluginDLLSessionState
+	pov             povSessionState
 	takeFiles       map[string]ProduceTakeFile
 	takeFileOrder   []string
 	historyItems    map[string]ProduceHistoryItem

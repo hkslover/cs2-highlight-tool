@@ -27,6 +27,7 @@ type ClipSettings struct {
 	RecordOutputDir    string  `json:"record_output_dir"`
 	EnableSpecShowXray bool    `json:"enable_spec_show_xray_zero"`
 	HideAllUI          bool    `json:"hide_all_ui"`
+	PovHudEnabled      bool    `json:"pov_hud_enabled"`
 }
 
 type ClipActionSettings struct {
@@ -51,6 +52,7 @@ type ClipItemOverrides struct {
 	VictimPostSeconds  *float64 `json:"victim_post_seconds,omitempty"`
 	EnableVoice        *bool    `json:"enable_voice,omitempty"`
 	EnableSpecShowXray *bool    `json:"enable_spec_show_xray_zero,omitempty"`
+	RecordFullRound    *bool    `json:"record_full_round,omitempty"`
 }
 
 func (a *App) GetClipSettings() (*ClipSettings, error) {
@@ -73,6 +75,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 		RecordOutputDir:    a.fixedRecordOutputDir(),
 		EnableSpecShowXray: cfg.EnableSpecShowXray,
 		HideAllUI:          cfg.HideAllUI,
+		PovHudEnabled:      cfg.PovHudEnabled,
 	})
 	actionSettings := config.ResolveClipActionSettings(cfg)
 	settings.EnableVoice = actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH
@@ -101,6 +104,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 	cfg.RecordOutputDir = settings.RecordOutputDir
 	cfg.EnableSpecShowXray = settings.EnableSpecShowXray
 	cfg.HideAllUI = settings.HideAllUI
+	cfg.PovHudEnabled = settings.PovHudEnabled
 	actionSettings := config.ResolveClipActionSettings(cfg)
 	actionSettings.EnableVoiceIndices = settings.EnableVoice
 	actionSettings.EnableVoiceIndicesH = settings.EnableVoice

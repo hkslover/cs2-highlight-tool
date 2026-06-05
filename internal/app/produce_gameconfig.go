@@ -8,18 +8,28 @@ import (
 	"strings"
 
 	"cs2-highlight-tool-v2/internal/config"
+	"cs2-highlight-tool-v2/internal/download"
 	"cs2-highlight-tool-v2/internal/producegame"
 )
 
 const (
 	produceGameInfoBackupSuffix  = ".cs2ht_produce.bak"
 	producePluginDLLBackupSuffix = ".cs2ht_plugin.bak"
+	producePovBackupSuffix       = ".cs2ht_pov.bak"
 )
 
 type gameInfoSessionState struct {
 	gameInfoPath string
 	backupPath   string
 	modified     bool
+}
+
+type povSessionState struct {
+	gameInfoPath     string
+	gameInfoBackup   string
+	gameInfoModified bool
+	vpkPath          string
+	vpkInstalled     bool
 }
 
 type pluginDLLSessionState struct {
@@ -270,8 +280,171 @@ func (a *App) forceRestorePluginDLLForProduce() error {
 	return nil
 }
 
+func (a *App) preparePovForProduce() error {
+	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	if err != nil {
+		return err
+	}
+	if !cfg.PovHudEnabled {
+		return nil
+	}
+
+	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
+	if err != nil {
+		return fmt.Errorf("POV HUD: 解析 CS2 路径失败: %w", err)
+	}
+	gameInfoPath, err := producegame.ResolveGameInfoPath(cs2Exe, config.CleanPath(cfg.CS2Dir))
+	if err != nil {
+		return fmt.Errorf("POV HUD: 未找到 gameinfo.gi: %w", err)
+	}
+	csgoDir := filepath.Dir(gameInfoPath)
+
+	// 定位 pov.vpk 源文件 (dataDir/presets/pov/pov.vpk)，若不存在则自动下载
+	povDir := filepath.Join(a.dataRoot(), "presets", "pov")
+	povSrc := filepath.Join(povDir, "pov.vpk")
+	if _, err := os.Stat(povSrc); err != nil {
+		const povDownloadURL = "https://gitee.com/zhuang-zhihao589/pov.vpk/releases/download/1/pov.vpk"
+		if err := os.MkdirAll(povDir, 0755); err != nil {
+			return fmt.Errorf("POV HUD: 创建目录失败 %s: %w", povDir, err)
+		}
+		if err := download.File(povDownloadURL, povSrc, func(active bool, percent float64, indeterminate bool) {}); err != nil {
+			return fmt.Errorf("POV HUD: 下载 pov.vpk 失败 (%s): %w", povDownloadURL, err)
+		}
+	}
+
+	vpkTarget := filepath.Join(csgoDir, "pov.vpk")
+	vpkInstalled := false
+	vpkBackup := ""
+
+	// 如果目标已存在 pov.vpk 且不是我们放进去的，先备份
+	if info, err := os.Stat(vpkTarget); err == nil && !info.IsDir() {
+		vpkBackup = vpkTarget + producePovBackupSuffix
+		if err := copyFile(vpkTarget, vpkBackup); err != nil {
+			return fmt.Errorf("POV HUD: 备份现有 pov.vpk 失败: %w", err)
+		}
+	}
+
+	if err := copyFile(povSrc, vpkTarget); err != nil {
+		// 如果复制失败但之前做了备份，恢复
+		if vpkBackup != "" {
+			_ = copyFile(vpkBackup, vpkTarget)
+			_ = os.Remove(vpkBackup)
+		}
+		return fmt.Errorf("POV HUD: 安装 pov.vpk 失败: %w", err)
+	}
+	vpkInstalled = true
+
+	// 读取 gameinfo.gi
+	contentBytes, err := os.ReadFile(gameInfoPath)
+	if err != nil {
+		// 回滚 VPK
+		if vpkInstalled {
+			if vpkBackup != "" {
+				_ = copyFile(vpkBackup, vpkTarget)
+				_ = os.Remove(vpkBackup)
+			} else {
+				_ = os.Remove(vpkTarget)
+			}
+		}
+		return fmt.Errorf("POV HUD: 读取 gameinfo.gi 失败: %w", err)
+	}
+	content := string(contentBytes)
+
+	povPath := "csgo/pov"
+	if strings.Contains(content, "Game\t"+povPath) {
+		// 已经注入过，跳过
+		a.produceStateMu.Lock()
+		a.produceState.pov = povSessionState{
+			gameInfoPath:     gameInfoPath,
+			gameInfoBackup:   "",
+			gameInfoModified: false,
+			vpkPath:          vpkTarget,
+			vpkInstalled:     vpkInstalled,
+		}
+		a.produceStateMu.Unlock()
+		return nil
+	}
+
+	injected, ok := producegame.InjectSearchPath(content, povPath)
+	if !ok {
+		_ = os.Remove(vpkTarget)
+		if vpkBackup != "" {
+			_ = copyFile(vpkBackup, vpkTarget)
+			_ = os.Remove(vpkBackup)
+		}
+		return fmt.Errorf("POV HUD: 无法在 gameinfo.gi 中注入 csgo/pov 搜索路径")
+	}
+
+	// 备份 gameinfo.gi
+	gameInfoBackup := gameInfoPath + producePovBackupSuffix
+	if err := copyFile(gameInfoPath, gameInfoBackup); err != nil {
+		_ = os.Remove(vpkTarget)
+		if vpkBackup != "" {
+			_ = copyFile(vpkBackup, vpkTarget)
+			_ = os.Remove(vpkBackup)
+		}
+		return fmt.Errorf("POV HUD: 备份 gameinfo.gi 失败: %w", err)
+	}
+
+	if err := os.WriteFile(gameInfoPath, []byte(injected), 0644); err != nil {
+		_ = os.Remove(gameInfoBackup)
+		_ = os.Remove(vpkTarget)
+		if vpkBackup != "" {
+			_ = copyFile(vpkBackup, vpkTarget)
+			_ = os.Remove(vpkBackup)
+		}
+		return fmt.Errorf("POV HUD: 写入 gameinfo.gi 失败: %w", err)
+	}
+
+	a.produceStateMu.Lock()
+	a.produceState.pov = povSessionState{
+		gameInfoPath:     gameInfoPath,
+		gameInfoBackup:   gameInfoBackup,
+		gameInfoModified: true,
+		vpkPath:          vpkTarget,
+		vpkInstalled:     vpkInstalled,
+	}
+	a.produceStateMu.Unlock()
+	return nil
+}
+
+func (a *App) forceRestorePovForProduce() error {
+	a.produceStateMu.Lock()
+	defer a.produceStateMu.Unlock()
+	state := a.produceState.pov
+	var restoreErr error
+
+	// 恢复 gameinfo.gi
+	if state.gameInfoModified && strings.TrimSpace(state.gameInfoBackup) != "" {
+		if _, err := os.Stat(state.gameInfoBackup); err == nil {
+			if err := copyFile(state.gameInfoBackup, state.gameInfoPath); err != nil {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("POV HUD: 恢复 gameinfo.gi 失败: %w", err))
+			}
+			_ = os.Remove(state.gameInfoBackup)
+		}
+	}
+
+	// 移除 pov.vpk，恢复原有文件(如果有备份)
+	if state.vpkInstalled && strings.TrimSpace(state.vpkPath) != "" {
+		vpkBackup := state.vpkPath + producePovBackupSuffix
+		_ = os.Remove(state.vpkPath)
+		if _, err := os.Stat(vpkBackup); err == nil {
+			if err := copyFile(vpkBackup, state.vpkPath); err != nil {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("POV HUD: 恢复原有 pov.vpk 失败: %w", err))
+			}
+			_ = os.Remove(vpkBackup)
+		}
+	}
+
+	a.produceState.pov = povSessionState{}
+	return restoreErr
+}
+
 func (a *App) forceRestoreProduceEnvironmentForProduce() error {
 	var restoreErr error
+	if err := a.forceRestorePovForProduce(); err != nil {
+		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 POV HUD 失败: %w", err))
+	}
 	if err := a.forceRestorePluginDLLForProduce(); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复插件 DLL 失败: %w", err))
 	}

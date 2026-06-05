@@ -38,6 +38,7 @@ type Config struct {
 	RecordOutputDir        string              `json:"record_output_dir"`
 	EnableSpecShowXray     bool                `json:"enable_spec_show_xray_zero"`
 	HideAllUI              bool                `json:"hide_all_ui"`
+	PovHudEnabled          bool                `json:"pov_hud_enabled"`
 	ClipActionSettings     *ClipActionSettings `json:"clip_action_settings,omitempty"`
 }
 
@@ -86,6 +87,7 @@ func Default(dataDir string) *Config {
 		RecordOutputDir:    filepath.Join(dataDir, "outputs"),
 		EnableSpecShowXray: true,
 		HideAllUI:          false,
+		PovHudEnabled:      false,
 		ClipActionSettings: Ptr(DefaultClipActionSettings()),
 	}
 }
