@@ -410,6 +410,7 @@ const clipSettings = ref<ClipSettings>({
   use_shoulder_camera: false,
   pov_hud_enabled: true,
   sky_blackout: true,
+  disable_clouds: false,
   kill_feed_lifetime: 4,
   block_kill_feed: false,
 });

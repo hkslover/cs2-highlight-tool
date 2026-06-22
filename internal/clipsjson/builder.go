@@ -79,6 +79,7 @@ type BuildOptions struct {
 	HideAllUI                 bool
 	UseShoulderCamera         bool
 	SkyBlackout               bool
+	DisableClouds             bool
 	KillFeedLifetime          int
 	BlockKillFeed             bool
 	ForcePerPassVoiceCommands bool
@@ -156,6 +157,7 @@ type bootstrapOptions struct {
 	HideAllUI          bool
 	UseShoulderCamera  bool
 	SkyBlackout        bool
+	DisableClouds      bool
 	KillFeedLifetime   int
 	BlockKillFeed      bool
 	RecordFPS          int
@@ -241,6 +243,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		HideAllUI:          opts.HideAllUI,
 		UseShoulderCamera:  opts.UseShoulderCamera,
 		SkyBlackout:        opts.SkyBlackout,
+		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
 		BlockKillFeed:      opts.BlockKillFeed,
 		RecordFPS:          recordFPS,
@@ -590,8 +593,10 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	actions = append(actions, Action{Cmd: "engine_no_focus_sleep 0", Tick: actionTick})
 	actions = append(actions, Action{Cmd: "cl_demo_predict 0", Tick: actionTick})
 	actions = append(actions, Action{Cmd: "cl_spec_show_bindings 0", Tick: actionTick})
-	if opts.SkyBlackout {
+	if opts.DisableClouds {
 		actions = append(actions, Action{Cmd: "mirv_sky clouds draw 0", Tick: actionTick})
+	}
+	if opts.SkyBlackout {
 		actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
 	}
 	lifetime := opts.KillFeedLifetime

@@ -51,6 +51,10 @@
           <n-switch v-model:value="settings.sky_blackout" />
         </div>
         <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.disable_clouds") }}</span>
+          <n-switch v-model:value="settings.disable_clouds" />
+        </div>
+        <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.kill_feed_lifetime") }}</span>
           <n-input-number v-model:value="settings.kill_feed_lifetime" :min="1" :max="10" :step="1" :precision="0" />
         </div>
@@ -212,6 +216,7 @@ const settings = reactive<ClipSettings>({
   use_shoulder_camera: false,
   pov_hud_enabled: true,
   sky_blackout: true,
+  disable_clouds: false,
   kill_feed_lifetime: 4,
   block_kill_feed: false,
 });

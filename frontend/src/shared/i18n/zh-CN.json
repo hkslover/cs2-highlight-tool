@@ -324,6 +324,7 @@
       "use_shoulder_camera": "使用越肩视角",
       "pov_hud_enabled": "启用 POV HUD",
       "sky_blackout": "天空变黑",
+      "disable_clouds": "关闭云层",
       "kill_feed_lifetime": "击杀信息留存时间(秒)",
       "block_kill_feed": "屏蔽所有击杀信息",
       "outputs_video_count": "视频数量",

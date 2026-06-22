@@ -699,6 +699,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
+	if initial.DisableClouds {
+		t.Fatalf("disable_clouds should default to false: %+v", initial)
+	}
 	if initial.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("default record_output_dir mismatch: %+v", initial)
 	}
@@ -717,6 +720,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		LaunchResolution:  "16:9",
 		HideAllUI:         true,
 		UseShoulderCamera: true,
+		DisableClouds:     true,
 	})
 	if err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
@@ -744,6 +748,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
+	}
+	if !saved.DisableClouds {
+		t.Fatalf("disable_clouds should persist true: %+v", saved)
 	}
 	if saved.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("record_output_dir should be fixed under exeDir: %+v", saved)
@@ -773,6 +780,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)
+	}
+	if !loaded.DisableClouds {
+		t.Fatalf("saved disable_clouds mismatch: %+v", loaded)
 	}
 	if loaded.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("loaded record_output_dir should be fixed under exeDir: %+v", loaded)

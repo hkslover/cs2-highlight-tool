@@ -163,44 +163,52 @@ func TestBuild_ShoulderCameraCommandBeforeBuildInfoOnlyWhenEnabled(t *testing.T)
 	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "c_thirdpersonshoulder")
 }
 
-func TestBuild_SkyBlackoutEmitsTwoCommandsOnlyWhenEnabled(t *testing.T) {
-	enabled, err := Build([]Item{{
-		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
-		IncludeVictim: false,
-	}}, BuildOptions{
-		TickRate:          64,
-		KillerPreSeconds:  1,
-		KillerPostSeconds: 1,
-		RecordFPS:         60,
-		VideoPreset:       "n1",
-		RecordOutputDir:   `D:/clips/output`,
-		SkyBlackout:       true,
-		KillFeedLifetime:  4,
-	})
-	if err != nil {
-		t.Fatalf("Build sky on: %v", err)
+func TestBuild_SkyBlackoutAndCloudsAreIndependent(t *testing.T) {
+	tests := []struct {
+		name             string
+		skyBlackout      bool
+		disableClouds    bool
+		wantSkybox       bool
+		wantCloudsHidden bool
+	}{
+		{name: "sky blackout only", skyBlackout: true, wantSkybox: true},
+		{name: "disable clouds only", disableClouds: true, wantCloudsHidden: true},
+		{name: "both enabled", skyBlackout: true, disableClouds: true, wantSkybox: true, wantCloudsHidden: true},
+		{name: "both disabled"},
 	}
-	assertHasAction(t, enabled.Sequences[0].Actions, "mirv_sky clouds draw 0")
-	assertHasAction(t, enabled.Sequences[0].Actions, "r_drawskybox 0")
 
-	disabled, err := Build([]Item{{
-		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
-		IncludeVictim: false,
-	}}, BuildOptions{
-		TickRate:          64,
-		KillerPreSeconds:  1,
-		KillerPostSeconds: 1,
-		RecordFPS:         60,
-		VideoPreset:       "n1",
-		RecordOutputDir:   `D:/clips/output`,
-		SkyBlackout:       false,
-		KillFeedLifetime:  4,
-	})
-	if err != nil {
-		t.Fatalf("Build sky off: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Build([]Item{{
+				Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+				IncludeVictim: false,
+			}}, BuildOptions{
+				TickRate:          64,
+				KillerPreSeconds:  1,
+				KillerPostSeconds: 1,
+				RecordFPS:         60,
+				VideoPreset:       "n1",
+				RecordOutputDir:   `D:/clips/output`,
+				SkyBlackout:       tt.skyBlackout,
+				DisableClouds:     tt.disableClouds,
+				KillFeedLifetime:  4,
+			})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+
+			if tt.wantSkybox {
+				assertHasAction(t, result.Sequences[0].Actions, "r_drawskybox 0")
+			} else {
+				assertNoAction(t, result.Sequences[0].Actions, "r_drawskybox 0")
+			}
+			if tt.wantCloudsHidden {
+				assertHasAction(t, result.Sequences[0].Actions, "mirv_sky clouds draw 0")
+			} else {
+				assertNoAction(t, result.Sequences[0].Actions, "mirv_sky clouds draw 0")
+			}
+		})
 	}
-	assertNoAction(t, disabled.Sequences[0].Actions, "mirv_sky clouds draw 0")
-	assertNoAction(t, disabled.Sequences[0].Actions, "r_drawskybox 0")
 }
 
 func TestBuild_KillFeedLifetimeFollowsOption(t *testing.T) {

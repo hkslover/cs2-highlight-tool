@@ -17,6 +17,7 @@ export interface ClipSettings {
   use_shoulder_camera: boolean;
   pov_hud_enabled: boolean;
   sky_blackout: boolean;
+  disable_clouds: boolean;
   kill_feed_lifetime: number;
   block_kill_feed: boolean;
 }

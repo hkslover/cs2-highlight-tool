@@ -41,6 +41,7 @@ type Config struct {
 	UseShoulderCamera      bool                `json:"use_shoulder_camera"`
 	PovHudEnabled          bool                `json:"pov_hud_enabled"`
 	SkyBlackout            bool                `json:"sky_blackout"`
+	DisableClouds          bool                `json:"disable_clouds"`
 	KillFeedLifetime       int                 `json:"kill_feed_lifetime"`
 	BlockKillFeed          bool                `json:"block_kill_feed"`
 	LastChangelogVersion   string              `json:"last_changelog_version,omitempty"`
@@ -98,6 +99,7 @@ func Default(dataDir string) *Config {
 		UseShoulderCamera:  false,
 		PovHudEnabled:      true,
 		SkyBlackout:        true,
+		DisableClouds:      false,
 		KillFeedLifetime:   DefaultKillFeedLifetime,
 		BlockKillFeed:      false,
 		ClipActionSettings: Ptr(DefaultClipActionSettings()),

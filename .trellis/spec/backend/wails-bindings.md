@@ -562,6 +562,94 @@ use_shoulder_camera: boolean;
 - `internal/clipsjson`: bootstrap contains the shoulder-camera command only when `BuildOptions.UseShoulderCamera=true`, and the command precedes `r_show_build_info 0`.
 - Frontend: `cd frontend && npm run build` must pass so the shared TypeScript type and settings UI stay aligned.
 
+## Scenario: Independent Sky Blackout and Clouds Settings Contract
+
+### 1. Scope / Trigger
+
+- Trigger: Settings must control the skybox and HLAE cloud layer independently when generating plugin JSON bootstrap actions.
+- Scope: `internal/config` persistence, `internal/app` Wails settings binding, `internal/clipsjson` command generation, frontend `ClipSettings`, and Settings UI.
+- Boundary: Settings switches -> `SaveClipSettings` -> `config.json` -> plugin JSON bootstrap command list.
+
+### 2. Signatures
+
+```go
+type Config struct {
+    SkyBlackout   bool `json:"sky_blackout"`
+    DisableClouds bool `json:"disable_clouds"`
+}
+
+type ClipSettings struct {
+    SkyBlackout   bool `json:"sky_blackout"`
+    DisableClouds bool `json:"disable_clouds"`
+}
+
+type BuildOptions struct {
+    SkyBlackout   bool
+    DisableClouds bool
+}
+```
+
+Frontend shared type:
+
+```ts
+sky_blackout: boolean;
+disable_clouds: boolean;
+```
+
+### 3. Contracts
+
+- `sky_blackout` defaults to `true`; when enabled it writes only `r_drawskybox 0`.
+- `disable_clouds` defaults to `false`; when enabled it writes only `mirv_sky clouds draw 0`.
+- The switches are independent. Enabling either setting must not emit the other setting's command.
+- Disabled settings emit no reset command. In particular, do not write `r_drawskybox 1` or `mirv_sky clouds draw 1`.
+- `disable_clouds` is a global clip setting only and is not part of per-clip `clip_overrides`.
+- Frontend labels use `main.settings.*`; only `zh-CN.json` is maintained by AI changes.
+
+### 4. Validation & Error Matrix
+
+- Missing `sky_blackout` in an existing config -> backfill `true` using the existing compatibility rule.
+- Missing `disable_clouds` in an existing config -> retain Go's zero value `false` and save the field as `false`.
+- Unsupported JSON type for either boolean -> standard JSON unmarshal failure from `config.LoadOrCreate`.
+- Both settings disabled -> generated bootstrap contains neither command.
+
+### 5. Good/Base/Bad Cases
+
+- Good: sky blackout on and clouds off -> only `r_drawskybox 0` is emitted.
+- Good: sky blackout off and clouds on -> only `mirv_sky clouds draw 0` is emitted.
+- Base: both on -> both commands are emitted; both off -> neither is emitted.
+- Bad: nesting both commands under `if opts.SkyBlackout`, because the UI switches then have coupled behavior.
+- Bad: backfilling `disable_clouds=true` for legacy configs, because the product default is explicitly opt-in/off.
+
+### 6. Tests Required
+
+- `internal/clipsjson`: table-driven coverage for sky-only, clouds-only, both enabled, and both disabled; assert exact command presence/absence.
+- `internal/config`: new and legacy configs default `DisableClouds=false`, save `disable_clouds`, and preserve explicit values.
+- `internal/app`: `GetClipSettings` defaults `DisableClouds=false`; `SaveClipSettings` round-trips `true` through disk reload.
+- Frontend: `cd frontend && npm run build` passes with both default `ClipSettings` object literals and the Settings switch.
+- Full backend: `go test ./...` passes.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+if opts.SkyBlackout {
+    actions = append(actions, Action{Cmd: "mirv_sky clouds draw 0", Tick: actionTick})
+    actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
+}
+```
+
+#### Correct
+
+```go
+if opts.DisableClouds {
+    actions = append(actions, Action{Cmd: "mirv_sky clouds draw 0", Tick: actionTick})
+}
+if opts.SkyBlackout {
+    actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
+}
+```
+
 ## Scenario: Settings Outputs Storage Management
 
 ### 1. Scope / Trigger

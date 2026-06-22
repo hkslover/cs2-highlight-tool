@@ -468,6 +468,7 @@ func (a *App) generatePluginJSONInternal(
 		HideAllUI:          cfg.HideAllUI,
 		UseShoulderCamera:  cfg.UseShoulderCamera,
 		SkyBlackout:        cfg.SkyBlackout,
+		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
 		BlockKillFeed:      cfg.BlockKillFeed,
 	})
@@ -539,6 +540,7 @@ func (a *App) generatePluginJSONInternal(
 		HideAllUI:                 clipSettings.HideAllUI,
 		UseShoulderCamera:         clipSettings.UseShoulderCamera,
 		SkyBlackout:               clipSettings.SkyBlackout,
+		DisableClouds:             clipSettings.DisableClouds,
 		KillFeedLifetime:          clipSettings.KillFeedLifetime,
 		BlockKillFeed:             clipSettings.BlockKillFeed,
 		ForcePerPassVoiceCommands: hasVoiceOverride,
