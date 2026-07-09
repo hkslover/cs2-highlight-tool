@@ -1454,3 +1454,36 @@ Separated sky blackout from cloud disabling, added a default-off clouds toggle a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 44: Finish all pending Trellis tasks
+
+**Date**: 2026-07-10
+**Task**: Finish all pending Trellis tasks
+**Branch**: `main`
+
+### Summary
+
+Completed and verified the debug plugin DLL override, searchable recording settings, dynamic CSDM_WS_PORT produce WebSocket port propagation, and confirmed clip timing/seek changes. Ran go test -count=1 ./..., go vet ./..., and frontend npm run build. Created work commit 1900f8b, archived all three active Trellis tasks, and left the worktree clean.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1900f8b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
