@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,6 +61,8 @@ const (
 	DefaultKillerPostSeconds = 4.0
 	DefaultVictimPreSeconds  = 2.0
 	DefaultVictimPostSeconds = 2.0
+	MinClipWindowSeconds     = 1.0
+	MaxClipWindowSeconds     = 20.0
 	DefaultRecordFPS         = 60
 	DefaultRecordQuality     = "high"
 	DefaultEditFPS           = 60
@@ -183,18 +186,10 @@ func ApplyDefaults(cfg *Config, dataDir string) {
 	if !isSupportedDownloadSource(cfg.DownloadSource) {
 		cfg.DownloadSource = defaultDownloadSource()
 	}
-	if cfg.KillerPreSeconds <= 0 {
-		cfg.KillerPreSeconds = DefaultKillerPreSeconds
-	}
-	if cfg.KillerPostSeconds <= 0 {
-		cfg.KillerPostSeconds = DefaultKillerPostSeconds
-	}
-	if cfg.VictimPreSeconds <= 0 {
-		cfg.VictimPreSeconds = DefaultVictimPreSeconds
-	}
-	if cfg.VictimPostSeconds <= 0 {
-		cfg.VictimPostSeconds = DefaultVictimPostSeconds
-	}
+	cfg.KillerPreSeconds = NormalizeClipWindowSeconds(cfg.KillerPreSeconds, DefaultKillerPreSeconds)
+	cfg.KillerPostSeconds = NormalizeClipWindowSeconds(cfg.KillerPostSeconds, DefaultKillerPostSeconds)
+	cfg.VictimPreSeconds = NormalizeClipWindowSeconds(cfg.VictimPreSeconds, DefaultVictimPreSeconds)
+	cfg.VictimPostSeconds = NormalizeClipWindowSeconds(cfg.VictimPostSeconds, DefaultVictimPostSeconds)
 	if cfg.RecordFPS <= 0 {
 		cfg.RecordFPS = DefaultRecordFPS
 	}
@@ -239,6 +234,19 @@ func ApplyDefaults(cfg *Config, dataDir string) {
 	if cfg.ClipActionSettings == nil {
 		cfg.ClipActionSettings = Ptr(DefaultClipActionSettings())
 	}
+}
+
+func NormalizeClipWindowSeconds(value float64, fallback float64) float64 {
+	if value <= 0 {
+		value = fallback
+	}
+	if value < MinClipWindowSeconds {
+		value = MinClipWindowSeconds
+	}
+	if value > MaxClipWindowSeconds {
+		value = MaxClipWindowSeconds
+	}
+	return math.Round(value*2) / 2
 }
 
 func DefaultClipActionSettings() ClipActionSettings {

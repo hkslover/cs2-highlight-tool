@@ -145,13 +145,13 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 		TickRate: 64,
 		SelectedItems: []SelectedClipItem{
 			{
-				Kill:          demo.ClipKill{ID: "k1", Tick: 320, KillerSlot: 7, VictimSlot: 11},
+				Kill:          demo.ClipKill{ID: "k1", Tick: 640, KillerSlot: 7, VictimSlot: 11},
 				IncludeVictim: true,
 				ClipOverrides: &ClipItemOverrides{
-					KillerPreSeconds:  float64Ptr(1.5),
+					KillerPreSeconds:  float64Ptr(4),
 					KillerPostSeconds: float64Ptr(1.5),
-					VictimPreSeconds:  float64Ptr(2),
-					VictimPostSeconds: float64Ptr(2),
+					VictimPreSeconds:  float64Ptr(4),
+					VictimPostSeconds: float64Ptr(4),
 				},
 			},
 		},
@@ -164,8 +164,8 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 	if len(sequences) != 3 {
 		t.Fatalf("sequence len=%d want 3", len(sequences))
 	}
-	assertHasAction(t, sequences[1].Actions, "demo_gototick 224")
-	assertHasAction(t, sequences[2].Actions, "demo_gototick 192")
+	assertHasAction(t, sequences[1].Actions, "demo_gototick 384")
+	assertHasAction(t, sequences[2].Actions, "demo_gototick 384")
 }
 
 func TestGeneratePluginJSON_ClipVictimOverridesIgnoredWhenVictimDisabled(t *testing.T) {
@@ -707,10 +707,10 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 
 	saved, err := app.SaveClipSettings(ClipSettings{
-		KillerPreSeconds:  6.1,
+		KillerPreSeconds:  20,
 		KillerPostSeconds: 0.3,
-		VictimPreSeconds:  1.26,
-		VictimPostSeconds: 2.9,
+		VictimPreSeconds:  19.5,
+		VictimPostSeconds: 22.9,
 		AutoAddVictimView: false,
 		EnableVoice:       false,
 		EditFPS:           300,
@@ -725,11 +725,11 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
 	}
-	if saved.KillerPreSeconds != 5 || saved.KillerPostSeconds != 1 {
-		t.Fatalf("killer settings should be clamped to [1,5] with 0.5 step: %+v", saved)
+	if saved.KillerPreSeconds != 20 || saved.KillerPostSeconds != 1 {
+		t.Fatalf("killer settings should be clamped to [1,20] with 0.5 step: %+v", saved)
 	}
-	if saved.VictimPreSeconds != 1.5 || saved.VictimPostSeconds != 2 {
-		t.Fatalf("victim settings should be clamped to [1,2] with 0.5 step: %+v", saved)
+	if saved.VictimPreSeconds != 19.5 || saved.VictimPostSeconds != 20 {
+		t.Fatalf("victim settings should be clamped to [1,20] with 0.5 step: %+v", saved)
 	}
 	if saved.AutoAddVictimView || saved.EnableVoice {
 		t.Fatalf("auto/voice settings should persist false: %+v", saved)
@@ -760,7 +760,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetClipSettings after save: %v", err)
 	}
-	if loaded.KillerPreSeconds != 5 || loaded.KillerPostSeconds != 1 || loaded.VictimPreSeconds != 1.5 || loaded.VictimPostSeconds != 2 {
+	if loaded.KillerPreSeconds != 20 || loaded.KillerPostSeconds != 1 || loaded.VictimPreSeconds != 19.5 || loaded.VictimPostSeconds != 20 {
 		t.Fatalf("saved clip settings mismatch: %+v", loaded)
 	}
 	if loaded.AutoAddVictimView || loaded.EnableVoice {

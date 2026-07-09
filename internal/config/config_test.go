@@ -364,6 +364,31 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreate_NormalizesClipWindowSeconds(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	payload := `{
+  "killer_pre_seconds": 20,
+  "killer_post_seconds": 22.9,
+  "victim_pre_seconds": 19.5,
+  "victim_post_seconds": 0.3
+}`
+	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadOrCreate(path, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KillerPreSeconds != 20 || cfg.KillerPostSeconds != 20 {
+		t.Fatalf("killer window seconds should normalize to [1,20]: pre=%v post=%v", cfg.KillerPreSeconds, cfg.KillerPostSeconds)
+	}
+	if cfg.VictimPreSeconds != 19.5 || cfg.VictimPostSeconds != 1 {
+		t.Fatalf("victim window seconds should normalize to [1,20]: pre=%v post=%v", cfg.VictimPreSeconds, cfg.VictimPostSeconds)
+	}
+}
+
 func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

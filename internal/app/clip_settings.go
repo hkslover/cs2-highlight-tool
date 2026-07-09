@@ -1,7 +1,6 @@
 package app
 
 import (
-	"math"
 	"strings"
 
 	"cs2-highlight-tool-v2/internal/config"
@@ -191,10 +190,10 @@ func (a *App) fixedRecordOutputDir() string {
 
 func normalizeClipSettings(input ClipSettings) ClipSettings {
 	settings := input
-	settings.KillerPreSeconds = normalizeSeconds(settings.KillerPreSeconds, config.DefaultKillerPreSeconds, 1, 5)
-	settings.KillerPostSeconds = normalizeSeconds(settings.KillerPostSeconds, config.DefaultKillerPostSeconds, 1, 5)
-	settings.VictimPreSeconds = normalizeSeconds(settings.VictimPreSeconds, config.DefaultVictimPreSeconds, 1, 2)
-	settings.VictimPostSeconds = normalizeSeconds(settings.VictimPostSeconds, config.DefaultVictimPostSeconds, 1, 2)
+	settings.KillerPreSeconds = config.NormalizeClipWindowSeconds(settings.KillerPreSeconds, config.DefaultKillerPreSeconds)
+	settings.KillerPostSeconds = config.NormalizeClipWindowSeconds(settings.KillerPostSeconds, config.DefaultKillerPostSeconds)
+	settings.VictimPreSeconds = config.NormalizeClipWindowSeconds(settings.VictimPreSeconds, config.DefaultVictimPreSeconds)
+	settings.VictimPostSeconds = config.NormalizeClipWindowSeconds(settings.VictimPostSeconds, config.DefaultVictimPostSeconds)
 	if settings.RecordFPS <= 0 {
 		settings.RecordFPS = config.DefaultRecordFPS
 	}
@@ -241,19 +240,6 @@ func normalizeClipActionSettings(input ClipActionSettings) ClipActionSettings {
 	input.EnableVoiceIndices = enabled
 	input.EnableVoiceIndicesH = enabled
 	return input
-}
-
-func normalizeSeconds(value float64, fallback float64, min float64, max float64) float64 {
-	if value <= 0 {
-		value = fallback
-	}
-	if value < min {
-		value = min
-	}
-	if value > max {
-		value = max
-	}
-	return math.Round(value*2) / 2
 }
 
 func boolPtr(value bool) *bool {

@@ -8,19 +8,19 @@
       <n-space vertical :size="12">
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
-          <n-input-number v-model:value="settings.killer_pre_seconds" :min="1" :max="5" :step="0.5" :precision="1" />
+          <n-input-number v-model:value="settings.killer_pre_seconds" :min="1" :max="20" :step="0.5" :precision="1" />
         </div>
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
-          <n-input-number v-model:value="settings.killer_post_seconds" :min="1" :max="5" :step="0.5" :precision="1" />
+          <n-input-number v-model:value="settings.killer_post_seconds" :min="1" :max="20" :step="0.5" :precision="1" />
         </div>
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
-          <n-input-number v-model:value="settings.victim_pre_seconds" :min="1" :max="2" :step="0.5" :precision="1" />
+          <n-input-number v-model:value="settings.victim_pre_seconds" :min="1" :max="20" :step="0.5" :precision="1" />
         </div>
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.victim_post_seconds") }}</span>
-          <n-input-number v-model:value="settings.victim_post_seconds" :min="1" :max="2" :step="0.5" :precision="1" />
+          <n-input-number v-model:value="settings.victim_post_seconds" :min="1" :max="20" :step="0.5" :precision="1" />
         </div>
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.auto_add_victim") }}</span>
