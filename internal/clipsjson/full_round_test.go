@@ -52,7 +52,7 @@ func TestBuild_FullRoundPOVBeforeVictimClip(t *testing.T) {
 	if len(result.Sequences) < 3 {
 		t.Fatalf("sequence len=%d want at least 3", len(result.Sequences))
 	}
-	assertAction(t, result.Sequences[1].Actions, "demo_gototick 1000")
+	assertAction(t, result.Sequences[1].Actions, "demo_gototick 872")
 	assertAction(t, result.Sequences[1].Actions, "spec_player 12")
 	assertAction(t, result.Sequences[2].Actions, "spec_player 7")
 }

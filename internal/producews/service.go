@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultListenAddr        = "127.0.0.1:4574"
+	defaultListenAddr        = "127.0.0.1:0"
 	defaultAckTimeout        = 8 * time.Second
 	defaultConnectWaitTimout = 30 * time.Second
 	defaultDemoSwitchDelay   = 800 * time.Millisecond
@@ -22,7 +22,7 @@ const (
 
 // retryExhaustedMessage is the user-facing Chinese message written to
 // wsState.LastError when the supervisor has exhausted its retry budget.
-const retryExhaustedMessage = "端口 4574 可能被占用，重试 5 次失败，请检查占用进程后重启 app"
+const retryExhaustedMessage = "WebSocket 服务监听失败，重试 5 次失败，请检查占用进程后重启 app"
 
 // backoffSequence is the supervisor's exponential backoff schedule between
 // retry attempts. Total window ≈ 15.5s for 5 attempts.
@@ -335,6 +335,9 @@ func (s *Service) runSupervisor(ctx context.Context, initialListener net.Listene
 		// occurs. http.Server.Serve always returns a non-nil error.
 		serveErr := s.server.Serve(listener)
 		listener = nil
+		s.mu.Lock()
+		s.listener = nil
+		s.mu.Unlock()
 
 		// If Stop() was called, exit immediately.
 		select {
@@ -417,6 +420,7 @@ func (s *Service) Stop() error {
 		return nil
 	}
 	server := s.server
+	s.listener = nil
 	conn := s.gameConn
 	s.gameConn = nil
 	s.started = false
@@ -439,6 +443,24 @@ func (s *Service) Address() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.address
+}
+
+// Port returns the TCP port currently held by the WebSocket listener.
+// The listener stays open for the lifetime of the service, so callers can
+// safely pass this port to the process that launches the game plugin.
+func (s *Service) Port() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.started || s.listener == nil {
+		return 0, fmt.Errorf("produce websocket server is not started")
+	}
+
+	addr, ok := s.listener.Addr().(*net.TCPAddr)
+	if !ok || addr.Port <= 0 {
+		return 0, fmt.Errorf("produce websocket port is unavailable")
+	}
+	return addr.Port, nil
 }
 
 func (s *Service) StartQueue(demoPaths []string) error {

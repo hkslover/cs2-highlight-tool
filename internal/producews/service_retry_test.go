@@ -2,6 +2,7 @@ package producews
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -236,3 +237,42 @@ func TestService_StopAbortsRetry(t *testing.T) {
 	}
 }
 
+func TestService_DefaultUsesOSAssignedPort(t *testing.T) {
+	occupied, occupiedErr := net.Listen("tcp", "127.0.0.1:4574")
+	if occupiedErr == nil {
+		defer occupied.Close()
+	}
+
+	svc := NewDefault(nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	port, err := svc.Port()
+	if err != nil {
+		t.Fatalf("Port: %v", err)
+	}
+	if port <= 0 {
+		t.Fatalf("Port = %d, want a positive OS-assigned port", port)
+	}
+	if occupiedErr == nil && port == 4574 {
+		t.Fatalf("Port = %d, want a port different from occupied legacy port", port)
+	}
+
+	addr := svc.Address()
+	host, addressPort, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort(%q): %v", addr, err)
+	}
+	if host != "127.0.0.1" || addressPort != fmt.Sprintf("%d", port) {
+		t.Fatalf("Address = %q, want 127.0.0.1:%d", addr, port)
+	}
+}
+
+func TestService_PortBeforeStartReturnsError(t *testing.T) {
+	svc := NewDefault(nil)
+	if _, err := svc.Port(); err == nil {
+		t.Fatal("Port should fail before Start")
+	}
+}

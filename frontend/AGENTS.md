@@ -39,6 +39,7 @@
 - Must：全玩家选择器需要精确 SteamID 时使用 `DemoPlayerInfo.steam_id_text`，不得使用 JS number 形式的 `steam_id` 作为后端请求值。
 - Must：整局 POV 模式下新增的 victim-only `selected_items[]` 必须传 `include_killer=false`，避免额外生成击杀者片段。
 - Must：调用 `GeneratePluginJSONBatchAndLaunchHLAE` 时允许传递可选 `debug.keep_intermediate_files`，用于控制是否保留录制中间产物（仅会话级生效）。
+- Must：debug 插件 DLL override 以 `GetDebugPluginDLLOverride` / `PickDebugPluginDLLOverride` / `ClearDebugPluginDLLOverride` 为单一事实来源；前端只在 debug 设置分组中展示，不写入本地持久化状态，也不得混入普通设置分组。
 - Must Not：在前端新增与后端冲突的“本地自定义状态枚举”替代后端状态。
 
 ## UI 状态映射

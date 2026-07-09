@@ -30,37 +30,54 @@
           <span class="setting-label">{{ t("main.settings.enable_voice") }}</span>
           <n-switch v-model:value="settings.enable_voice" />
         </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.enable_spec_show_xray_zero") }}</span>
-          <n-switch v-model:value="settings.enable_spec_show_xray_zero" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.hide_all_ui") }}</span>
-          <n-switch v-model:value="settings.hide_all_ui" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.use_shoulder_camera") }}</span>
-          <n-switch v-model:value="settings.use_shoulder_camera" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.pov_hud_enabled") }}</span>
-          <n-switch v-model:value="settings.pov_hud_enabled" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.sky_blackout") }}</span>
-          <n-switch v-model:value="settings.sky_blackout" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.disable_clouds") }}</span>
-          <n-switch v-model:value="settings.disable_clouds" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.kill_feed_lifetime") }}</span>
-          <n-input-number v-model:value="settings.kill_feed_lifetime" :min="1" :max="10" :step="1" :precision="0" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.block_kill_feed") }}</span>
-          <n-switch v-model:value="settings.block_kill_feed" />
+
+        <div class="setting-list-panel">
+          <div class="setting-list-head">
+            <div class="setting-list-title-row">
+              <span class="setting-list-title">{{ t("main.settings.recording_options_list_title") }}</span>
+            </div>
+            <div class="setting-list-controls">
+              <n-input
+                v-model:value="settingSearchQuery"
+                clearable
+                size="small"
+                class="setting-search"
+                :placeholder="t('main.settings.recording_options_search_placeholder')"
+              />
+            </div>
+          </div>
+
+          <div class="setting-list-body">
+            <template v-if="pagedSearchableClipSettings.length">
+              <div v-for="item in pagedSearchableClipSettings" :key="item.key" class="setting-row setting-list-row">
+                <span class="setting-label">{{ t(item.labelKey) }}</span>
+                <n-switch
+                  v-if="item.kind === 'switch'"
+                  :value="switchSettingValue(item)"
+                  @update:value="updateSwitchSetting(item, $event)"
+                />
+                <n-input-number
+                  v-else
+                  :value="numberSettingValue(item)"
+                  :min="item.min"
+                  :max="item.max"
+                  :step="item.step"
+                  :precision="item.precision"
+                  @update:value="updateNumberSetting(item, $event)"
+                />
+              </div>
+            </template>
+            <n-empty v-else size="small" :description="t('main.settings.recording_options_empty')" />
+          </div>
+
+          <div v-if="filteredSearchableClipSettings.length > SETTING_PAGE_SIZE" class="setting-list-pagination">
+            <n-pagination
+              v-model:page="settingPage"
+              :page-size="SETTING_PAGE_SIZE"
+              :item-count="filteredSearchableClipSettings.length"
+              size="small"
+            />
+          </div>
         </div>
       </n-space>
     </n-card>
@@ -155,6 +172,26 @@
           <span class="setting-label">{{ t("main.settings.keep_produce_intermediates") }}</span>
           <n-switch v-model:value="keepProduceIntermediates" />
         </div>
+        <div class="setting-row debug-file-row">
+          <span class="setting-label">{{ t("main.settings.debug_plugin_dll") }}</span>
+          <div class="debug-file-control">
+            <n-tag size="small" :bordered="false" :type="debugPluginDLL.active ? 'warning' : 'default'" class="debug-file-path">
+              {{ debugPluginDLL.path || t("main.settings.debug_plugin_dll_default") }}
+            </n-tag>
+            <n-button size="tiny" :loading="pickingDebugPluginDLL" @click="pickDebugPluginDLL">
+              {{ t("main.settings.browse") }}
+            </n-button>
+            <n-button
+              v-if="debugPluginDLL.active"
+              size="tiny"
+              tertiary
+              :loading="clearingDebugPluginDLL"
+              @click="clearDebugPluginDLL"
+            >
+              {{ t("main.settings.debug_plugin_dll_clear") }}
+            </n-button>
+          </div>
+        </div>
       </n-space>
     </n-card>
 
@@ -169,7 +206,7 @@ import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
-import type { ClipSettings, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
+import type { ClipSettings, DebugPluginDLLOverrideState, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
 
 const props = withDefaults(
@@ -189,11 +226,16 @@ const openingOutputsDir = ref(false);
 const openingDemoDir = ref(false);
 const clearingOutputs = ref(false);
 const clearingDemo = ref(false);
+const pickingDebugPluginDLL = ref(false);
+const clearingDebugPluginDLL = ref(false);
 const errorMessage = ref("");
 const successMessage = ref("");
 const syncingSettings = ref(false);
 const hasPendingSave = ref(false);
+const settingSearchQuery = ref("");
+const settingPage = ref(1);
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const SETTING_PAGE_SIZE = 8;
 const dialog = useDialog();
 const message = useMessage();
 const { debugEnabled, keepProduceIntermediates } = useDebugSettings();
@@ -230,6 +272,10 @@ const demoStats = reactive<DemoStorageStats>({
   demo_count: 0,
   total_size_bytes: 0,
 });
+const debugPluginDLL = reactive<DebugPluginDLLOverrideState>({
+  active: false,
+  path: "",
+});
 const presetOptions = computed(() => [
   { label: t("main.settings.video_preset_auto"), value: "auto" },
   { label: t("main.settings.video_preset_c1"), value: "c1" },
@@ -252,6 +298,95 @@ const editQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_high"), value: "high" },
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
+type SearchableSwitchSettingKey =
+  | "enable_spec_show_xray_zero"
+  | "hide_all_ui"
+  | "use_shoulder_camera"
+  | "pov_hud_enabled"
+  | "sky_blackout"
+  | "disable_clouds"
+  | "block_kill_feed";
+type SearchableNumberSettingKey = "kill_feed_lifetime";
+type SearchableClipSettingItem =
+  | {
+      key: SearchableSwitchSettingKey;
+      labelKey: string;
+      kind: "switch";
+      aliases: string[];
+    }
+  | {
+      key: SearchableNumberSettingKey;
+      labelKey: string;
+      kind: "number";
+      aliases: string[];
+      min: number;
+      max: number;
+      step: number;
+      precision: number;
+    };
+const searchableClipSettings: SearchableClipSettingItem[] = [
+  {
+    key: "enable_spec_show_xray_zero",
+    labelKey: "main.settings.enable_spec_show_xray_zero",
+    kind: "switch",
+    aliases: ["关闭x光", "关闭 x 光", "xray", "x-ray", "x光", "spec_show_xray"],
+  },
+  {
+    key: "hide_all_ui",
+    labelKey: "main.settings.hide_all_ui",
+    kind: "switch",
+    aliases: ["隐藏所有ui", "hidden ui", "hide ui"],
+  },
+  {
+    key: "use_shoulder_camera",
+    labelKey: "main.settings.use_shoulder_camera",
+    kind: "switch",
+    aliases: ["越肩视角", "shoulder camera", "camera"],
+  },
+  {
+    key: "pov_hud_enabled",
+    labelKey: "main.settings.pov_hud_enabled",
+    kind: "switch",
+    aliases: ["pov hud", "hud"],
+  },
+  {
+    key: "sky_blackout",
+    labelKey: "main.settings.sky_blackout",
+    kind: "switch",
+    aliases: ["天空变黑", "sky", "blackout", "drawskybox"],
+  },
+  {
+    key: "disable_clouds",
+    labelKey: "main.settings.disable_clouds",
+    kind: "switch",
+    aliases: ["关闭云层", "cloud", "clouds"],
+  },
+  {
+    key: "kill_feed_lifetime",
+    labelKey: "main.settings.kill_feed_lifetime",
+    kind: "number",
+    aliases: ["击杀信息留存", "kill feed", "death notice", "deathnotice"],
+    min: 1,
+    max: 10,
+    step: 1,
+    precision: 0,
+  },
+  {
+    key: "block_kill_feed",
+    labelKey: "main.settings.block_kill_feed",
+    kind: "switch",
+    aliases: ["屏蔽击杀信息", "block kill feed", "kill feed"],
+  },
+];
+const filteredSearchableClipSettings = computed(() => {
+  const query = normalizeSettingSearch(settingSearchQuery.value);
+  if (!query) return searchableClipSettings;
+  return searchableClipSettings.filter((item) => settingMatchesSearch(item, query));
+});
+const pagedSearchableClipSettings = computed(() => {
+  const start = (settingPage.value - 1) * SETTING_PAGE_SIZE;
+  return filteredSearchableClipSettings.value.slice(start, start + SETTING_PAGE_SIZE);
+});
 
 watch(
   () => props.active,
@@ -263,6 +398,19 @@ watch(
     void loadSettings();
     void loadOutputsStats();
     void loadDemoStats();
+    if (debugEnabled.value) {
+      void loadDebugPluginDLLOverride();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  debugEnabled,
+  (enabled) => {
+    if (props.active && enabled) {
+      void loadDebugPluginDLLOverride();
+    }
   },
   { immediate: true },
 );
@@ -273,6 +421,23 @@ watch(
     scheduleAutoSave();
   },
   { deep: true },
+);
+
+watch(settingSearchQuery, () => {
+  settingPage.value = 1;
+});
+
+watch(
+  () => filteredSearchableClipSettings.value.length,
+  (total) => {
+    const maxPage = Math.max(1, Math.ceil(total / SETTING_PAGE_SIZE));
+    if (settingPage.value > maxPage) {
+      settingPage.value = maxPage;
+    }
+    if (settingPage.value < 1) {
+      settingPage.value = 1;
+    }
+  },
 );
 
 onBeforeUnmount(() => {
@@ -327,6 +492,53 @@ async function loadDemoStats() {
     errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
     demoLoading.value = false;
+  }
+}
+
+async function loadDebugPluginDLLOverride() {
+  if (!props.active || !debugEnabled.value) {
+    return;
+  }
+  errorMessage.value = "";
+  try {
+    const next = await callBackend<DebugPluginDLLOverrideState>("GetDebugPluginDLLOverride");
+    Object.assign(debugPluginDLL, next);
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+async function pickDebugPluginDLL() {
+  if (pickingDebugPluginDLL.value) {
+    return;
+  }
+  pickingDebugPluginDLL.value = true;
+  errorMessage.value = "";
+  successMessage.value = "";
+  try {
+    const next = await callBackend<DebugPluginDLLOverrideState>("PickDebugPluginDLLOverride");
+    Object.assign(debugPluginDLL, next);
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    pickingDebugPluginDLL.value = false;
+  }
+}
+
+async function clearDebugPluginDLL() {
+  if (clearingDebugPluginDLL.value) {
+    return;
+  }
+  clearingDebugPluginDLL.value = true;
+  errorMessage.value = "";
+  successMessage.value = "";
+  try {
+    const next = await callBackend<DebugPluginDLLOverrideState>("ClearDebugPluginDLLOverride");
+    Object.assign(debugPluginDLL, next);
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    clearingDebugPluginDLL.value = false;
   }
 }
 
@@ -433,6 +645,55 @@ async function applySettingsFromBackend(next: ClipSettings) {
   syncingSettings.value = false;
 }
 
+function normalizeSettingSearch(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function settingMatchesSearch(item: SearchableClipSettingItem, query: string): boolean {
+  const haystack = normalizeSettingSearch([t(item.labelKey), item.key, ...item.aliases].join(" "));
+  if (haystack.includes(query)) {
+    return true;
+  }
+  let queryIndex = 0;
+  for (const char of haystack) {
+    if (char === query[queryIndex]) {
+      queryIndex++;
+    }
+    if (queryIndex === query.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function switchSettingValue(item: SearchableClipSettingItem): boolean {
+  if (item.kind !== "switch") {
+    return false;
+  }
+  return settings[item.key];
+}
+
+function numberSettingValue(item: SearchableClipSettingItem): number {
+  if (item.kind !== "number") {
+    return 0;
+  }
+  return settings[item.key];
+}
+
+function updateSwitchSetting(item: SearchableClipSettingItem, value: boolean): void {
+  if (item.kind !== "switch") {
+    return;
+  }
+  settings[item.key] = value;
+}
+
+function updateNumberSetting(item: SearchableClipSettingItem, value: number | null): void {
+  if (item.kind !== "number" || typeof value !== "number" || !Number.isFinite(value)) {
+    return;
+  }
+  settings[item.key] = value;
+}
+
 function clearAutoSaveTimer() {
   if (autoSaveTimer == null) {
     return;
@@ -520,6 +781,111 @@ function formatBytes(bytes: number): string {
 
 .preset-select {
   width: 220px;
+}
+
+.setting-list-panel {
+  background: #161a17;
+  border: 1px solid #2f3631;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.setting-list-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.setting-list-title-row {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.setting-list-title {
+  color: #dbe5dd;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.setting-list-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.setting-search {
+  width: 220px;
+}
+
+.setting-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.setting-list-row {
+  background: #1c211d;
+  border: 1px solid #303932;
+  border-radius: 6px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.setting-list-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.debug-file-row {
+  align-items: flex-start;
+}
+
+.debug-file-control {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.debug-file-path {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .setting-row,
+  .debug-file-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setting-list-head,
+  .setting-list-controls,
+  .setting-list-title-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setting-list-pagination {
+    justify-content: center;
+  }
+
+  .debug-file-path,
+  .preset-select,
+  .setting-search {
+    max-width: 100%;
+    width: 100%;
+  }
 }
 
 </style>

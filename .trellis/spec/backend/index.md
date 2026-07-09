@@ -20,6 +20,7 @@ This directory contains the project's actual coding conventions, extracted from 
 | [Quality Guidelines](./quality-guidelines.md) | Test patterns, code standards, forbidden patterns | ✅ Populated |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, step timing, fields conventions | ✅ Populated |
 | [Wails Bindings](./wails-bindings.md) | Frontend-facing Go method contracts and storage APIs | ✅ Populated |
+| [Produce WebSocket](./producews.md) | Dynamic loopback listener and HLAE environment propagation | ✅ Populated |
 | [Startup State Machine](./startup-state-machine.md) | Startup self-update gating and component task ordering | ✅ Populated |
 
 ---

@@ -185,7 +185,7 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 	if err != nil {
 		return err
 	}
-	pluginSourcePath := config.CleanPath(cfg.PluginDLL)
+	pluginSourcePath := a.resolvePluginDLLSourcePath(cfg)
 	if pluginSourcePath == "" {
 		return fmt.Errorf("插件 DLL 路径为空，请先在设置中配置")
 	}

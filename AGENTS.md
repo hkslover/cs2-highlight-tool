@@ -93,6 +93,7 @@
 - `GeneratePluginJSON` / `GeneratePluginJSONBatchAndLaunchHLAE` 的 `selected_items[]` 支持可选 `clip_overrides`：`killer_pre_seconds` `killer_post_seconds` `victim_pre_seconds` `victim_post_seconds` `enable_voice` `enable_spec_show_xray_zero`（字段缺省表示继承全局设置）
 - `GeneratePluginJSON` / `GeneratePluginJSONBatchAndLaunchHLAE` 返回的 `take_plans[]` 支持可选字段：`source_id` `round` `player_name` `player_steam_id` `start_tick` `end_tick` `end_reason`（整局 POV take 使用 `view=full_round_pov` 与稳定 `source_id` 区分每个回合）
 - `GeneratePluginJSONBatchAndLaunchHLAE` 支持可选参数 `debug.keep_intermediate_files`（`true` 时录制会话结束仅清理 `*.mux.tmp.mp4`，保留 take 视频/音频中间产物；默认 `false`）
+- `GetDebugPluginDLLOverride` / `PickDebugPluginDLLOverride` / `ClearDebugPluginDLLOverride`（返回 `active/path`；仅 debug 模式 UI 使用；选择的 `.dll` 只作为本次应用会话的插件注入源，录制启动时复制到 CS2 `game/csgo/plugin/bin/server.dll`，不写入 `config.json` 且不影响启动组件版本检测）
 - `PreviewFullRoundPOV(demoPath, playerSteamID string)` 返回 `FullRoundPOVPlan`（前端 UI 预览用，提前获取完整回合录制计划包含每回合 start/end tick、死亡/存活状态，不生成任何文件；每个 segment 必然包含 tracked player 至少 1 个击杀，零击杀玩家返回 segments 为空，前端用空态阻止生成）
 - `GenerateMaterialPluginJSON`（等同 `GeneratePluginJSON` + `record_material_movies=true` + 默认 `mode=material`，供素材模式/剪辑模式阶段1 使用）
 - `GetClipMode` / `SaveClipMode`（持久化 `clip_mode`，取值 `material` / `edit`）
@@ -174,3 +175,25 @@
 - Claude 记忆实践：`https://code.claude.com/docs/en/memory`
 - GitHub Copilot 仓库/路径级指令：`https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions`
 - AGENTS.md 开放格式：`https://agents.md/index`
+
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+This project is managed by Trellis. The working knowledge you need lives under `.trellis/`:
+
+- `.trellis/workflow.md` — development phases, when to create tasks, skill routing
+- `.trellis/spec/` — package- and layer-scoped coding guidelines (read before writing code in a given layer)
+- `.trellis/workspace/` — per-developer journals and session traces
+- `.trellis/tasks/` — active and archived tasks (PRDs, research, jsonl context)
+
+If a Trellis command is available on your platform (e.g. `/trellis:finish-work`, `/trellis:continue`), prefer it over manual steps. Not every platform exposes every command.
+
+If you're using Codex or another agent-capable tool, additional project-scoped helpers may live in:
+- `.agents/skills/` — reusable Trellis skills
+- `.codex/agents/` — optional custom subagents
+
+Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
+
+<!-- TRELLIS:END -->

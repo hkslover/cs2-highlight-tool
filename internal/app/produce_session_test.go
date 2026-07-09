@@ -189,6 +189,55 @@ func TestPrepareAndRestorePluginDLLForProduce_BackupExistingTarget(t *testing.T)
 	}
 }
 
+func TestPreparePluginDLLForProduce_UsesDebugOverrideDLL(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	overridePath := filepath.Join(t.TempDir(), "debug-plugin.dll")
+	if err := os.WriteFile(overridePath, []byte("plugin-debug"), 0644); err != nil {
+		t.Fatalf("write debug plugin dll: %v", err)
+	}
+
+	app := &App{exeDir: env.exeDir}
+	if _, err := app.setDebugPluginDLLOverride(overridePath); err != nil {
+		t.Fatalf("setDebugPluginDLLOverride: %v", err)
+	}
+	if err := app.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("preparePluginDLLForProduce: %v", err)
+	}
+
+	targetPayload, err := os.ReadFile(env.targetDLLPath)
+	if err != nil {
+		t.Fatalf("read target dll: %v", err)
+	}
+	if string(targetPayload) != "plugin-debug" {
+		t.Fatalf("target should use debug plugin override, got %q", string(targetPayload))
+	}
+}
+
+func TestPreparePluginDLLForProduce_ClearDebugOverrideUsesConfiguredDLL(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	overridePath := filepath.Join(t.TempDir(), "debug-plugin.dll")
+	if err := os.WriteFile(overridePath, []byte("plugin-debug"), 0644); err != nil {
+		t.Fatalf("write debug plugin dll: %v", err)
+	}
+
+	app := &App{exeDir: env.exeDir}
+	if _, err := app.setDebugPluginDLLOverride(overridePath); err != nil {
+		t.Fatalf("setDebugPluginDLLOverride: %v", err)
+	}
+	app.ClearDebugPluginDLLOverride()
+	if err := app.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("preparePluginDLLForProduce: %v", err)
+	}
+
+	targetPayload, err := os.ReadFile(env.targetDLLPath)
+	if err != nil {
+		t.Fatalf("read target dll: %v", err)
+	}
+	if string(targetPayload) != "plugin-new" {
+		t.Fatalf("target should use configured plugin dll after clearing override, got %q", string(targetPayload))
+	}
+}
+
 func TestForceRestoreProduceEnvironmentForProduce_RestoresGameInfoAndPluginDLL(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	app := &App{exeDir: env.exeDir}

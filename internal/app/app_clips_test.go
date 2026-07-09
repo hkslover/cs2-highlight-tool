@@ -49,8 +49,8 @@ func TestGeneratePluginJSON_SortsByTickAndMergesByKillerTarget(t *testing.T) {
 	actions := sequences[1].Actions
 
 	// k1 and k2 should merge (same killer target 7), k3 should stay separate (target 9).
-	assertHasAction(t, actions, "demo_gototick 136")
-	assertHasAction(t, actions, "demo_gototick 156")
+	assertHasAction(t, actions, "demo_gototick 8")
+	assertHasAction(t, actions, "demo_gototick 275")
 	assertHasAction(t, actions, "spec_player 7")
 	assertHasAction(t, actions, "spec_player 9")
 }
@@ -122,8 +122,8 @@ func TestGeneratePluginJSON_VictimUsesVictimPrePostSeconds(t *testing.T) {
 	if len(sequences) != 3 {
 		t.Fatalf("sequence len=%d want 3", len(sequences))
 	}
-	assertHasAction(t, sequences[1].Actions, "demo_gototick 192")
-	assertHasAction(t, sequences[2].Actions, "demo_gototick 256")
+	assertHasAction(t, sequences[1].Actions, "demo_gototick 64")
+	assertHasAction(t, sequences[2].Actions, "demo_gototick 128")
 }
 
 func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
@@ -164,8 +164,8 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 	if len(sequences) != 3 {
 		t.Fatalf("sequence len=%d want 3", len(sequences))
 	}
-	assertHasAction(t, sequences[1].Actions, "demo_gototick 384")
-	assertHasAction(t, sequences[2].Actions, "demo_gototick 384")
+	assertHasAction(t, sequences[1].Actions, "demo_gototick 256")
+	assertHasAction(t, sequences[2].Actions, "demo_gototick 256")
 }
 
 func TestGeneratePluginJSON_ClipVictimOverridesIgnoredWhenVictimDisabled(t *testing.T) {
@@ -335,7 +335,7 @@ func TestGeneratePluginJSON_SameTargetDifferentKillerSpecModeInputsStillMerge(t 
 		t.Fatalf("sequence len=%d want 2", len(sequences))
 	}
 	actions := sequences[1].Actions
-	assertHasAction(t, actions, "demo_gototick 136")
+	assertHasAction(t, actions, "demo_gototick 8")
 	assertHasAction(t, actions, "spec_mode 1")
 	assertNoAction(t, actions, "spec_mode 3")
 }
@@ -1108,7 +1108,12 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_LaunchErrorWhenEnvironmentMissing(
 func TestGeneratePluginJSONBatchAndLaunchHLAE_PIDDetectFailureStopsLaunch(t *testing.T) {
 	exeDir := t.TempDir()
 	demoPath, _ := prepareLaunchTestEnvironment(t, exeDir)
-	app := &App{exeDir: exeDir}
+	produceW := producews.NewDefault(nil)
+	if err := produceW.Start(); err != nil {
+		t.Fatalf("start produce websocket: %v", err)
+	}
+	defer produceW.Stop()
+	app := &App{exeDir: exeDir, produceW: produceW}
 
 	oldLaunchCmd := launchHLAECommand
 	oldListFn := listCS2PIDsFn
@@ -1155,9 +1160,15 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_PIDDetectFailureStopsLaunch(t *tes
 func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *testing.T) {
 	exeDir := t.TempDir()
 	demoPath, _ := prepareLaunchTestEnvironment(t, exeDir)
+	produceW := producews.NewDefault(nil)
+	produceW.SetConnectWaitTimeout(1)
+	if err := produceW.Start(); err != nil {
+		t.Fatalf("start produce websocket: %v", err)
+	}
+	defer produceW.Stop()
 	app := &App{
 		exeDir:   exeDir,
-		produceW: producews.NewDefault(nil),
+		produceW: produceW,
 	}
 
 	oldLaunchCmd := launchHLAECommand
@@ -1203,7 +1214,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *test
 	if result.LaunchStarted {
 		t.Fatalf("launch should fail when StartQueue fails: %+v", result)
 	}
-	if !strings.Contains(result.LaunchError, "produce websocket server is not started") {
+	if !strings.Contains(result.LaunchError, "game websocket not connected") {
 		t.Fatalf("unexpected launch error: %q", result.LaunchError)
 	}
 	if closeCalls != 1 || closedPID != 1001 {

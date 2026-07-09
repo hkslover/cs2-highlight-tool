@@ -115,6 +115,92 @@ for _, searchPath := range knownInjectedSearchPaths() {
 
 `RemoveSearchPath` itself walks the file line-by-line and only drops standalone `Game\t<path>` / `Game <path>` entries, preserving comments and unrelated content.
 
+## Scenario: Debug Plugin DLL Override Contract
+
+### 1. Scope / Trigger
+
+- Trigger: Debug mode needs a temporary way to test a custom CS2 plugin DLL without replacing the installed plugin component.
+- Scope: `internal/app` Wails methods, `preparePluginDLLForProduce`, frontend settings debug section, and shared TypeScript state type.
+- Boundary: Settings debug row -> `GetDebugPluginDLLOverride` / `PickDebugPluginDLLOverride` / `ClearDebugPluginDLLOverride` -> session-only App state -> produce launch copies the selected DLL into CS2 `game/csgo/plugin/bin/server.dll`.
+
+### 2. Signatures
+
+```go
+func (a *App) GetDebugPluginDLLOverride() DebugPluginDLLOverrideState
+func (a *App) PickDebugPluginDLLOverride() (DebugPluginDLLOverrideState, error)
+func (a *App) ClearDebugPluginDLLOverride() DebugPluginDLLOverrideState
+
+type DebugPluginDLLOverrideState struct {
+    Active bool   `json:"active"`
+    Path   string `json:"path"`
+}
+```
+
+Frontend shared type:
+
+```ts
+export interface DebugPluginDLLOverrideState {
+  active: boolean;
+  path: string;
+}
+```
+
+### 3. Contracts
+
+- The override is session-only state on `internal/app.App`; it must not be written to `config.json`.
+- `PickDebugPluginDLLOverride` validates that the selected path is an existing `.dll` file. The filename does not need to be `server.dll` because the produce flow always copies the selected source to the fixed target `server.dll`.
+- `preparePluginDLLForProduce` resolves the source DLL as debug override first, then `config.PluginDLL`.
+- Target path, backup, rollback, and empty-directory cleanup remain owned by the existing `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce` flow.
+- Startup plugin component checks and local version detection continue to use the installed plugin directory and its `changelog.xml`; debug override must not affect component readiness or version truth.
+- Frontend may show the override only inside the debug settings section and must use the Wails methods as the source of truth.
+
+### 4. Validation & Error Matrix
+
+- `GetDebugPluginDLLOverride` before selection -> `{active:false,path:""}`.
+- User cancels the file picker -> return current state, no error.
+- Empty selected path -> return current state, no error.
+- Non-`.dll` selected path -> return Go error `请选择 DLL 文件: <path>`.
+- Missing selected path -> return Go error `调试插件 DLL 不存在: <path>`.
+- Directory selected where a file is required -> return Go error `调试插件 DLL 路径不是文件: <path>`.
+- Override file deleted after selection -> produce launch fails through `preparePluginDLLForProduce` with the normal missing-plugin error path.
+
+### 5. Good/Base/Bad Cases
+
+- Good: A developer selects `D:\dev\my-plugin.dll`; produce launch copies those bytes to `<cs2>/game/csgo/plugin/bin/server.dll`, then restores/removes the target through the existing session cleanup.
+- Base: No override is selected; produce launch uses `config.PluginDLL` exactly as before.
+- Base: Clearing the override returns immediately to the configured installed plugin DLL.
+- Bad: Persisting the debug path as `config.PluginDLL`, because startup plugin version checks require `changelog.xml` next to the installed `server.dll`.
+- Bad: Writing directly into the CS2 target from the picker; this bypasses the produce session backup/restore safety net.
+
+### 6. Tests Required
+
+- `internal/app`: `preparePluginDLLForProduce` uses the debug override bytes when an override is active.
+- `internal/app`: clearing the debug override falls back to the configured `PluginDLL`.
+- `go test ./...` must pass after adding or changing the Wails methods.
+- `cd frontend && npm run build` must pass after changing shared types or the settings UI.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+cfg.PluginDLL = selectedDebugDLL
+_ = config.Save(a.configPath(), cfg)
+```
+
+This pollutes persistent component state and can break startup version detection.
+
+#### Correct
+
+```go
+pluginSourcePath := a.resolvePluginDLLSourcePath(cfg) // override first, config fallback
+if err := copyFileWithReplace(pluginSourcePath, targetPath); err != nil {
+    return fmt.Errorf("注入插件 DLL 失败: %w", err)
+}
+```
+
+The debug path affects only the source file selected for this produce session.
+
 ## Scenario: Startup FFmpeg Reinstall Probe Cancellation Contract
 
 ### 1. Scope / Trigger

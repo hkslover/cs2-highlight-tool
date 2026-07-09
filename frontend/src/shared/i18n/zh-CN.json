@@ -327,6 +327,9 @@
       "disable_clouds": "关闭云层",
       "kill_feed_lifetime": "击杀信息留存时间(秒)",
       "block_kill_feed": "屏蔽所有击杀信息",
+      "recording_options_list_title": "配置",
+      "recording_options_search_placeholder": "搜索设置",
+      "recording_options_empty": "没有匹配的设置",
       "outputs_video_count": "视频数量",
       "demo_count": "Dem数量",
       "outputs_total_size": "占用空间",
@@ -343,6 +346,9 @@
       "demo_clear_confirm_content": "将删除 demo 目录下的所有文件和文件夹（当前 {count} 个 demo 文件，{size}），此操作不可恢复。",
       "demo_clear_success": "demo目录已清理",
       "keep_produce_intermediates": "保留制作中间产物",
+      "debug_plugin_dll": "调试插件 DLL",
+      "debug_plugin_dll_default": "使用已安装插件",
+      "debug_plugin_dll_clear": "清除",
       "browse": "浏览"
     }
   },

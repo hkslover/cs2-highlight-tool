@@ -179,6 +179,7 @@
     ".claude/skills/trellis-spec-bootstarp/references/spec-task-planning.md": "ef493d028c3b0807a8a534bb71fb92a68129f273db763ad27ceb464a522e799d",
     ".claude/skills/trellis-spec-bootstarp/references/spec-writing.md": "e9800fe9ed4a4cd87062ea1829cf2caa8d170ec15e141678a6a30e74c497f47d",
     ".claude/skills/trellis-spec-bootstarp/SKILL.md": "81f400092b21392161e7d9dfa9111c9be36c81bc8641d252ed28e08373449ac0",
-    ".trellis/.runtime/update-check-codex_019e370c-5f50-79d3-92cc-7b0451c17c1c.marker": "77c2ca150b61c7330da139378ffd3940d093f1bd74a1294689345d27e15b5124"
+    ".trellis/.runtime/update-check-codex_019e370c-5f50-79d3-92cc-7b0451c17c1c.marker": "77c2ca150b61c7330da139378ffd3940d093f1bd74a1294689345d27e15b5124",
+    "AGENTS.md": "cf9199bc48ce67e93768654201b2b6a231e5b35979a83208346ef80b95269b34"
   }
 }
