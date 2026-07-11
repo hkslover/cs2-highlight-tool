@@ -29,6 +29,9 @@ type App struct {
 
 	produceStateMu sync.Mutex
 	produceState   produceSessionState
+
+	debugPluginDLLMu       sync.Mutex
+	debugPluginDLLOverride string
 }
 
 func New(wailsConfigData []byte) *App {

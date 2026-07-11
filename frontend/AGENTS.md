@@ -33,10 +33,13 @@
 - Must：`ClipSettings.launch_resolution` 需与后端保持一致，允许值 `16:9|4:3|4:3_1280x960`（`4:3` 代表 `1440x1080`，`4:3_1280x960` 代表 `1280x960`；两种 4:3 录制输出均由后端 FFmpeg 参数标记为 16:9 stretched playback）。
 - Must：`ClipSettings.hide_all_ui` 需与后端保持一致，默认 `false`；开启时生成插件 JSON bootstrap 写入 `cl_draw_only_deathnotices 1`，关闭时不写入该命令。
 - Must：`ClipSettings.use_shoulder_camera` 需与后端保持一致，默认 `false`；开启时生成插件 JSON bootstrap 在 `r_show_build_info 0` 前写入越肩视角命令，关闭时不写入该命令。
+- Must：`ClipSettings.sky_blackout` 需与后端保持一致，默认 `true`；开启时仅写入 `r_drawskybox 0`，不得联动关闭云层。
+- Must：`ClipSettings.disable_clouds` 需与后端保持一致，默认 `false`；开启时仅写入 `mirv_sky clouds draw 0`，关闭时不写入该命令。
 - Must：整局 POV 录制状态必须作为 demo 级独立状态维护，不得伪装成普通击杀片段；生成请求通过 `full_round_pov.player_steam_id` 传递，普通 victim clip 仍通过 `selected_items[]` 传递。
 - Must：全玩家选择器需要精确 SteamID 时使用 `DemoPlayerInfo.steam_id_text`，不得使用 JS number 形式的 `steam_id` 作为后端请求值。
 - Must：整局 POV 模式下新增的 victim-only `selected_items[]` 必须传 `include_killer=false`，避免额外生成击杀者片段。
 - Must：调用 `GeneratePluginJSONBatchAndLaunchHLAE` 时允许传递可选 `debug.keep_intermediate_files`，用于控制是否保留录制中间产物（仅会话级生效）。
+- Must：debug 插件 DLL override 以 `GetDebugPluginDLLOverride` / `PickDebugPluginDLLOverride` / `ClearDebugPluginDLLOverride` 为单一事实来源；前端只在 debug 设置分组中展示，不写入本地持久化状态，也不得混入普通设置分组。
 - Must Not：在前端新增与后端冲突的“本地自定义状态枚举”替代后端状态。
 
 ## UI 状态映射

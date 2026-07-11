@@ -1,7 +1,6 @@
 package app
 
 import (
-	"math"
 	"strings"
 
 	"cs2-highlight-tool-v2/internal/config"
@@ -30,6 +29,7 @@ type ClipSettings struct {
 	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
 	PovHudEnabled      bool    `json:"pov_hud_enabled"`
 	SkyBlackout        bool    `json:"sky_blackout"`
+	DisableClouds      bool    `json:"disable_clouds"`
 	KillFeedLifetime   int     `json:"kill_feed_lifetime"`
 	BlockKillFeed      bool    `json:"block_kill_feed"`
 }
@@ -82,6 +82,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 		UseShoulderCamera:  cfg.UseShoulderCamera,
 		PovHudEnabled:      cfg.PovHudEnabled,
 		SkyBlackout:        cfg.SkyBlackout,
+		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
 		BlockKillFeed:      cfg.BlockKillFeed,
 	})
@@ -115,6 +116,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 	cfg.UseShoulderCamera = settings.UseShoulderCamera
 	cfg.PovHudEnabled = settings.PovHudEnabled
 	cfg.SkyBlackout = settings.SkyBlackout
+	cfg.DisableClouds = settings.DisableClouds
 	cfg.KillFeedLifetime = settings.KillFeedLifetime
 	cfg.BlockKillFeed = settings.BlockKillFeed
 	actionSettings := config.ResolveClipActionSettings(cfg)
@@ -188,10 +190,10 @@ func (a *App) fixedRecordOutputDir() string {
 
 func normalizeClipSettings(input ClipSettings) ClipSettings {
 	settings := input
-	settings.KillerPreSeconds = normalizeSeconds(settings.KillerPreSeconds, config.DefaultKillerPreSeconds, 1, 5)
-	settings.KillerPostSeconds = normalizeSeconds(settings.KillerPostSeconds, config.DefaultKillerPostSeconds, 1, 5)
-	settings.VictimPreSeconds = normalizeSeconds(settings.VictimPreSeconds, config.DefaultVictimPreSeconds, 1, 2)
-	settings.VictimPostSeconds = normalizeSeconds(settings.VictimPostSeconds, config.DefaultVictimPostSeconds, 1, 2)
+	settings.KillerPreSeconds = config.NormalizeClipWindowSeconds(settings.KillerPreSeconds, config.DefaultKillerPreSeconds)
+	settings.KillerPostSeconds = config.NormalizeClipWindowSeconds(settings.KillerPostSeconds, config.DefaultKillerPostSeconds)
+	settings.VictimPreSeconds = config.NormalizeClipWindowSeconds(settings.VictimPreSeconds, config.DefaultVictimPreSeconds)
+	settings.VictimPostSeconds = config.NormalizeClipWindowSeconds(settings.VictimPostSeconds, config.DefaultVictimPostSeconds)
 	if settings.RecordFPS <= 0 {
 		settings.RecordFPS = config.DefaultRecordFPS
 	}
@@ -238,19 +240,6 @@ func normalizeClipActionSettings(input ClipActionSettings) ClipActionSettings {
 	input.EnableVoiceIndices = enabled
 	input.EnableVoiceIndicesH = enabled
 	return input
-}
-
-func normalizeSeconds(value float64, fallback float64, min float64, max float64) float64 {
-	if value <= 0 {
-		value = fallback
-	}
-	if value < min {
-		value = min
-	}
-	if value > max {
-		value = max
-	}
-	return math.Round(value*2) / 2
 }
 
 func boolPtr(value bool) *bool {

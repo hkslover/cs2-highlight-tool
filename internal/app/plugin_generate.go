@@ -468,6 +468,7 @@ func (a *App) generatePluginJSONInternal(
 		HideAllUI:          cfg.HideAllUI,
 		UseShoulderCamera:  cfg.UseShoulderCamera,
 		SkyBlackout:        cfg.SkyBlackout,
+		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
 		BlockKillFeed:      cfg.BlockKillFeed,
 	})
@@ -539,6 +540,7 @@ func (a *App) generatePluginJSONInternal(
 		HideAllUI:                 clipSettings.HideAllUI,
 		UseShoulderCamera:         clipSettings.UseShoulderCamera,
 		SkyBlackout:               clipSettings.SkyBlackout,
+		DisableClouds:             clipSettings.DisableClouds,
 		KillFeedLifetime:          clipSettings.KillFeedLifetime,
 		BlockKillFeed:             clipSettings.BlockKillFeed,
 		ForcePerPassVoiceCommands: hasVoiceOverride,
@@ -887,10 +889,10 @@ func normalizeSelectedItems(req GeneratePluginJSONRequest, defaults ClipSettings
 			}
 		}
 
-		killerPreSeconds = normalizeSeconds(killerPreSeconds, defaults.KillerPreSeconds, 1, 5)
-		killerPostSeconds = normalizeSeconds(killerPostSeconds, defaults.KillerPostSeconds, 1, 5)
-		victimPreSeconds = normalizeSeconds(victimPreSeconds, defaults.VictimPreSeconds, 1, 2)
-		victimPostSeconds = normalizeSeconds(victimPostSeconds, defaults.VictimPostSeconds, 1, 2)
+		killerPreSeconds = config.NormalizeClipWindowSeconds(killerPreSeconds, defaults.KillerPreSeconds)
+		killerPostSeconds = config.NormalizeClipWindowSeconds(killerPostSeconds, defaults.KillerPostSeconds)
+		victimPreSeconds = config.NormalizeClipWindowSeconds(victimPreSeconds, defaults.VictimPreSeconds)
+		victimPostSeconds = config.NormalizeClipWindowSeconds(victimPostSeconds, defaults.VictimPostSeconds)
 
 		normalized = append(normalized, clipsjson.Item{
 			Kill:                    item.Kill,

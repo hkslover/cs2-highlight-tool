@@ -182,7 +182,7 @@
                         <n-input-number
                           :value="effectiveNumberValue(item, 'killer_pre_seconds')"
                           :min="1"
-                          :max="5"
+                          :max="20"
                           :step="0.5"
                           :precision="1"
                           @update:value="handleKillerPreValueChange(entry, item.kill.id, $event)"
@@ -193,7 +193,7 @@
                         <n-input-number
                           :value="effectiveNumberValue(item, 'killer_post_seconds')"
                           :min="1"
-                          :max="5"
+                          :max="20"
                           :step="0.5"
                           :precision="1"
                           @update:value="handleKillerPostValueChange(entry, item.kill.id, $event)"
@@ -205,7 +205,7 @@
                           <n-input-number
                             :value="effectiveNumberValue(item, 'victim_pre_seconds')"
                             :min="1"
-                            :max="2"
+                            :max="20"
                             :step="0.5"
                             :precision="1"
                             @update:value="handleVictimPreValueChange(entry, item.kill.id, $event)"
@@ -216,7 +216,7 @@
                           <n-input-number
                             :value="effectiveNumberValue(item, 'victim_post_seconds')"
                             :min="1"
-                            :max="2"
+                            :max="20"
                             :step="0.5"
                             :precision="1"
                             @update:value="handleVictimPostValueChange(entry, item.kill.id, $event)"
@@ -410,6 +410,7 @@ const clipSettings = ref<ClipSettings>({
   use_shoulder_camera: false,
   pov_hud_enabled: true,
   sky_blackout: true,
+  disable_clouds: false,
   kill_feed_lifetime: 4,
   block_kill_feed: false,
 });

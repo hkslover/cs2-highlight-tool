@@ -18,6 +18,7 @@ const (
 	segmentSpecModeDelay   = 3
 	segmentSpecPlayerDelay = 8
 	segmentRecordDelay     = 2
+	segmentSeekSettleSec   = 2.0
 )
 
 const shoulderCameraCommand = "cam_command 1;cam_idealdist 30;cam_idealyaw 0;cam_idealpitch 0;c_thirdpersonshoulder 1;c_thirdpersonshoulderaimdist 300;c_thirdpersonshoulderdist 40;c_thirdpersonshoulderheight 2;c_thirdpersonshoulderoffset 20;"
@@ -79,6 +80,7 @@ type BuildOptions struct {
 	HideAllUI                 bool
 	UseShoulderCamera         bool
 	SkyBlackout               bool
+	DisableClouds             bool
 	KillFeedLifetime          int
 	BlockKillFeed             bool
 	ForcePerPassVoiceCommands bool
@@ -156,6 +158,7 @@ type bootstrapOptions struct {
 	HideAllUI          bool
 	UseShoulderCamera  bool
 	SkyBlackout        bool
+	DisableClouds      bool
 	KillFeedLifetime   int
 	BlockKillFeed      bool
 	RecordFPS          int
@@ -193,6 +196,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 	if tickRate <= 0 {
 		tickRate = DefaultTickRate
 	}
+	seekSettleTicks := int(math.Round(segmentSeekSettleSec * tickRate))
 	preTicks := int(math.Round(opts.KillerPreSeconds * tickRate))
 	postTicks := int(math.Round(opts.KillerPostSeconds * tickRate))
 	victimPreTicks := int(math.Round(opts.VictimPreSeconds * tickRate))
@@ -229,7 +233,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 
 	killerSegments := buildKillerSegments(normalized, tickRate, preTicks, postTicks)
 	victimSegments := buildVictimSegments(normalized, tickRate, victimPreTicks, victimPostTicks)
-	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", buildPassCommandOptions{
+	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, buildPassCommandOptions{
 		ForceVoice: opts.ForcePerPassVoiceCommands,
 		ForceXray:  opts.ForcePerPassXrayCommands,
 	})
@@ -241,6 +245,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		HideAllUI:          opts.HideAllUI,
 		UseShoulderCamera:  opts.UseShoulderCamera,
 		SkyBlackout:        opts.SkyBlackout,
+		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
 		BlockKillFeed:      opts.BlockKillFeed,
 		RecordFPS:          recordFPS,
@@ -471,6 +476,7 @@ func buildMaterialSequences(
 	killerSegments []killSegment,
 	victimSegments []killSegment,
 	terminalCommand string,
+	seekSettleTicks int,
 	passCommandOptions buildPassCommandOptions,
 ) ([]Sequence, []TakePlan) {
 	sequences := make([]Sequence, 0, 2+len(victimSegments))
@@ -512,7 +518,7 @@ func buildMaterialSequences(
 		if len(killerSegments) > 0 || len(victimSegments) > 0 {
 			command = "go_to_next_sequence"
 		}
-		actions, plans := buildActionsFromPasses(fullRoundPasses, command, &takeCounter, passCommandOptions)
+		actions, plans := buildActionsFromPasses(fullRoundPasses, command, &takeCounter, seekSettleTicks, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -537,7 +543,7 @@ func buildMaterialSequences(
 		if len(victimSegments) > 0 {
 			command = "go_to_next_sequence"
 		}
-		actions, plans := buildActionsFromPasses(killerPasses, command, &takeCounter, passCommandOptions)
+		actions, plans := buildActionsFromPasses(killerPasses, command, &takeCounter, seekSettleTicks, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -558,7 +564,7 @@ func buildMaterialSequences(
 			KillIDs:            append([]string(nil), seg.KillIDs...),
 			EnableVoice:        seg.EnableVoice,
 			EnableSpecShowXray: seg.EnableSpecShowXray,
-		}}, finalCommand, &takeCounter, passCommandOptions)
+		}}, finalCommand, &takeCounter, seekSettleTicks, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -590,8 +596,10 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	actions = append(actions, Action{Cmd: "engine_no_focus_sleep 0", Tick: actionTick})
 	actions = append(actions, Action{Cmd: "cl_demo_predict 0", Tick: actionTick})
 	actions = append(actions, Action{Cmd: "cl_spec_show_bindings 0", Tick: actionTick})
-	if opts.SkyBlackout {
+	if opts.DisableClouds {
 		actions = append(actions, Action{Cmd: "mirv_sky clouds draw 0", Tick: actionTick})
+	}
+	if opts.SkyBlackout {
 		actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
 	}
 	lifetime := opts.KillFeedLifetime
@@ -646,6 +654,7 @@ func buildActionsFromPasses(
 	passes []clipPass,
 	finalCommand string,
 	takeCounter *int,
+	seekSettleTicks int,
 	passCommandOptions buildPassCommandOptions,
 ) ([]Action, []TakePlan) {
 	if len(passes) == 0 {
@@ -666,7 +675,15 @@ func buildActionsFromPasses(
 				jumpTick = DefaultActionTick
 			}
 		}
-		actions = append(actions, Action{Cmd: fmt.Sprintf("demo_gototick %d", pass.StartTick), Tick: jumpTick})
+		seekTargetTick := pass.StartTick - seekSettleTicks
+		minSeekTargetTick := 0
+		if idx > 0 {
+			minSeekTargetTick = jumpTick
+		}
+		if seekTargetTick < minSeekTargetTick {
+			seekTargetTick = minSeekTargetTick
+		}
+		actions = append(actions, Action{Cmd: fmt.Sprintf("demo_gototick %d", seekTargetTick), Tick: jumpTick})
 
 		specModeTick := pass.StartTick + segmentSpecModeDelay
 		if specModeTick < DefaultActionTick+segmentSpecModeDelay {

@@ -56,8 +56,10 @@ export namespace app {
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
+	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    sky_blackout: boolean;
+	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
 	    block_kill_feed: boolean;
 	
@@ -82,10 +84,26 @@ export namespace app {
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
+	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.sky_blackout = source["sky_blackout"];
+	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
 	        this.block_kill_feed = source["block_kill_feed"];
+	    }
+	}
+	export class DebugPluginDLLOverrideState {
+	    active: boolean;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugPluginDLLOverrideState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.active = source["active"];
+	        this.path = source["path"];
 	    }
 	}
 	export class DemoStorageStats {
@@ -528,6 +546,24 @@ export namespace app {
 	        this.total_size_bytes = source["total_size_bytes"];
 	    }
 	}
+	export class PendingChangelog {
+	    version: string;
+	    body_zh: string;
+	    body_en: string;
+	    should_show: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PendingChangelog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.body_zh = source["body_zh"];
+	        this.body_en = source["body_en"];
+	        this.should_show = source["should_show"];
+	    }
+	}
 	export class PlatformClientCloseResult {
 	    exe_name: string;
 	    closed: boolean;
@@ -800,10 +836,13 @@ export namespace config {
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
+	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    sky_blackout: boolean;
+	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
 	    block_kill_feed: boolean;
+	    last_changelog_version?: string;
 	    clip_action_settings?: ClipActionSettings;
 	
 	    static createFrom(source: any = {}) {
@@ -838,10 +877,13 @@ export namespace config {
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
+	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.sky_blackout = source["sky_blackout"];
+	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
 	        this.block_kill_feed = source["block_kill_feed"];
+	        this.last_changelog_version = source["last_changelog_version"];
 	        this.clip_action_settings = this.convertValues(source["clip_action_settings"], ClipActionSettings);
 	    }
 	
@@ -987,6 +1029,7 @@ export namespace demo {
 	    freeze_end_tick: number;
 	    round_end_tick: number;
 	    official_end_tick?: number;
+	    next_round_start_tick?: number;
 	    death_tick?: number;
 	    record_start_tick: number;
 	    record_end_tick: number;
@@ -1004,6 +1047,7 @@ export namespace demo {
 	        this.freeze_end_tick = source["freeze_end_tick"];
 	        this.round_end_tick = source["round_end_tick"];
 	        this.official_end_tick = source["official_end_tick"];
+	        this.next_round_start_tick = source["next_round_start_tick"];
 	        this.death_tick = source["death_tick"];
 	        this.record_start_tick = source["record_start_tick"];
 	        this.record_end_tick = source["record_end_tick"];
@@ -1162,11 +1206,11 @@ export namespace envsetup {
 	    latest: string;
 	    url: string;
 	    error: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SelfUpdateState(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];

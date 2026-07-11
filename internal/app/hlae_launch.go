@@ -49,6 +49,13 @@ func (a *App) launchHLAEGame() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("枚举 cs2 进程失败: %w", err)
 	}
+	if a.produceW == nil {
+		return 0, fmt.Errorf("produce websocket server is not available")
+	}
+	port, err := a.produceW.Port()
+	if err != nil {
+		return 0, fmt.Errorf("获取 produce websocket 端口失败: %w", err)
+	}
 
 	cmdLine := buildHLAECommandLine(cfg.LaunchResolution)
 	args := []string{
@@ -60,7 +67,7 @@ func (a *App) launchHLAEGame() (int, error) {
 	}
 
 	cmd := launchHLAECommand(hlaeExe, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), fmt.Sprintf("CSDM_WS_PORT=%d", port))
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("启动 HLAE 失败: %w", err)
 	}

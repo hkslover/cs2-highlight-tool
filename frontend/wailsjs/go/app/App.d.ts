@@ -7,9 +7,13 @@ import {fivee} from '../models';
 import {wanmei} from '../models';
 import {demo} from '../models';
 
+export function AckChangelog(arg1:string):Promise<void>;
+
 export function CancelStartupDownload(arg1:string):Promise<envsetup.StartupState>;
 
 export function CheckPlatformClients():Promise<Array<app.PlatformClientStatus>>;
+
+export function ClearDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
 
 export function ClearDemoDirectory():Promise<app.DemoStorageStats>;
 
@@ -35,6 +39,8 @@ export function GetClipActionSettings():Promise<app.ClipActionSettings>;
 
 export function GetClipSettings():Promise<app.ClipSettings>;
 
+export function GetDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
+
 export function GetDemoStorageStats():Promise<app.DemoStorageStats>;
 
 export function GetFiveEPlayerName():Promise<string>;
@@ -42,6 +48,8 @@ export function GetFiveEPlayerName():Promise<string>;
 export function GetGameInfoHealth():Promise<app.GameInfoHealth>;
 
 export function GetOutputsStorageStats():Promise<app.OutputsStorageStats>;
+
+export function GetPendingChangelog():Promise<app.PendingChangelog>;
 
 export function GetProduceHistorySnapshot():Promise<app.ProduceHistorySnapshot>;
 
@@ -80,6 +88,8 @@ export function OpenProducedClipInFolder(arg1:string):Promise<void>;
 export function ParseDemoFile(arg1:string):Promise<demo.Metadata>;
 
 export function PickCS2Path():Promise<envsetup.StartupState>;
+
+export function PickDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
 
 export function PickDemoFiles():Promise<Array<string>>;
 

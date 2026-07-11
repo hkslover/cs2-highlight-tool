@@ -49,8 +49,8 @@ func TestGeneratePluginJSON_SortsByTickAndMergesByKillerTarget(t *testing.T) {
 	actions := sequences[1].Actions
 
 	// k1 and k2 should merge (same killer target 7), k3 should stay separate (target 9).
-	assertHasAction(t, actions, "demo_gototick 136")
-	assertHasAction(t, actions, "demo_gototick 156")
+	assertHasAction(t, actions, "demo_gototick 8")
+	assertHasAction(t, actions, "demo_gototick 275")
 	assertHasAction(t, actions, "spec_player 7")
 	assertHasAction(t, actions, "spec_player 9")
 }
@@ -122,8 +122,8 @@ func TestGeneratePluginJSON_VictimUsesVictimPrePostSeconds(t *testing.T) {
 	if len(sequences) != 3 {
 		t.Fatalf("sequence len=%d want 3", len(sequences))
 	}
-	assertHasAction(t, sequences[1].Actions, "demo_gototick 192")
-	assertHasAction(t, sequences[2].Actions, "demo_gototick 256")
+	assertHasAction(t, sequences[1].Actions, "demo_gototick 64")
+	assertHasAction(t, sequences[2].Actions, "demo_gototick 128")
 }
 
 func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
@@ -145,13 +145,13 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 		TickRate: 64,
 		SelectedItems: []SelectedClipItem{
 			{
-				Kill:          demo.ClipKill{ID: "k1", Tick: 320, KillerSlot: 7, VictimSlot: 11},
+				Kill:          demo.ClipKill{ID: "k1", Tick: 640, KillerSlot: 7, VictimSlot: 11},
 				IncludeVictim: true,
 				ClipOverrides: &ClipItemOverrides{
-					KillerPreSeconds:  float64Ptr(1.5),
+					KillerPreSeconds:  float64Ptr(4),
 					KillerPostSeconds: float64Ptr(1.5),
-					VictimPreSeconds:  float64Ptr(2),
-					VictimPostSeconds: float64Ptr(2),
+					VictimPreSeconds:  float64Ptr(4),
+					VictimPostSeconds: float64Ptr(4),
 				},
 			},
 		},
@@ -164,8 +164,8 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 	if len(sequences) != 3 {
 		t.Fatalf("sequence len=%d want 3", len(sequences))
 	}
-	assertHasAction(t, sequences[1].Actions, "demo_gototick 224")
-	assertHasAction(t, sequences[2].Actions, "demo_gototick 192")
+	assertHasAction(t, sequences[1].Actions, "demo_gototick 256")
+	assertHasAction(t, sequences[2].Actions, "demo_gototick 256")
 }
 
 func TestGeneratePluginJSON_ClipVictimOverridesIgnoredWhenVictimDisabled(t *testing.T) {
@@ -335,7 +335,7 @@ func TestGeneratePluginJSON_SameTargetDifferentKillerSpecModeInputsStillMerge(t 
 		t.Fatalf("sequence len=%d want 2", len(sequences))
 	}
 	actions := sequences[1].Actions
-	assertHasAction(t, actions, "demo_gototick 136")
+	assertHasAction(t, actions, "demo_gototick 8")
 	assertHasAction(t, actions, "spec_mode 1")
 	assertNoAction(t, actions, "spec_mode 3")
 }
@@ -699,15 +699,18 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
+	if initial.DisableClouds {
+		t.Fatalf("disable_clouds should default to false: %+v", initial)
+	}
 	if initial.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("default record_output_dir mismatch: %+v", initial)
 	}
 
 	saved, err := app.SaveClipSettings(ClipSettings{
-		KillerPreSeconds:  6.1,
+		KillerPreSeconds:  20,
 		KillerPostSeconds: 0.3,
-		VictimPreSeconds:  1.26,
-		VictimPostSeconds: 2.9,
+		VictimPreSeconds:  19.5,
+		VictimPostSeconds: 22.9,
 		AutoAddVictimView: false,
 		EnableVoice:       false,
 		EditFPS:           300,
@@ -717,15 +720,16 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		LaunchResolution:  "16:9",
 		HideAllUI:         true,
 		UseShoulderCamera: true,
+		DisableClouds:     true,
 	})
 	if err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
 	}
-	if saved.KillerPreSeconds != 5 || saved.KillerPostSeconds != 1 {
-		t.Fatalf("killer settings should be clamped to [1,5] with 0.5 step: %+v", saved)
+	if saved.KillerPreSeconds != 20 || saved.KillerPostSeconds != 1 {
+		t.Fatalf("killer settings should be clamped to [1,20] with 0.5 step: %+v", saved)
 	}
-	if saved.VictimPreSeconds != 1.5 || saved.VictimPostSeconds != 2 {
-		t.Fatalf("victim settings should be clamped to [1,2] with 0.5 step: %+v", saved)
+	if saved.VictimPreSeconds != 19.5 || saved.VictimPostSeconds != 20 {
+		t.Fatalf("victim settings should be clamped to [1,20] with 0.5 step: %+v", saved)
 	}
 	if saved.AutoAddVictimView || saved.EnableVoice {
 		t.Fatalf("auto/voice settings should persist false: %+v", saved)
@@ -745,6 +749,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
 	}
+	if !saved.DisableClouds {
+		t.Fatalf("disable_clouds should persist true: %+v", saved)
+	}
 	if saved.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("record_output_dir should be fixed under exeDir: %+v", saved)
 	}
@@ -753,7 +760,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetClipSettings after save: %v", err)
 	}
-	if loaded.KillerPreSeconds != 5 || loaded.KillerPostSeconds != 1 || loaded.VictimPreSeconds != 1.5 || loaded.VictimPostSeconds != 2 {
+	if loaded.KillerPreSeconds != 20 || loaded.KillerPostSeconds != 1 || loaded.VictimPreSeconds != 19.5 || loaded.VictimPostSeconds != 20 {
 		t.Fatalf("saved clip settings mismatch: %+v", loaded)
 	}
 	if loaded.AutoAddVictimView || loaded.EnableVoice {
@@ -773,6 +780,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)
+	}
+	if !loaded.DisableClouds {
+		t.Fatalf("saved disable_clouds mismatch: %+v", loaded)
 	}
 	if loaded.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("loaded record_output_dir should be fixed under exeDir: %+v", loaded)
@@ -1098,7 +1108,12 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_LaunchErrorWhenEnvironmentMissing(
 func TestGeneratePluginJSONBatchAndLaunchHLAE_PIDDetectFailureStopsLaunch(t *testing.T) {
 	exeDir := t.TempDir()
 	demoPath, _ := prepareLaunchTestEnvironment(t, exeDir)
-	app := &App{exeDir: exeDir}
+	produceW := producews.NewDefault(nil)
+	if err := produceW.Start(); err != nil {
+		t.Fatalf("start produce websocket: %v", err)
+	}
+	defer produceW.Stop()
+	app := &App{exeDir: exeDir, produceW: produceW}
 
 	oldLaunchCmd := launchHLAECommand
 	oldListFn := listCS2PIDsFn
@@ -1145,9 +1160,15 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_PIDDetectFailureStopsLaunch(t *tes
 func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *testing.T) {
 	exeDir := t.TempDir()
 	demoPath, _ := prepareLaunchTestEnvironment(t, exeDir)
+	produceW := producews.NewDefault(nil)
+	produceW.SetConnectWaitTimeout(1)
+	if err := produceW.Start(); err != nil {
+		t.Fatalf("start produce websocket: %v", err)
+	}
+	defer produceW.Stop()
 	app := &App{
 		exeDir:   exeDir,
-		produceW: producews.NewDefault(nil),
+		produceW: produceW,
 	}
 
 	oldLaunchCmd := launchHLAECommand
@@ -1193,7 +1214,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *test
 	if result.LaunchStarted {
 		t.Fatalf("launch should fail when StartQueue fails: %+v", result)
 	}
-	if !strings.Contains(result.LaunchError, "produce websocket server is not started") {
+	if !strings.Contains(result.LaunchError, "game websocket not connected") {
 		t.Fatalf("unexpected launch error: %q", result.LaunchError)
 	}
 	if closeCalls != 1 || closedPID != 1001 {

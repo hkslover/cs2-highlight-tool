@@ -7,3 +7,8 @@ export interface GameInfoHealth {
   message: string;
   error: string;
 }
+
+export interface DebugPluginDLLOverrideState {
+  active: boolean;
+  path: string;
+}

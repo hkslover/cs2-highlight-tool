@@ -333,6 +333,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	if cfg.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false")
 	}
+	if cfg.DisableClouds {
+		t.Fatalf("disable_clouds should default to false")
+	}
 
 	saved, err := os.ReadFile(path)
 	if err != nil {
@@ -355,6 +358,34 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(saved), "use_shoulder_camera") {
 		t.Fatalf("saved config should contain use_shoulder_camera, got: %s", string(saved))
+	}
+	if !strings.Contains(string(saved), "disable_clouds") {
+		t.Fatalf("saved config should contain disable_clouds, got: %s", string(saved))
+	}
+}
+
+func TestLoadOrCreate_NormalizesClipWindowSeconds(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	payload := `{
+  "killer_pre_seconds": 20,
+  "killer_post_seconds": 22.9,
+  "victim_pre_seconds": 19.5,
+  "victim_post_seconds": 0.3
+}`
+	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadOrCreate(path, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KillerPreSeconds != 20 || cfg.KillerPostSeconds != 20 {
+		t.Fatalf("killer window seconds should normalize to [1,20]: pre=%v post=%v", cfg.KillerPreSeconds, cfg.KillerPostSeconds)
+	}
+	if cfg.VictimPreSeconds != 19.5 || cfg.VictimPostSeconds != 1 {
+		t.Fatalf("victim window seconds should normalize to [1,20]: pre=%v post=%v", cfg.VictimPreSeconds, cfg.VictimPostSeconds)
 	}
 }
 
@@ -381,12 +412,15 @@ func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) 
 	if cfg.BlockKillFeed {
 		t.Fatalf("block_kill_feed should default to false")
 	}
+	if cfg.DisableClouds {
+		t.Fatalf("legacy config should default disable_clouds to false")
+	}
 
 	saved, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") {
+	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "disable_clouds") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") {
 		t.Fatalf("saved config should contain new recording fields, got: %s", string(saved))
 	}
 }

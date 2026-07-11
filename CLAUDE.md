@@ -32,7 +32,7 @@ main.go                          # Wails bootstrap
 internal/
   app/                           # Wails binding layer — top of dep tree, no business logic
   envsetup/                      # Startup state machine (component detect/dl/install)
-  producews/                     # WebSocket server (127.0.0.1:4574) for HLAE/CS2 game comm
+  producews/                     # WebSocket server (OS-assigned loopback port) for HLAE/CS2 game comm
   clipsjson/                     # HLAE plugin JSON builder from kill data
   demo/                          # CS2 .dem parser (demoinfocs-golang v5)
   config/                        # config.json read/write, defaults, path normalization

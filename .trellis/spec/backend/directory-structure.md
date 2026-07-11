@@ -31,7 +31,7 @@ This is a **Wails v2** desktop application with a Go backend and Vue 3 + TypeScr
 │   ├── procutil/             # OS-specific process creation helpers (Windows/other)
 │   ├── producegame/          # CS2 game environment helpers: gameinfo.gi path resolution and plugin search path injection
 │   ├── producemerge/         # FFmpeg-based video/audio merge logic for produce session take files
-│   ├── producews/            # WebSocket server (127.0.0.1:4574) for HLAE/CS2 game comm
+│   ├── producews/            # WebSocket server (OS-assigned loopback port) for HLAE/CS2 game comm
 │   ├── release/              # Unified release API client, version compare, asset select
 │   └── wanmei/               # Wanmei (完美) API client: match listing, demo download/caching
 ├── frontend/                 # Vue 3 + TypeScript frontend

@@ -163,44 +163,52 @@ func TestBuild_ShoulderCameraCommandBeforeBuildInfoOnlyWhenEnabled(t *testing.T)
 	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "c_thirdpersonshoulder")
 }
 
-func TestBuild_SkyBlackoutEmitsTwoCommandsOnlyWhenEnabled(t *testing.T) {
-	enabled, err := Build([]Item{{
-		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
-		IncludeVictim: false,
-	}}, BuildOptions{
-		TickRate:          64,
-		KillerPreSeconds:  1,
-		KillerPostSeconds: 1,
-		RecordFPS:         60,
-		VideoPreset:       "n1",
-		RecordOutputDir:   `D:/clips/output`,
-		SkyBlackout:       true,
-		KillFeedLifetime:  4,
-	})
-	if err != nil {
-		t.Fatalf("Build sky on: %v", err)
+func TestBuild_SkyBlackoutAndCloudsAreIndependent(t *testing.T) {
+	tests := []struct {
+		name             string
+		skyBlackout      bool
+		disableClouds    bool
+		wantSkybox       bool
+		wantCloudsHidden bool
+	}{
+		{name: "sky blackout only", skyBlackout: true, wantSkybox: true},
+		{name: "disable clouds only", disableClouds: true, wantCloudsHidden: true},
+		{name: "both enabled", skyBlackout: true, disableClouds: true, wantSkybox: true, wantCloudsHidden: true},
+		{name: "both disabled"},
 	}
-	assertHasAction(t, enabled.Sequences[0].Actions, "mirv_sky clouds draw 0")
-	assertHasAction(t, enabled.Sequences[0].Actions, "r_drawskybox 0")
 
-	disabled, err := Build([]Item{{
-		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
-		IncludeVictim: false,
-	}}, BuildOptions{
-		TickRate:          64,
-		KillerPreSeconds:  1,
-		KillerPostSeconds: 1,
-		RecordFPS:         60,
-		VideoPreset:       "n1",
-		RecordOutputDir:   `D:/clips/output`,
-		SkyBlackout:       false,
-		KillFeedLifetime:  4,
-	})
-	if err != nil {
-		t.Fatalf("Build sky off: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Build([]Item{{
+				Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+				IncludeVictim: false,
+			}}, BuildOptions{
+				TickRate:          64,
+				KillerPreSeconds:  1,
+				KillerPostSeconds: 1,
+				RecordFPS:         60,
+				VideoPreset:       "n1",
+				RecordOutputDir:   `D:/clips/output`,
+				SkyBlackout:       tt.skyBlackout,
+				DisableClouds:     tt.disableClouds,
+				KillFeedLifetime:  4,
+			})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+
+			if tt.wantSkybox {
+				assertHasAction(t, result.Sequences[0].Actions, "r_drawskybox 0")
+			} else {
+				assertNoAction(t, result.Sequences[0].Actions, "r_drawskybox 0")
+			}
+			if tt.wantCloudsHidden {
+				assertHasAction(t, result.Sequences[0].Actions, "mirv_sky clouds draw 0")
+			} else {
+				assertNoAction(t, result.Sequences[0].Actions, "mirv_sky clouds draw 0")
+			}
+		})
 	}
-	assertNoAction(t, disabled.Sequences[0].Actions, "mirv_sky clouds draw 0")
-	assertNoAction(t, disabled.Sequences[0].Actions, "r_drawskybox 0")
 }
 
 func TestBuild_KillFeedLifetimeFollowsOption(t *testing.T) {
@@ -364,6 +372,63 @@ func TestBuild_AddsRecordStartEndAndTakeMetadata(t *testing.T) {
 			t.Fatalf("record start tick should <= end tick: %d > %d", starts[idx].Tick, ends[idx].Tick)
 		}
 	}
+}
+
+func TestBuild_SeeksBeforeSegmentStartWithoutChangingRecordingWindow(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: false},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) < 2 {
+		t.Fatalf("sequence len=%d want at least 2", len(result.Sequences))
+	}
+	actions := result.Sequences[1].Actions
+	assertHasAction(t, actions, "demo_gototick 308")
+
+	recordStart := mustFindAction(t, actions, "mirv_streams record start")
+	if recordStart.Tick != 446 {
+		t.Fatalf("record start tick=%d want 446", recordStart.Tick)
+	}
+	if len(result.TakePlans) != 1 {
+		t.Fatalf("take plans len=%d want 1", len(result.TakePlans))
+	}
+	if result.TakePlans[0].StartTick != 436 {
+		t.Fatalf("take plan start tick=%d want 436", result.TakePlans[0].StartTick)
+	}
+}
+
+func TestBuild_SeekLeadDoesNotJumpBehindPreviousPassEnd(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: false},
+		{Kill: demo.ClipKill{ID: "k2", Tick: 650, KillerSlot: 9, VictimSlot: 12}, IncludeVictim: false},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) < 2 {
+		t.Fatalf("sequence len=%d want at least 2", len(result.Sequences))
+	}
+
+	actions := result.Sequences[1].Actions
+	assertHasAction(t, actions, "demo_gototick 308")
+	assertHasAction(t, actions, "demo_gototick 565")
+	assertNoAction(t, actions, "demo_gototick 458")
 }
 
 func TestBuild_TakePlansContainMergedKillIDs(t *testing.T) {
@@ -682,6 +747,17 @@ func assertNoActionContaining(t *testing.T, actions []Action, needle string) {
 			t.Fatalf("unexpected action containing %q found: %#v", needle, action)
 		}
 	}
+}
+
+func mustFindAction(t *testing.T, actions []Action, cmd string) Action {
+	t.Helper()
+	for _, action := range actions {
+		if action.Cmd == cmd {
+			return action
+		}
+	}
+	t.Fatalf("action %q not found in %#v", cmd, actions)
+	return Action{}
 }
 
 func takeName(index int) string {
