@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 44
-- **Last Active**: 2026-07-10
+- **Total Sessions**: 45
+- **Last Active**: 2026-07-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1489 | Active |
+| `journal-1.md` | ~1522 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 45 | 2026-07-12 | Add POV radar toggle | `aea2577` | `main` |
 | 44 | 2026-07-10 | Finish all pending Trellis tasks | `1900f8b` | `main` |
 | 43 | 2026-06-24 | Split sky blackout and cloud controls | `2e78620` | `main` |
 | 42 | 2026-06-18 | Update v2.0.3 changelog notes | `d2bbbe9` | `codex/write-v203-changelog` |
