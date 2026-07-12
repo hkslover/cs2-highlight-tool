@@ -41,6 +41,7 @@ type Config struct {
 	HideAllUI              bool                `json:"hide_all_ui"`
 	UseShoulderCamera      bool                `json:"use_shoulder_camera"`
 	PovHudEnabled          bool                `json:"pov_hud_enabled"`
+	PovRadarEnabled        bool                `json:"pov_radar_enabled"`
 	SkyBlackout            bool                `json:"sky_blackout"`
 	DisableClouds          bool                `json:"disable_clouds"`
 	KillFeedLifetime       int                 `json:"kill_feed_lifetime"`
@@ -101,6 +102,7 @@ func Default(dataDir string) *Config {
 		HideAllUI:          false,
 		UseShoulderCamera:  false,
 		PovHudEnabled:      true,
+		PovRadarEnabled:    false,
 		SkyBlackout:        true,
 		DisableClouds:      false,
 		KillFeedLifetime:   DefaultKillFeedLifetime,

@@ -699,6 +699,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
+	if initial.PovRadarEnabled {
+		t.Fatalf("pov_radar_enabled should default to false: %+v", initial)
+	}
 	if initial.DisableClouds {
 		t.Fatalf("disable_clouds should default to false: %+v", initial)
 	}
@@ -720,6 +723,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		LaunchResolution:  "16:9",
 		HideAllUI:         true,
 		UseShoulderCamera: true,
+		PovRadarEnabled:   true,
 		DisableClouds:     true,
 	})
 	if err != nil {
@@ -748,6 +752,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
+	}
+	if !saved.PovRadarEnabled {
+		t.Fatalf("pov_radar_enabled should persist true: %+v", saved)
 	}
 	if !saved.DisableClouds {
 		t.Fatalf("disable_clouds should persist true: %+v", saved)
@@ -780,6 +787,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)
+	}
+	if !loaded.PovRadarEnabled {
+		t.Fatalf("saved pov_radar_enabled mismatch: %+v", loaded)
 	}
 	if !loaded.DisableClouds {
 		t.Fatalf("saved disable_clouds mismatch: %+v", loaded)

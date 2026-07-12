@@ -26,6 +26,11 @@
 - Must：录制前注入 CS2 `game/csgo/plugin/bin/server.dll` 时，debug override 只覆盖源 DLL 选择；目标目录、备份、恢复逻辑继续复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
 - Must Not：让 debug override 参与启动阶段插件版本检测；插件本地版本真值仍来自安装目录 `changelog.xml`。
 
+## Clip 设置与插件动作约束
+- Must：`pov_radar_enabled` 通过 `GetClipSettings` / `SaveClipSettings` 持久化，默认值为 `false`。
+- Must：仅当 `pov_radar_enabled=true` 时，插件 JSON bootstrap 才写入 `csdm_radar_pov 1`；关闭时不得写入该命令或重置命令。
+- Must Not：将 `pov_radar_enabled` 与现有 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动。
+
 ## 日志字段规范
 - Must：启动链路日志后端统一使用 `internal/logging`（`log/slog` 适配层），业务侧通过统一 logger API 记录结构化字段。
 - Must：`slog.HandlerOptions.ReplaceAttr` 脱敏规则必须启用，避免敏感字段进入内存 ring buffer 与 `log` 事件流。

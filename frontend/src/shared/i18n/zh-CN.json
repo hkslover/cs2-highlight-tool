@@ -323,6 +323,8 @@
       "hide_all_ui": "隐藏所有 UI",
       "use_shoulder_camera": "使用越肩视角",
       "pov_hud_enabled": "启用 POV HUD",
+      "pov_radar_enabled": "启用 POV雷达",
+      "pov_radar_hint": "该功能为 beta 测试功能，可能随着游戏更新失效。如果游戏崩溃，请关闭该功能。",
       "sky_blackout": "天空变黑",
       "disable_clouds": "关闭云层",
       "kill_feed_lifetime": "击杀信息留存时间(秒)",

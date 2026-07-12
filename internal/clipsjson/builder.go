@@ -79,6 +79,7 @@ type BuildOptions struct {
 	EnableSpecShowXray        bool
 	HideAllUI                 bool
 	UseShoulderCamera         bool
+	PovRadarEnabled           bool
 	SkyBlackout               bool
 	DisableClouds             bool
 	KillFeedLifetime          int
@@ -157,6 +158,7 @@ type bootstrapOptions struct {
 	EnableSpecShowXray bool
 	HideAllUI          bool
 	UseShoulderCamera  bool
+	PovRadarEnabled    bool
 	SkyBlackout        bool
 	DisableClouds      bool
 	KillFeedLifetime   int
@@ -244,6 +246,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		EnableSpecShowXray: opts.EnableSpecShowXray,
 		HideAllUI:          opts.HideAllUI,
 		UseShoulderCamera:  opts.UseShoulderCamera,
+		PovRadarEnabled:    opts.PovRadarEnabled,
 		SkyBlackout:        opts.SkyBlackout,
 		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
@@ -601,6 +604,9 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	}
 	if opts.SkyBlackout {
 		actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
+	}
+	if opts.PovRadarEnabled {
+		actions = append(actions, Action{Cmd: "csdm_radar_pov 1", Tick: actionTick})
 	}
 	lifetime := opts.KillFeedLifetime
 	if lifetime <= 0 {
