@@ -90,3 +90,70 @@ if err != nil {
 // Keep listener in Service; Port() reads listener.Addr() while holding mu.
 cmd.Env = append(os.Environ(), fmt.Sprintf("CSDM_WS_PORT=%d", port))
 ```
+
+## Scenario: Non-blocking serialized websocket writes
+
+### 1. Scope / Trigger
+
+This applies to every outbound game websocket command. A peer can stop
+reading while the TCP send buffer is full; state locks must remain available
+for UI polling and inbound message handling during that write.
+
+### 2. Signatures
+
+```go
+func (s *Service) SendCommand(name string, payload any) error
+func (s *Service) dispatchNextDemo()
+func (s *Service) writeOutgoing(conn *websocket.Conn, message outgoingMessage, timeout time.Duration) error
+```
+
+### 3. Contracts
+
+- `s.mu` is used only to validate state and snapshot the active connection,
+  connection ID, and write timeout.
+- `s.writeMu` serializes all gorilla/websocket writes; no two goroutines may
+  call `WriteJSON` concurrently on the same connection.
+- The actual write runs outside `s.mu` and sets a finite write deadline.
+- `dispatchNextDemo` re-enters `s.mu` after the write and mutates queue state
+  only if the same queue item and connection are still current.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Service not started/no connection | Return the existing descriptive error |
+| Write blocks | Deadline bounds the write; state getters remain callable |
+| Write fails for current queue item | Mark the current queue failed and emit the queue state |
+| Queue/connection changed while write is in flight | Do not overwrite the newer queue state |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a blocked command write does not block `GetWSState` or `GetQueueState`.
+- Base: normal `playdemo` writes start the ack timer only after success.
+- Bad: hold `s.mu` around `gameConn.WriteJSON`; one stalled peer freezes the
+  entire production page.
+
+### 6. Tests Required
+
+- Inject a blocked writer and assert state getters return before releasing it.
+- Exercise normal queue dispatch and existing websocket integration tests.
+- Run `go test -race` for `internal/producews` and `internal/app`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+s.mu.Lock()
+defer s.mu.Unlock()
+return s.gameConn.WriteJSON(message)
+```
+
+#### Correct
+
+```go
+s.mu.Lock()
+conn := s.gameConn
+s.mu.Unlock()
+return s.writeOutgoing(conn, message, timeout)
+```
