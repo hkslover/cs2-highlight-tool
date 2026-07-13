@@ -75,7 +75,7 @@ func (a *App) resolveEditOutputPaths() (string, string, editEncodeSettings) {
 		Caps:        ffmpegprofile.CapabilitiesFromEncoders(nil),
 	}
 
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return "", "", encode
 	}
@@ -87,7 +87,7 @@ func (a *App) resolveEditOutputPaths() (string, string, editEncodeSettings) {
 }
 
 func (a *App) resolveFFprobeExe() string {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return ""
 	}

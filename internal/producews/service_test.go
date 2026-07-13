@@ -104,6 +104,94 @@ func TestService_StartQueue_StatusAckAndDemoDoneDispatchesNext(t *testing.T) {
 	})
 }
 
+func TestService_SendCommandDoesNotHoldStateLockDuringWrite(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.started = true
+	svc.gameConn = &websocket.Conn{}
+	writeStarted := make(chan struct{})
+	releaseWrite := make(chan struct{})
+	svc.writeJSONFn = func(_ *websocket.Conn, _ outgoingMessage, _ time.Duration) error {
+		close(writeStarted)
+		<-releaseWrite
+		return nil
+	}
+
+	commandErr := make(chan error, 1)
+	go func() {
+		commandErr <- svc.SendCommand("test", "payload")
+	}()
+	select {
+	case <-writeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("write did not start")
+	}
+
+	stateDone := make(chan struct{})
+	go func() {
+		_ = svc.GetWSState()
+		close(stateDone)
+	}()
+	select {
+	case <-stateDone:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("GetWSState blocked behind websocket write")
+	}
+
+	close(releaseWrite)
+	if err := <-commandErr; err != nil {
+		t.Fatalf("SendCommand: %v", err)
+	}
+}
+
+func TestService_DispatchNextDemoDoesNotHoldStateLockDuringWrite(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.started = true
+	svc.gameConn = &websocket.Conn{}
+	svc.gameConnID = 1
+	svc.queueState = QueueState{
+		Running:      true,
+		Total:        1,
+		CurrentIndex: -1,
+		Demos:        []string{"demo.dem"},
+	}
+	writeStarted := make(chan struct{})
+	releaseWrite := make(chan struct{})
+	svc.writeJSONFn = func(_ *websocket.Conn, _ outgoingMessage, _ time.Duration) error {
+		close(writeStarted)
+		<-releaseWrite
+		return nil
+	}
+
+	dispatchDone := make(chan struct{})
+	go func() {
+		svc.dispatchNextDemo()
+		close(dispatchDone)
+	}()
+	select {
+	case <-writeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("dispatch write did not start")
+	}
+
+	stateDone := make(chan struct{})
+	go func() {
+		_ = svc.GetQueueState()
+		close(stateDone)
+	}()
+	select {
+	case <-stateDone:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("GetQueueState blocked behind websocket write")
+	}
+
+	close(releaseWrite)
+	select {
+	case <-dispatchDone:
+	case <-time.After(time.Second):
+		t.Fatal("dispatch did not finish after write release")
+	}
+}
+
 func TestService_RecordStatusUpdatesTakeSnapshot(t *testing.T) {
 	svc := New("127.0.0.1:0", nil)
 	if err := svc.Start(); err != nil {

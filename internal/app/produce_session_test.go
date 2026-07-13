@@ -15,9 +15,57 @@ import (
 	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/plugingen"
 	"cs2-highlight-tool-v2/internal/producemerge"
+	"cs2-highlight-tool-v2/internal/producews"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+func TestRunProduceSessionWorkerNaturalCompletionClosesDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	state := &produceSessionRuntime{
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		taskCh:        make(chan mergeTask, 1),
+		pollInterval:  time.Millisecond,
+		queueStopped:  true,
+		closeDone:     true,
+		seenCompleted: make(map[string]struct{}),
+		demoSubDirs:   make(map[string]string),
+		plansByTake:   make(map[string]ProduceTakePlan),
+	}
+	app := &App{produceW: producews.NewDefault(nil)}
+	state.workerWG.Add(1)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		defer state.workerWG.Done()
+		app.mergeWorker(ctx, state)
+	}()
+
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		app.runProduceSessionWorker(ctx, state)
+	}()
+
+	select {
+	case <-runnerDone:
+	case <-time.After(time.Second):
+		t.Fatal("natural completion did not stop the session runner")
+	}
+	select {
+	case <-state.done:
+	case <-time.After(time.Second):
+		t.Fatal("session done channel was not closed")
+	}
+	select {
+	case <-workerDone:
+	case <-time.After(time.Second):
+		t.Fatal("merge worker did not stop with the session")
+	}
+}
 
 func TestPrepareAndRestoreGameInfoForProduce(t *testing.T) {
 	exeDir := t.TempDir()
@@ -112,6 +160,40 @@ func TestPrepareGameInfoForProduce_NoBackupWhenAlreadyInjected(t *testing.T) {
 	}
 	if err := app.forceRestoreGameInfoForProduce(); err != nil {
 		t.Fatalf("restore should be idempotent: %v", err)
+	}
+}
+
+func TestPrepareGameInfoForProduce_RecoversStaleBackupBeforeReinjecting(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	firstApp := &App{exeDir: env.exeDir}
+	if err := firstApp.prepareGameInfoForProduce(); err != nil {
+		t.Fatalf("first prepare gameinfo: %v", err)
+	}
+	backupPath := env.gameInfoPath + produceGameInfoBackupSuffix
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("expected stale backup, stat err=%v", err)
+	}
+
+	secondApp := &App{exeDir: env.exeDir}
+	if err := secondApp.prepareGameInfoForProduce(); err != nil {
+		t.Fatalf("second prepare gameinfo: %v", err)
+	}
+	content, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read re-injected gameinfo: %v", err)
+	}
+	if !strings.Contains(string(content), "Game\tcsgo/plugin") {
+		t.Fatalf("re-injected gameinfo missing plugin path:\n%s", content)
+	}
+	if err := secondApp.forceRestoreGameInfoForProduce(); err != nil {
+		t.Fatalf("restore after stale backup recovery: %v", err)
+	}
+	restored, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read restored gameinfo: %v", err)
+	}
+	if string(restored) != env.originalGameInfo {
+		t.Fatalf("restored gameinfo mismatch:\n%s", restored)
 	}
 }
 
@@ -792,6 +874,55 @@ func TestCleanupProduceTemporaryFiles_RemovesOnlyIntermediateArtifacts(t *testin
 	}
 	if _, err := os.Stat(takeDir); !os.IsNotExist(err) {
 		t.Fatalf("take dir should be removed when empty, stat err=%v", err)
+	}
+}
+
+func TestCleanupProduceTemporaryFiles_PreservesFailedTakeArtifacts(t *testing.T) {
+	batchDir := t.TempDir()
+	demoDir := filepath.Join(batchDir, "demo_a")
+	takeVideo := filepath.Join(demoDir, "take0000.mp4")
+	takeAudio := filepath.Join(demoDir, "take0000", "audio.wav")
+	if err := os.MkdirAll(filepath.Dir(takeAudio), 0755); err != nil {
+		t.Fatalf("mkdir take dir: %v", err)
+	}
+	if err := os.WriteFile(takeVideo, []byte("take-video"), 0644); err != nil {
+		t.Fatalf("write take video: %v", err)
+	}
+	if err := os.WriteFile(takeAudio, []byte("take-audio"), 0644); err != nil {
+		t.Fatalf("write take audio: %v", err)
+	}
+
+	plan := ProduceTakePlan{
+		DemoPath:  "demoA.dem",
+		TakeIndex: 1,
+		TakeName:  "take0000",
+		View:      "killer",
+	}
+	app := &App{
+		produceState: produceSessionState{
+			takeFiles: map[string]ProduceTakeFile{
+				takeFileKey(plan.DemoPath, plan.TakeIndex, plan.View): {
+					DemoPath:  plan.DemoPath,
+					TakeIndex: plan.TakeIndex,
+					View:      plan.View,
+					Status:    "failed",
+				},
+			},
+		},
+	}
+	state := &produceSessionRuntime{
+		batchDir:    batchDir,
+		demoSubDirs: map[string]string{"demoA.dem": "demo_a"},
+		plansByTake: map[string]ProduceTakePlan{"demoA.dem#1": plan},
+	}
+
+	app.cleanupProduceTemporaryFiles(state)
+
+	if _, err := os.Stat(takeVideo); err != nil {
+		t.Fatalf("failed take video should be preserved, stat err=%v", err)
+	}
+	if _, err := os.Stat(takeAudio); err != nil {
+		t.Fatalf("failed take audio should be preserved, stat err=%v", err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -149,6 +150,16 @@ func LoadOrCreate(path, dataDir string) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+	// Keep a deep copy so ApplyDefaults can be compared without being affected
+	// by mutations to the nested ClipActionSettings pointer or encoder slice.
+	beforeBytes, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("序列化配置失败: %w", err)
+	}
+	var before Config
+	if err := json.Unmarshal(beforeBytes, &before); err != nil {
+		return nil, fmt.Errorf("复制配置失败: %w", err)
+	}
 	if !strings.Contains(string(data), `"enable_spec_show_xray_zero"`) {
 		cfg.EnableSpecShowXray = true
 	}
@@ -159,10 +170,37 @@ func LoadOrCreate(path, dataDir string) (*Config, error) {
 		cfg.KillFeedLifetime = DefaultKillFeedLifetime
 	}
 	ApplyDefaults(cfg, dataDir)
-	if err := Save(path, cfg); err != nil {
-		return nil, err
+	if configNeedsSave(data, &before, cfg) {
+		if err := Save(path, cfg); err != nil {
+			return nil, err
+		}
 	}
 	return cfg, nil
+}
+
+func configNeedsSave(raw []byte, before, after *Config) bool {
+	if !reflect.DeepEqual(before, after) {
+		return true
+	}
+
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &rawFields); err != nil {
+		return true
+	}
+	encoded, err := json.Marshal(after)
+	if err != nil {
+		return true
+	}
+	var normalizedFields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &normalizedFields); err != nil {
+		return true
+	}
+	for key := range normalizedFields {
+		if _, exists := rawFields[key]; !exists {
+			return true
+		}
+	}
+	return false
 }
 
 func ApplyDefaults(cfg *Config, dataDir string) {
@@ -367,7 +405,32 @@ func Save(path string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-")
+	if err != nil {
+		return fmt.Errorf("创建临时配置文件失败: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("设置临时配置文件权限失败: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("写入临时配置文件失败: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("同步临时配置文件失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("关闭临时配置文件失败: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("替换配置文件失败: %w", err)
+	}
+	return nil
 }
 
 func CleanPath(path string) string {

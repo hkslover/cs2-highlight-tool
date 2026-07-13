@@ -148,13 +148,17 @@ func stopProduceRuntime(state *produceSessionRuntime) {
 
 func (a *App) runProduceSessionWorker(ctx context.Context, state *produceSessionRuntime) {
 	defer close(state.done)
-	defer close(state.taskCh)
-	defer state.workerWG.Wait()
 	defer func() {
 		if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil && a.ctx != nil {
 			wailsruntime.LogError(a.ctx, fmt.Sprintf("restore produce environment failed: %v", err))
 		}
 	}()
+	// Shutdown must happen in this order: cancel merge work, close the task
+	// channel, wait for the worker to exit, then restore the game environment.
+	// Defers run in LIFO order, so keep the final done notification first.
+	defer state.workerWG.Wait()
+	defer close(state.taskCh)
+	defer state.cancel()
 
 	ticker := time.NewTicker(state.pollInterval)
 	defer ticker.Stop()

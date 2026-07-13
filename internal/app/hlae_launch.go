@@ -20,7 +20,7 @@ type launchJobContext struct {
 }
 
 func (a *App) launchHLAEGame() (int, error) {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return 0, err
 	}

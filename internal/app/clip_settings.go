@@ -61,7 +61,7 @@ type ClipItemOverrides struct {
 }
 
 func (a *App) GetClipSettings() (*ClipSettings, error) {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -96,44 +96,41 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 	settings := normalizeClipSettings(input)
 	settings.RecordOutputDir = a.fixedRecordOutputDir()
-	path := a.configPath()
-	cfg, err := config.LoadOrCreate(path, a.dataRoot())
-	if err != nil {
-		return nil, err
-	}
-	cfg.KillerPreSeconds = settings.KillerPreSeconds
-	cfg.KillerPostSeconds = settings.KillerPostSeconds
-	cfg.VictimPreSeconds = settings.VictimPreSeconds
-	cfg.VictimPostSeconds = settings.VictimPostSeconds
-	cfg.AutoAddVictimView = settings.AutoAddVictimView
-	cfg.RecordFPS = settings.RecordFPS
-	cfg.RecordQuality = settings.RecordQuality
-	cfg.EditFPS = settings.EditFPS
-	cfg.EditQuality = settings.EditQuality
-	cfg.VideoPreset = settings.VideoPreset
-	cfg.LaunchResolution = settings.LaunchResolution
-	cfg.RecordOutputDir = settings.RecordOutputDir
-	cfg.EnableSpecShowXray = settings.EnableSpecShowXray
-	cfg.HideAllUI = settings.HideAllUI
-	cfg.UseShoulderCamera = settings.UseShoulderCamera
-	cfg.PovHudEnabled = settings.PovHudEnabled
-	cfg.PovRadarEnabled = settings.PovRadarEnabled
-	cfg.SkyBlackout = settings.SkyBlackout
-	cfg.DisableClouds = settings.DisableClouds
-	cfg.KillFeedLifetime = settings.KillFeedLifetime
-	cfg.BlockKillFeed = settings.BlockKillFeed
-	actionSettings := config.ResolveClipActionSettings(cfg)
-	actionSettings.EnableVoiceIndices = settings.EnableVoice
-	actionSettings.EnableVoiceIndicesH = settings.EnableVoice
-	if settings.EnableVoice {
-		actionSettings.VoiceIndicesValue = -1
-		actionSettings.VoiceIndicesHValue = -1
-	} else {
-		actionSettings.VoiceIndicesValue = 0
-		actionSettings.VoiceIndicesHValue = 0
-	}
-	config.SetClipActionSettings(cfg, actionSettings)
-	if err := config.Save(path, cfg); err != nil {
+	if _, err := a.updateConfig(func(cfg *config.Config) error {
+		cfg.KillerPreSeconds = settings.KillerPreSeconds
+		cfg.KillerPostSeconds = settings.KillerPostSeconds
+		cfg.VictimPreSeconds = settings.VictimPreSeconds
+		cfg.VictimPostSeconds = settings.VictimPostSeconds
+		cfg.AutoAddVictimView = settings.AutoAddVictimView
+		cfg.RecordFPS = settings.RecordFPS
+		cfg.RecordQuality = settings.RecordQuality
+		cfg.EditFPS = settings.EditFPS
+		cfg.EditQuality = settings.EditQuality
+		cfg.VideoPreset = settings.VideoPreset
+		cfg.LaunchResolution = settings.LaunchResolution
+		cfg.RecordOutputDir = settings.RecordOutputDir
+		cfg.EnableSpecShowXray = settings.EnableSpecShowXray
+		cfg.HideAllUI = settings.HideAllUI
+		cfg.UseShoulderCamera = settings.UseShoulderCamera
+		cfg.PovHudEnabled = settings.PovHudEnabled
+		cfg.PovRadarEnabled = settings.PovRadarEnabled
+		cfg.SkyBlackout = settings.SkyBlackout
+		cfg.DisableClouds = settings.DisableClouds
+		cfg.KillFeedLifetime = settings.KillFeedLifetime
+		cfg.BlockKillFeed = settings.BlockKillFeed
+		actionSettings := config.ResolveClipActionSettings(cfg)
+		actionSettings.EnableVoiceIndices = settings.EnableVoice
+		actionSettings.EnableVoiceIndicesH = settings.EnableVoice
+		if settings.EnableVoice {
+			actionSettings.VoiceIndicesValue = -1
+			actionSettings.VoiceIndicesHValue = -1
+		} else {
+			actionSettings.VoiceIndicesValue = 0
+			actionSettings.VoiceIndicesHValue = 0
+		}
+		config.SetClipActionSettings(cfg, actionSettings)
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return &settings, nil
@@ -154,7 +151,7 @@ func (a *App) PickRecordOutputDir() (string, error) {
 }
 
 func (a *App) GetClipActionSettings() (*ClipActionSettings, error) {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -170,18 +167,15 @@ func (a *App) GetClipActionSettings() (*ClipActionSettings, error) {
 
 func (a *App) SaveClipActionSettings(input ClipActionSettings) (*ClipActionSettings, error) {
 	settings := normalizeClipActionSettings(input)
-	path := a.configPath()
-	cfg, err := config.LoadOrCreate(path, a.dataRoot())
-	if err != nil {
-		return nil, err
-	}
-	config.SetClipActionSettings(cfg, config.ClipActionSettings{
-		EnableVoiceIndices:  settings.EnableVoiceIndices,
-		VoiceIndicesValue:   settings.VoiceIndicesValue,
-		EnableVoiceIndicesH: settings.EnableVoiceIndicesH,
-		VoiceIndicesHValue:  settings.VoiceIndicesHValue,
-	})
-	if err := config.Save(path, cfg); err != nil {
+	if _, err := a.updateConfig(func(cfg *config.Config) error {
+		config.SetClipActionSettings(cfg, config.ClipActionSettings{
+			EnableVoiceIndices:  settings.EnableVoiceIndices,
+			VoiceIndicesValue:   settings.VoiceIndicesValue,
+			EnableVoiceIndicesH: settings.EnableVoiceIndicesH,
+			VoiceIndicesHValue:  settings.VoiceIndicesHValue,
+		})
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return &settings, nil

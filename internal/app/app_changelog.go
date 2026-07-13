@@ -31,7 +31,7 @@ func (a *App) GetPendingChangelog() (*PendingChangelog, error) {
 	if currentVersion == "" {
 		return &PendingChangelog{}, nil
 	}
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -60,16 +60,13 @@ func (a *App) AckChangelog(version string) error {
 	if version == "" {
 		return fmt.Errorf("更新日志版本号为空")
 	}
-	path := a.configPath()
-	cfg, err := config.LoadOrCreate(path, a.dataRoot())
-	if err != nil {
-		return err
-	}
-	if cfg.LastChangelogVersion == version {
+	_, err := a.updateConfig(func(cfg *config.Config) error {
+		if cfg.LastChangelogVersion != version {
+			cfg.LastChangelogVersion = version
+		}
 		return nil
-	}
-	cfg.LastChangelogVersion = version
-	if err := config.Save(path, cfg); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("保存更新日志确认状态失败: %w", err)
 	}
 	return nil

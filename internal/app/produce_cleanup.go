@@ -22,8 +22,19 @@ func (a *App) cleanupProduceTemporaryFiles(state *produceSessionRuntime) {
 	takePaths := make(map[string]struct{}, len(state.plansByTake)*2)
 	takeDirs := make(map[string]struct{}, len(state.plansByTake))
 	demoDirs := make(map[string]struct{}, len(state.demoSubDirs))
+	failedTakes := make(map[string]struct{})
+	a.produceStateMu.Lock()
+	for key, file := range a.produceState.takeFiles {
+		if strings.EqualFold(strings.TrimSpace(file.Status), "failed") {
+			failedTakes[key] = struct{}{}
+		}
+	}
+	a.produceStateMu.Unlock()
 
 	for _, plan := range state.plansByTake {
+		if _, failed := failedTakes[takeFileKey(plan.DemoPath, plan.TakeIndex, plan.View)]; failed {
+			continue
+		}
 		videoPath, audioPath := expectedTakePaths(state, plan)
 		if strings.TrimSpace(videoPath) != "" {
 			takePaths[videoPath] = struct{}{}
