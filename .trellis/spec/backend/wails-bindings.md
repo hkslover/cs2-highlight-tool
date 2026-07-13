@@ -736,6 +736,82 @@ if opts.SkyBlackout {
 }
 ```
 
+## Scenario: Clip Settings POV Radar Contract
+
+### 1. Scope / Trigger
+
+- Trigger: Settings exposes an opt-in beta switch for the cs2-server-plugin POV-style radar and plugin JSON generation consumes the persisted value.
+- Scope: `internal/config` persistence, `internal/app` Wails settings binding, `internal/clipsjson` bootstrap generation, frontend `ClipSettings`, and the recording configuration list.
+- Boundary: Settings UI toggle -> `SaveClipSettings` -> `config.json` -> plugin JSON bootstrap command list.
+
+### 2. Signatures
+
+```go
+type Config struct {
+    PovRadarEnabled bool `json:"pov_radar_enabled"`
+}
+
+type ClipSettings struct {
+    PovRadarEnabled bool `json:"pov_radar_enabled"`
+}
+
+type BuildOptions struct {
+    PovRadarEnabled bool
+}
+```
+
+Frontend shared type:
+
+```ts
+pov_radar_enabled: boolean;
+```
+
+### 3. Contracts
+
+- `pov_radar_enabled` defaults to `false` and is opt-in because the feature is beta.
+- `pov_radar_enabled=true` writes exactly `csdm_radar_pov 1` to the bootstrap actions at the standard action tick.
+- `pov_radar_enabled=false` writes no `csdm_radar_pov` command and no reset command.
+- The setting is global to the generated recording session; it is not part of per-clip `clip_overrides`.
+- The setting is independent of `pov_hud_enabled`; it does not install or remove `pov.vpk` and does not alter `gameinfo.gi` handling.
+- The settings UI shows a hover `?` hint explaining that the feature is beta, may stop working after game updates, and should be disabled if the game crashes.
+
+### 4. Validation & Error Matrix
+
+- Missing `pov_radar_enabled` in an existing config -> load as `false` and save back with `pov_radar_enabled:false`.
+- Unsupported JSON type for `pov_radar_enabled` -> standard JSON unmarshal failure from `config.LoadOrCreate`.
+- Disabled setting -> no radar command and no `csdm_radar_pov 0` reset command.
+
+### 5. Good/Base/Bad Cases
+
+- Good: user enables the switch, saves settings, and generated bootstrap contains `csdm_radar_pov 1`.
+- Base: legacy config without the field loads with the switch off and generated bootstrap is unchanged.
+- Bad: reusing `pov_hud_enabled` for this switch, because that would incorrectly alter `pov.vpk` and `gameinfo.gi` behavior.
+
+### 6. Tests Required
+
+- `internal/config`: default is `false` and missing legacy config loads with `false`.
+- `internal/app`: `GetClipSettings` / `SaveClipSettings` round-trip `true`.
+- `internal/clipsjson`: bootstrap contains `csdm_radar_pov 1` only when enabled.
+- Frontend: `cd frontend && npm run build` passes with the shared type and settings list.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+actions = append(actions, Action{Cmd: "csdm_radar_pov 0", Tick: actionTick})
+```
+
+This changes generated output even when the user did not opt into the beta feature.
+
+#### Correct
+
+```go
+if opts.PovRadarEnabled {
+    actions = append(actions, Action{Cmd: "csdm_radar_pov 1", Tick: actionTick})
+}
+```
+
 ## Scenario: Settings Outputs Storage Management
 
 ### 1. Scope / Trigger

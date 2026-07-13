@@ -211,6 +211,35 @@ func TestBuild_SkyBlackoutAndCloudsAreIndependent(t *testing.T) {
 	}
 }
 
+func TestBuild_PovRadarCommandOnlyWhenEnabled(t *testing.T) {
+	baseOptions := BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	}
+	items := []Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+		IncludeVictim: false,
+	}}
+
+	enabledOptions := baseOptions
+	enabledOptions.PovRadarEnabled = true
+	enabled, err := Build(items, enabledOptions)
+	if err != nil {
+		t.Fatalf("Build enabled POV radar: %v", err)
+	}
+	assertHasAction(t, enabled.Sequences[0].Actions, "csdm_radar_pov 1")
+
+	disabled, err := Build(items, baseOptions)
+	if err != nil {
+		t.Fatalf("Build disabled POV radar: %v", err)
+	}
+	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "csdm_radar_pov")
+}
+
 func TestBuild_KillFeedLifetimeFollowsOption(t *testing.T) {
 	result, err := Build([]Item{{
 		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},

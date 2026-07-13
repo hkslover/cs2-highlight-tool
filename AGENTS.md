@@ -84,6 +84,7 @@
 - `GetClipSettings` / `SaveClipSettings` 字段约定新增：`use_shoulder_camera`（默认 `false`；开启时生成插件 JSON bootstrap 在 `r_show_build_info 0` 前写入越肩视角命令，关闭时不写入该命令）
 - `GetClipSettings` / `SaveClipSettings` 字段约定更新：`sky_blackout`（默认 `true`；开启时仅写入 `r_drawskybox 0`，关闭时不写入该命令）
 - `GetClipSettings` / `SaveClipSettings` 字段约定新增：`disable_clouds`（默认 `false`；开启时仅写入 `mirv_sky clouds draw 0`，关闭时不写入该命令）
+- `GetClipSettings` / `SaveClipSettings` 字段约定新增：`pov_radar_enabled`（默认 `false`；开启时生成插件 JSON bootstrap 写入 `csdm_radar_pov 1`，关闭时不写入该命令）
 - `GeneratePluginJSON`
 - `GeneratePluginJSON` 支持可选参数 `record_victim_view`（开启后按片段生成“击杀者视角 -> 被害者视角”连续序列）
 - `GeneratePluginJSON` 支持可选参数 `victim_view_mode`：`batch`（先击杀者后逐个被害者）/`interleaved`（击杀者与被害者交替）
@@ -117,6 +118,7 @@
 - `config.json` 新增持久化字段：`hide_all_ui`（隐藏所有 UI，默认 `false`）
 - `config.json` 新增持久化字段：`use_shoulder_camera`（使用越肩视角，默认 `false`）
 - `config.json` 新增持久化字段：`disable_clouds`（关闭云层，默认 `false`）
+- `config.json` 新增持久化字段：`pov_radar_enabled`（启用 POV 雷达，默认 `false`）
 - 应用数据根目录约定：Windows 默认 `<dataDir>=%LOCALAPPDATA%/CS2 Highlight Tool`；`config.json`、组件目录、demo、projects、outputs、temp、updates、logs 均位于 `<dataDir>`。`<exeDir>` 仅用于定位当前程序本体与自更新替换目标。
 - 关键事件名（前后端协作契约）：
 - `startup_state_changed`

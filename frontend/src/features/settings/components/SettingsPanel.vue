@@ -50,7 +50,15 @@
           <div class="setting-list-body">
             <template v-if="pagedSearchableClipSettings.length">
               <div v-for="item in pagedSearchableClipSettings" :key="item.key" class="setting-row setting-list-row">
-                <span class="setting-label">{{ t(item.labelKey) }}</span>
+                <span class="setting-label-wrap">
+                  <span class="setting-label">{{ t(item.labelKey) }}</span>
+                  <n-tooltip v-if="item.hintKey" trigger="hover" placement="top">
+                    <template #trigger>
+                      <span class="hint-dot">?</span>
+                    </template>
+                    {{ t(item.hintKey) }}
+                  </n-tooltip>
+                </span>
                 <n-switch
                   v-if="item.kind === 'switch'"
                   :value="switchSettingValue(item)"
@@ -257,6 +265,7 @@ const settings = reactive<ClipSettings>({
   hide_all_ui: false,
   use_shoulder_camera: false,
   pov_hud_enabled: true,
+  pov_radar_enabled: false,
   sky_blackout: true,
   disable_clouds: false,
   kill_feed_lifetime: 4,
@@ -303,6 +312,7 @@ type SearchableSwitchSettingKey =
   | "hide_all_ui"
   | "use_shoulder_camera"
   | "pov_hud_enabled"
+  | "pov_radar_enabled"
   | "sky_blackout"
   | "disable_clouds"
   | "block_kill_feed";
@@ -313,12 +323,14 @@ type SearchableClipSettingItem =
       labelKey: string;
       kind: "switch";
       aliases: string[];
+      hintKey?: string;
     }
   | {
       key: SearchableNumberSettingKey;
       labelKey: string;
       kind: "number";
       aliases: string[];
+      hintKey?: string;
       min: number;
       max: number;
       step: number;
@@ -348,6 +360,13 @@ const searchableClipSettings: SearchableClipSettingItem[] = [
     labelKey: "main.settings.pov_hud_enabled",
     kind: "switch",
     aliases: ["pov hud", "hud"],
+  },
+  {
+    key: "pov_radar_enabled",
+    labelKey: "main.settings.pov_radar_enabled",
+    kind: "switch",
+    aliases: ["pov雷达", "pov radar", "radar"],
+    hintKey: "main.settings.pov_radar_hint",
   },
   {
     key: "sky_blackout",
@@ -777,6 +796,28 @@ function formatBytes(bytes: number): string {
 .setting-label {
   color: #c9d3cb;
   font-size: 13px;
+}
+
+.setting-label-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hint-dot {
+  align-items: center;
+  border: 1px solid #516056;
+  border-radius: 50%;
+  color: #9cb8a8;
+  cursor: help;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  height: 18px;
+  justify-content: center;
+  user-select: none;
+  width: 18px;
 }
 
 .preset-select {

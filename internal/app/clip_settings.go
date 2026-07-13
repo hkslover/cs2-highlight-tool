@@ -28,6 +28,7 @@ type ClipSettings struct {
 	HideAllUI          bool    `json:"hide_all_ui"`
 	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
 	PovHudEnabled      bool    `json:"pov_hud_enabled"`
+	PovRadarEnabled    bool    `json:"pov_radar_enabled"`
 	SkyBlackout        bool    `json:"sky_blackout"`
 	DisableClouds      bool    `json:"disable_clouds"`
 	KillFeedLifetime   int     `json:"kill_feed_lifetime"`
@@ -81,6 +82,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 		HideAllUI:          cfg.HideAllUI,
 		UseShoulderCamera:  cfg.UseShoulderCamera,
 		PovHudEnabled:      cfg.PovHudEnabled,
+		PovRadarEnabled:    cfg.PovRadarEnabled,
 		SkyBlackout:        cfg.SkyBlackout,
 		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
@@ -115,6 +117,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 	cfg.HideAllUI = settings.HideAllUI
 	cfg.UseShoulderCamera = settings.UseShoulderCamera
 	cfg.PovHudEnabled = settings.PovHudEnabled
+	cfg.PovRadarEnabled = settings.PovRadarEnabled
 	cfg.SkyBlackout = settings.SkyBlackout
 	cfg.DisableClouds = settings.DisableClouds
 	cfg.KillFeedLifetime = settings.KillFeedLifetime

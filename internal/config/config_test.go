@@ -136,6 +136,33 @@ func TestApplyDefaultsFillsMissingValues(t *testing.T) {
 	if cfg.FiveEPlayerName != "" {
 		t.Fatalf("default FiveEPlayerName should be empty: %q", cfg.FiveEPlayerName)
 	}
+	if cfg.PovRadarEnabled {
+		t.Fatalf("default PovRadarEnabled should be false")
+	}
+}
+
+func TestLoadOrCreate_LegacyConfigDefaultsPovRadarDisabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"record_fps":60}`), 0644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	cfg, err := LoadOrCreate(path, dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreate legacy config: %v", err)
+	}
+	if cfg.PovRadarEnabled {
+		t.Fatalf("legacy config should default PovRadarEnabled=false")
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read migrated config: %v", err)
+	}
+	if !strings.Contains(string(saved), `"pov_radar_enabled": false`) {
+		t.Fatalf("migrated config should persist pov_radar_enabled=false: %s", saved)
+	}
 }
 
 func TestApplyDefaultsPreservesSupportedLaunchResolutions(t *testing.T) {
