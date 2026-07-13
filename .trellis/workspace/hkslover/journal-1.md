@@ -1487,3 +1487,36 @@ Completed and verified the debug plugin DLL override, searchable recording setti
 ### Next Steps
 
 - None - task complete
+
+
+## Session 45: Add POV radar toggle
+
+**Date**: 2026-07-12
+**Task**: Add POV radar toggle
+**Branch**: `main`
+
+### Summary
+
+Added persisted POV radar setting, settings tooltip, conditional bootstrap action, regression tests, and documentation. Validation passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aea2577` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
