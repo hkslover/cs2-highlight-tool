@@ -1520,3 +1520,37 @@ Added persisted POV radar setting, settings tooltip, conditional bootstrap actio
 ### Next Steps
 
 - None - task complete
+
+
+## Session 46: Audit and reliability fixes
+
+**Date**: 2026-07-13
+**Task**: Audit and reliability fixes
+**Branch**: `main`
+
+### Summary
+
+核验并修复制作会话 worker 收尾、producews 锁外写、config 原子持久化、下载超时与完整性、失败素材保留、gameinfo 崩溃恢复和批量 Demo 路径一致性；通过 go test ./...、go vet ./... 与相关 race 测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e94597c` | (see git log) |
+| `3517972` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
