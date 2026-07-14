@@ -67,8 +67,15 @@ func TestLaunchHLAEGamePassesProduceWSPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read helper environment: %v", err)
 	}
-	if got, want := strings.TrimSpace(string(gotBytes)), strconv.Itoa(wantPort); got != want {
+	parts := strings.Split(strings.TrimSpace(string(gotBytes)), "\n")
+	if len(parts) != 2 {
+		t.Fatalf("helper environment format = %q", gotBytes)
+	}
+	if got, want := parts[0], strconv.Itoa(wantPort); got != want {
 		t.Fatalf("CSDM_WS_PORT = %q, want %q", got, want)
+	}
+	if got, want := parts[1], filepath.Join(exeDir, "logs", "cs2-server-plugin.log"); got != want {
+		t.Fatalf("CSDM_LOG_PATH = %q, want %q", got, want)
 	}
 }
 
@@ -77,7 +84,8 @@ func TestHelperProcessLaunchHLAEEnv(t *testing.T) {
 		return
 	}
 	path := os.Args[len(os.Args)-1]
-	if err := os.WriteFile(path, []byte(os.Getenv("CSDM_WS_PORT")), 0644); err != nil {
+	content := os.Getenv("CSDM_WS_PORT") + "\n" + os.Getenv("CSDM_LOG_PATH")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write helper environment: %v", err)
 	}
 	os.Exit(0)

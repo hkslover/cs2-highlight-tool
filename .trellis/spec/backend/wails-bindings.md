@@ -2,6 +2,71 @@
 
 Concrete contracts for Go methods exposed through `internal/app.App` and consumed by `window.go.app.App.*`.
 
+## Scenario: Produce WebSocket Diagnostic Export
+
+### 1. Scope / Trigger
+
+- Trigger: Produce UI exposes an error-state-only “导出制作日志” action after a WebSocket, queue, or launch failure.
+- Scope: `internal/app.ExportProduceWSLogs`, `internal/producews.Diagnostics`, managed `<dataDir>/logs`, and `features/produce`.
+- Boundary: Produce error UI -> `ExportProduceWSLogs` -> SaveFileDialog (or headless fallback) -> one sanitized text artifact.
+
+### 2. Signature
+
+```go
+func (a *App) ExportProduceWSLogs() (string, error)
+```
+
+### 3. Contracts
+
+- The returned path is the selected output path; cancelling the native save dialog returns `("", nil)`.
+- With no Wails context, write `<dataDir>/logs/producews-export-<timestamp>.txt`; this keeps tests and headless development deterministic.
+- The export combines the current WebSocket/queue/take snapshots, bounded memory timeline, rotating host logs, incident reports, and deterministic plugin-log tail.
+- All content must be passed through the shared `internal/logging` export redaction before final file write; raw home paths, demo paths, URL credentials, tokens, and authorization text must not escape.
+- `internal/app` owns user interaction and output selection; `internal/producews` only builds the in-memory diagnostic report and never imports Wails.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| `produceW` is nil | Return `制作 WebSocket 服务未初始化` and do not open a dialog |
+| Managed logs directory cannot be created | Return wrapped Chinese filesystem error |
+| Native save dialog is cancelled | Return `("", nil)` and show cancellation feedback only |
+| Selected output cannot be written | Return wrapped Chinese write error; no false success path |
+| Headless/no Wails context | Write managed fallback file and return its path |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a disconnected queue exposes one button; selected export includes a
+  sanitized incident/report timeline and native success message.
+- Base: no Wails context in a Go test writes only inside `<dataDir>/logs`.
+- Bad: frontend reads diagnostics files directly, or a Wails binding opens a
+  dialog from `internal/producews`.
+
+### 6. Tests Required
+
+- `internal/app`: headless export writes beneath the managed `<dataDir>/logs` directory and contains the diagnostics header.
+- `internal/producews`: incident/rotating-log exports remain bounded and redact sensitive values.
+- `cd frontend && npm run build` passes after adding the produce error-state action.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// Browser filesystem access bypasses Wails dialog semantics and redaction.
+await fetch("file:///logs/producews.log");
+```
+
+#### Correct
+
+```ts
+const path = await callBackend<string>("ExportProduceWSLogs");
+if (path) message.success(t("main.produce.export_logs_success", { path }));
+```
+
+The frontend owns only error-state visibility and feedback; Go owns file
+selection, managed fallback, and sanitized report content.
+
 ## Scenario: Gameinfo Health Repair Contract
 
 ### 1. Scope / Trigger

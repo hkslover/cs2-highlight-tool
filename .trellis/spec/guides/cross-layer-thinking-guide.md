@@ -160,3 +160,31 @@ Create detailed flow docs when:
 - Multiple teams are involved
 - Data format is complex
 - Feature has caused bugs before
+
+---
+
+## Reconnecting Child-Process WebSocket Checklist
+
+Use this when a host owns a WebSocket listener and launches a child process or
+plugin that reconnects to it.
+
+- [ ] Is the child supplied one concrete endpoint for the entire host session?
+  If the host initially binds `:0`, persist the selected address before launch;
+  supervisor recovery must rebind that address, never choose another `:0`.
+- [ ] Does exactly one thread own the client WebSocket object, including
+  `send`, `poll`, `dispatch`, close, and delete? Other threads must pass data
+  through a bounded queue.
+- [ ] Are only idempotent/semantically safe events replayed? Never replay an
+  acknowledgement that could confirm a later command.
+- [ ] Does a host disconnect pause command-specific timers and use one bounded
+  grace deadline rather than independently failing from read, write, ack, and
+  heartbeat paths?
+- [ ] On reconnect, do host queue index and pending-ack state decide whether to
+  wait for durable events or resend the same command exactly once?
+- [ ] Are ping/pong deadlines and failed writes routed to the same close
+  classification, with no competing queue failure transitions?
+- [ ] Is a Windows/native child artifact smoke-tested after the host and
+  protocol tests pass on the development machine?
+
+See [Produce WebSocket](../backend/producews.md) for the executable host
+contract and its required tests.

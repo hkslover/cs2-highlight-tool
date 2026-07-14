@@ -110,6 +110,7 @@ func (a *App) SetWorkspaceDir(path string) error {
 	a.service = envsetup.NewWithDataDir(a.exeDir, path, a.version)
 	svc := a.service
 	a.serviceMu.Unlock()
+	a.configureProduceDiagnostics(path)
 
 	if a.ctx != nil {
 		svc.Startup(a.ctx)
@@ -149,6 +150,7 @@ func (a *App) ResetWorkspace() error {
 	a.service = nil
 	a.dataDir = ""
 	a.serviceMu.Unlock()
+	a.configureProduceDiagnostics(a.exeDir)
 
 	a.emitWorkspaceInitState()
 	return nil

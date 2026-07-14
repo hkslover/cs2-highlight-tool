@@ -81,6 +81,7 @@ export function useProducePage() {
 
   const generatingAndLaunching = ref(false);
   const generatingConfigOnlyLoading = ref(false);
+  const exportProduceLogsLoading = ref(false);
   const expandedNames = ref<string[]>([]);
   const plannedRoundExpandedByDemo = ref<Record<string, string[]>>({});
   const wsState = ref<ProduceWSState>({
@@ -327,6 +328,10 @@ export function useProducePage() {
     }
     return "";
   });
+
+  const canExportProduceLogs = computed(() =>
+    Boolean(wsState.value.last_error || queueState.value.last_error || errorMessage.value),
+  );
 
   watch(
     () => displayDemos.value.map((entry) => entry.key),
@@ -763,6 +768,24 @@ export function useProducePage() {
     }
   }
 
+  async function exportProduceLogs() {
+    if (exportProduceLogsLoading.value) return;
+    exportProduceLogsLoading.value = true;
+    try {
+      const path = await callBackend<string>("ExportProduceWSLogs");
+      if (path) {
+        message.success(t("main.produce.export_logs_success", { path }));
+      } else {
+        message.info(t("main.produce.export_logs_cancelled"));
+      }
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : String(err);
+      message.error(t("main.produce.export_logs_failed", { error: detail }));
+    } finally {
+      exportProduceLogsLoading.value = false;
+    }
+  }
+
   function captureCurrentKillSnapshot() {
     const snapshot: Record<string, DemoClipKill[]> = {};
     for (const entry of clipReadyDemos.value) {
@@ -790,6 +813,7 @@ export function useProducePage() {
     errorMessage,
     generatingAndLaunching,
     generatingConfigOnlyLoading,
+    exportProduceLogsLoading,
     expandedNames,
     plannedRoundExpandedByDemo,
     wsState,
@@ -814,6 +838,7 @@ export function useProducePage() {
     takeFileByKey,
     runtimeStateType,
     runtimeStateMessage,
+    canExportProduceLogs,
     // Functions
     buildTakeRow,
     plannedRowsForDemo,
@@ -843,6 +868,7 @@ export function useProducePage() {
     takeFileByRow,
     canOpenClip,
     openProducedClip,
+    exportProduceLogs,
     openHistoryDrawer,
     goToEdit,
   };

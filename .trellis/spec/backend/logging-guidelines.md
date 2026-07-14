@@ -20,9 +20,18 @@ internal/logging/       ← Interfaces (Logger, Entry, Fields, StepToken)
 internal/envsetup/
     logger_bridge.go    ← Bridge between envsetup and logging.Logger
                         ← Also emits log entries as Wails runtime events
+
+internal/producews/
+    diagnostics.go      ← Separate bounded disk/memory diagnostic sink
+                        ← Reuses logging export-redaction helpers
 ```
 
-The `logging.Logger` interface is consumed by `envsetup.Service` and is **not used outside the startup pipeline**. Other packages (`release`, `config`, `download`) return errors normally; they do not log independently.
+The `logging.Logger` interface remains startup-pipeline-specific. Its export
+redaction helpers (`SanitizeExportText`, `SanitizeExportPath`,
+`SanitizeExportURL`, `SanitizeExportMetaValue`, `SanitizeExportDemoPath`) are
+shared by startup and produce diagnostics. Other low-level packages
+(`release`, `config`, `download`) return errors normally; they do not log
+independently.
 
 ---
 
@@ -142,6 +151,9 @@ All log entries are also emitted as Wails runtime events (`"log"`) so the fronte
 2. **Wails events** (`"log"`) — consumed by the frontend startup wizard for real-time display
 
 Both contain the same data; neither is persisted to disk during normal operation.
+`producews` is a separate support-diagnostics exception: its bounded rotating
+log is persisted under `<dataDir>/logs` and must not reuse startup's Wails log
+event or in-memory buffer.
 
 ---
 
@@ -152,3 +164,75 @@ Both contain the same data; neither is persisted to disk during normal operation
 - ❌ **Do not log in low-level packages** (`download`, `endpoints`, `config`) — return errors instead; only `envsetup` and its bridge log
 - ❌ **Do not use the global `log` package** or `fmt.Println` — all startup logging goes through `envsetup.emitLogWithFields`
 - ❌ **Do not log the same error twice** — log where it's handled, not where it originates
+
+## Scenario: Shared support-export redaction
+
+### 1. Scope / Trigger
+
+- Trigger: adding a startup/produce support export, incident report, or a new
+  dynamic diagnostic field.
+- Scope: `internal/logging` sanitizer helpers, `ExportStartupLogs`,
+  `producews.Diagnostics`, and plugin-log tail ingestion.
+
+### 2. Signatures
+
+```go
+func SanitizeExportText(value string) string
+func SanitizeExportPath(value string) string
+func SanitizeExportURL(rawURL string) string
+func SanitizeExportMetaValue(key, value string) string
+func SanitizeExportDemoPath(value string) string
+```
+
+### 3. Contracts
+
+- Every persisted/exported support artifact runs its final content through
+  `SanitizeExportText`; structured diagnostic metadata uses
+  `SanitizeExportMetaValue` first.
+- URL credentials, sensitive query values, authorization/token text, and home
+  prefixes are redacted. Any demo path is replaced with `<redacted-demo>`,
+  including queue/take snapshots and plugin log tail.
+- Sanitization is pure and shared. Do not duplicate regular expressions or
+  path masking in `envsetup` and `producews`.
+
+### 4. Validation & Error Matrix
+
+| Input | Exported result |
+| --- | --- |
+| `token`, auth, password field | `***` |
+| URL with credential/unknown query | credentials removed; safe query subset retained |
+| Current-user path | home prefix becomes `~` |
+| Absolute or structured demo path | `<redacted-demo>` |
+| Empty/invalid URL | sanitized text, no sanitizer error |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a plugin log says `playdemo D:\captures\private.dem`; exported text
+  contains only `<redacted-demo>`.
+- Base: a release URL retains version/source metadata after query filtering.
+- Bad: call `os.UserHomeDir` plus a local regex inside a new export path; its
+  behavior will drift from existing incident exports.
+
+### 6. Tests Required
+
+- `internal/logging`: credentials, URL filtering, Unix and Windows demo paths.
+- `internal/envsetup`: existing startup export redaction regression tests.
+- `internal/producews`: queue/take/plugin-tail report contains no source demo
+  path and has the redaction marker.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+report.WriteString(strings.ReplaceAll(path, home, "~"))
+```
+
+This misses demo paths outside the home directory and omits credentials/URLs.
+
+#### Correct
+
+```go
+event.Meta["demo_path"] = logging.SanitizeExportMetaValue("demo_path", path)
+report.WriteString(logging.SanitizeExportText(content))
+```

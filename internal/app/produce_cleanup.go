@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"cs2-highlight-tool-v2/internal/plugingen"
 
@@ -181,10 +182,47 @@ func (a *App) requestCloseCS2Process(state *produceSessionRuntime) {
 		return
 	}
 	state.closeRequested = true
-	defer func() {
-		state.closeDone = true
-	}()
 
+	if state.cs2PID <= 0 {
+		state.closeDone = true
+		return
+	}
+
+	if state.queueSucceeded && a.produceW != nil {
+		if err := a.produceW.RequestGracefulExit(); err == nil {
+			state.gracefulExit = true
+			state.gracefulExitAt = time.Now().Add(produceGracefulExitWait)
+			return
+		} else if a.ctx != nil {
+			wailsruntime.LogWarning(a.ctx, fmt.Sprintf("request graceful cs2 exit failed, falling back to pid close: %v", err))
+		}
+	}
+	a.closeCS2ProcessByPID(state)
+}
+
+func (a *App) advanceCloseCS2Process(state *produceSessionRuntime, now time.Time) {
+	if state == nil || !state.closeRequested || state.closeDone || !state.gracefulExit {
+		return
+	}
+	if a.produceW != nil && a.produceW.GracefulExitStatus().Completed {
+		state.closeDone = true
+		return
+	}
+	if now.Before(state.gracefulExitAt) {
+		return
+	}
+	if a.produceW != nil {
+		a.produceW.ExpectGracefulExitFallback()
+	}
+	state.gracefulExit = false
+	a.closeCS2ProcessByPID(state)
+}
+
+func (a *App) closeCS2ProcessByPID(state *produceSessionRuntime) {
+	if state == nil || state.closeDone {
+		return
+	}
+	defer func() { state.closeDone = true }()
 	if state.cs2PID <= 0 {
 		return
 	}

@@ -56,6 +56,10 @@ func (a *App) launchHLAEGame() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("获取 produce websocket 端口失败: %w", err)
 	}
+	pluginLogPath := a.dataPath("logs", "cs2-server-plugin.log")
+	if err := os.MkdirAll(filepath.Dir(pluginLogPath), 0o755); err != nil {
+		return 0, fmt.Errorf("创建插件日志目录失败: %w", err)
+	}
 
 	cmdLine := buildHLAECommandLine(cfg.LaunchResolution)
 	args := []string{
@@ -67,7 +71,11 @@ func (a *App) launchHLAEGame() (int, error) {
 	}
 
 	cmd := launchHLAECommand(hlaeExe, args...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("CSDM_WS_PORT=%d", port))
+	cmd.Env = append(
+		os.Environ(),
+		fmt.Sprintf("CSDM_WS_PORT=%d", port),
+		"CSDM_LOG_PATH="+pluginLogPath,
+	)
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("启动 HLAE 失败: %w", err)
 	}

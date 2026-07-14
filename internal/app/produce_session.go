@@ -19,6 +19,7 @@ const (
 	produceWorkerPollInterval = 300 * time.Millisecond
 	produceFileStableInterval = 250 * time.Millisecond
 	produceProcessCloseDelay  = 5 * time.Second
+	produceGracefulExitWait   = 3 * time.Second
 )
 
 type produceSessionRuntime struct {
@@ -42,10 +43,13 @@ type produceSessionRuntime struct {
 
 	cs2PID           int
 	queueStopped     bool
+	queueSucceeded   bool
 	queueStopAt      time.Time
 	closeAt          time.Time
 	closeRequested   bool
 	closeDone        bool
+	gracefulExit     bool
+	gracefulExitAt   time.Time
 	compositionPhase bool
 
 	keepIntermediateFiles bool
@@ -184,6 +188,7 @@ func (a *App) runProduceSessionWorker(ctx context.Context, state *produceSession
 			if !queue.Running && queue.Total > 0 {
 				if !state.queueStopped {
 					state.queueStopped = true
+					state.queueSucceeded = queue.Completed == queue.Total && strings.TrimSpace(queue.LastError) == ""
 					state.queueStopAt = now
 					state.closeAt = now.Add(produceProcessCloseDelay)
 					state.compositionPhase = true
@@ -192,6 +197,10 @@ func (a *App) runProduceSessionWorker(ctx context.Context, state *produceSession
 
 			if state.queueStopped && !state.closeRequested && !now.Before(state.closeAt) {
 				a.requestCloseCS2Process(state)
+			}
+
+			if state.closeRequested && !state.closeDone {
+				a.advanceCloseCS2Process(state, now)
 			}
 
 			if a.canStopProduceSession(state) {
