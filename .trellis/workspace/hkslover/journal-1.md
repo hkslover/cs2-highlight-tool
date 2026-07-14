@@ -1554,3 +1554,37 @@ Added persisted POV radar setting, settings tooltip, conditional bootstrap actio
 ### Next Steps
 
 - None - task complete
+
+
+## Session 47: Harden production WebSocket recovery and graceful shutdown
+
+**Date**: 2026-07-14
+**Task**: Harden production WebSocket recovery and graceful shutdown
+**Branch**: `agent/producews-recovery`
+
+### Summary
+
+Added bounded diagnostics, reconnect recovery, redacted log export, and a graceful plugin shutdown path; verified Go tests and frontend build.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed978f6` | (see git log) |
+| `08887a0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
