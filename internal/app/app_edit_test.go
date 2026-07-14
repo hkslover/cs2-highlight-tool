@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,218 @@ func TestNormalizeEditTransitions_LegacySequential(t *testing.T) {
 	if transitions[0].AfterIndex != 0 || transitions[1].AfterIndex != 1 {
 		t.Fatalf("unexpected sequential transition mapping: %+v", transitions)
 	}
+}
+
+func TestBuildTransitionFilterGraph_FadeUsesAlignedOffsetAndResolution(t *testing.T) {
+	plan, err := buildTransitionFilterGraph([]resolvedEditClip{
+		{VideoPath: "a.mp4", Duration: 3.203, Width: 1920, Height: 1080},
+		{VideoPath: "b.mp4", Duration: 2.801, Width: 1280, Height: 720},
+	}, map[int]EditConcatTransition{
+		0: {Type: "fade", Duration: 0.301},
+	}, 60)
+	if err != nil {
+		t.Fatalf("buildTransitionFilterGraph: %v", err)
+	}
+	if !strings.Contains(plan.Filter, "xfade=transition=fade:duration=0.300000:offset=2.900000[v]") {
+		t.Fatalf("filter should contain aligned xfade offset, got: %s", plan.Filter)
+	}
+	if !strings.Contains(plan.Filter, "acrossfade=d=0.300000:c1=tri:c2=tri[a]") {
+		t.Fatalf("filter should contain acrossfade, got: %s", plan.Filter)
+	}
+	if strings.Count(plan.Filter, "scale=1920:1080") != 2 {
+		t.Fatalf("every input should be scaled to first resolution, got: %s", plan.Filter)
+	}
+	if !strings.Contains(plan.Filter, "trim=duration=3.200000") || !strings.Contains(plan.Filter, "trim=duration=2.800000") {
+		t.Fatalf("filter should use frame-aligned durations, got: %s", plan.Filter)
+	}
+	if math.Abs(plan.TotalDuration-5.7) > 1e-9 {
+		t.Fatalf("total duration=%f want 5.7", plan.TotalDuration)
+	}
+}
+
+func TestBuildTransitionFilterGraph_MixesFadeAndHardCut(t *testing.T) {
+	plan, err := buildTransitionFilterGraph([]resolvedEditClip{
+		{Duration: 3, Width: 1920, Height: 1080},
+		{Duration: 2, Width: 1920, Height: 1080},
+		{Duration: 4, Width: 1920, Height: 1080},
+	}, map[int]EditConcatTransition{
+		0: {Type: "fade", Duration: 0.5},
+	}, 60)
+	if err != nil {
+		t.Fatalf("buildTransitionFilterGraph: %v", err)
+	}
+	if !strings.Contains(plan.Filter, "xfade=transition=fade:duration=0.500000:offset=2.500000[vx0]") {
+		t.Fatalf("missing non-final xfade, got: %s", plan.Filter)
+	}
+	if !strings.Contains(plan.Filter, "[vx0][ax0][v2][a2]concat=n=2:v=1:a=1[v][a]") {
+		t.Fatalf("missing final hard-cut concat, got: %s", plan.Filter)
+	}
+	if math.Abs(plan.TotalDuration-8.5) > 1e-9 {
+		t.Fatalf("total duration=%f want 8.5", plan.TotalDuration)
+	}
+}
+
+func TestBuildTransitionFilterGraph_AllHardCuts(t *testing.T) {
+	plan, err := buildTransitionFilterGraph([]resolvedEditClip{
+		{Duration: 3, Width: 1920, Height: 1080},
+		{Duration: 2, Width: 1920, Height: 1080},
+		{Duration: 4, Width: 1920, Height: 1080},
+	}, nil, 60)
+	if err != nil {
+		t.Fatalf("buildTransitionFilterGraph: %v", err)
+	}
+	if strings.Count(plan.Filter, "concat=n=2:v=1:a=1") != 2 {
+		t.Fatalf("hard-cut graph should contain two concat filters, got: %s", plan.Filter)
+	}
+	if math.Abs(plan.TotalDuration-9) > 1e-9 {
+		t.Fatalf("total duration=%f want 9", plan.TotalDuration)
+	}
+}
+
+func TestEditComposeStageCount_TransitionIsSingleStage(t *testing.T) {
+	if got := editComposeStageCount(4, true); got != 1 {
+		t.Fatalf("transition stage count=%d want 1", got)
+	}
+}
+
+func TestBuildTransitionFilterGraph_RejectsInvalidDurations(t *testing.T) {
+	tests := []struct {
+		name  string
+		clips []resolvedEditClip
+		trans map[int]EditConcatTransition
+		want  string
+	}{
+		{
+			name: "fade exceeds left",
+			clips: []resolvedEditClip{
+				{Duration: 1, Width: 1920, Height: 1080},
+				{Duration: 2, Width: 1920, Height: 1080},
+			},
+			trans: map[int]EditConcatTransition{0: {Type: "fade", Duration: 1}},
+			want:  "exceeds clip durations",
+		},
+		{
+			name: "fade exceeds right",
+			clips: []resolvedEditClip{
+				{Duration: 2, Width: 1920, Height: 1080},
+				{Duration: 0.5, Width: 1920, Height: 1080},
+			},
+			trans: map[int]EditConcatTransition{0: {Type: "fade", Duration: 0.5}},
+			want:  "exceeds clip durations",
+		},
+		{
+			name: "clip too short",
+			clips: []resolvedEditClip{
+				{Duration: 0.01, Width: 1920, Height: 1080},
+				{Duration: 2, Width: 1920, Height: 1080},
+			},
+			want: "too short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildTransitionFilterGraph(tt.clips, tt.trans, 60)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error=%v want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestProbeVideoStreamInfo_StreamDurationPriorityAndFormatFallback(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    probedVideoInfo
+		wantErr bool
+	}{
+		{
+			name:    "stream duration has priority",
+			payload: `{"streams":[{"duration":"2.345","width":1920,"height":1080}],"format":{"duration":"9.000"}}`,
+			want:    probedVideoInfo{Duration: 2.345, Width: 1920, Height: 1080},
+		},
+		{
+			name:    "format duration fallback",
+			payload: `{"streams":[{"duration":"N/A","width":1280,"height":720}],"format":{"duration":"4.500"}}`,
+			want:    probedVideoInfo{Duration: 4.5, Width: 1280, Height: 720},
+		},
+		{
+			name:    "invalid duration",
+			payload: `{"streams":[{"duration":"N/A","width":1280,"height":720}],"format":{"duration":"N/A"}}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := ffmpegCommand
+			ffmpegCommand = fakeFFProbeCommandJSON
+			t.Cleanup(func() { ffmpegCommand = old })
+			t.Setenv("EDIT_FFPROBE_JSON", tt.payload)
+
+			got, err := probeVideoStreamInfo("ffprobe", "clip.mp4")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected probe error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("probeVideoStreamInfo: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("probe result=%+v want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
+	exeDir := t.TempDir()
+	ffprobeDir := filepath.Join(exeDir, "ffmpeg", "bin")
+	if err := os.MkdirAll(ffprobeDir, 0755); err != nil {
+		t.Fatalf("create ffprobe dir: %v", err)
+	}
+	ffprobePath := filepath.Join(ffprobeDir, "ffprobe.exe")
+	if err := os.WriteFile(ffprobePath, []byte("stub"), 0755); err != nil {
+		t.Fatalf("write ffprobe stub: %v", err)
+	}
+	clipPath := filepath.Join(exeDir, "clip.mp4")
+	if err := os.WriteFile(clipPath, []byte("clip"), 0644); err != nil {
+		t.Fatalf("write clip: %v", err)
+	}
+
+	old := ffmpegCommand
+	ffmpegCommand = fakeFFProbeCommandJSON
+	t.Cleanup(func() { ffmpegCommand = old })
+	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900}],"format":{"duration":"8.000"}}`)
+
+	app := &App{exeDir: exeDir}
+	got, err := app.resolveEditClips([]EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
+	if err != nil {
+		t.Fatalf("resolveEditClips: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("resolved clips=%d want 1", len(got))
+	}
+	if got[0].Duration != 4.25 || got[0].Width != 1600 || got[0].Height != 900 {
+		t.Fatalf("resolved clip=%+v; probe result should override request duration", got[0])
+	}
+}
+
+func fakeFFProbeCommandJSON(_ string, _ ...string) *exec.Cmd {
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcessEditFFProbe", "--")
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS_EDIT_FFPROBE=1")
+	return cmd
+}
+
+func TestHelperProcessEditFFProbe(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS_EDIT_FFPROBE") != "1" {
+		return
+	}
+	_, _ = fmt.Fprint(os.Stdout, os.Getenv("EDIT_FFPROBE_JSON"))
+	os.Exit(0)
 }
 
 func TestConcatEditClips_AddsEditedHistoryEntry(t *testing.T) {

@@ -1393,3 +1393,84 @@ key := plugingen.BuildProduceHistoryKeyWithSourceID(
 ```
 
 The full-round path remains independent from kill-window selections while still reusing shared low-level action generation and produce session plumbing.
+
+## Scenario: Edit Transition Composition Contract
+
+### 1. Scope / Trigger
+
+- Trigger: `ConcatEditClips` receives at least one normalized transition and must merge clips without cumulative A/V drift or repeated lossy encoding.
+- Scope: `internal/app` edit composition and its `ffprobe`/FFmpeg boundary; the frontend request shape remains compatible.
+- Boundary: Edit timeline UI -> `ConcatEditClips` -> per-input video-stream probe -> one filter graph/encode command per retry profile -> edited output.
+
+### 2. Signatures
+
+```go
+func (a *App) ConcatEditClips(request EditConcatRequest) (string, error)
+func (a *App) ProbeClipDuration(videoPath string) (float64, error)
+
+type EditConcatRequest struct {
+    Clips       []EditConcatClip       `json:"clips"`
+    Transitions []EditConcatTransition `json:"transitions"`
+}
+
+type EditConcatClip struct {
+    VideoPath string  `json:"video_path"`
+    Duration  float64 `json:"duration"` // UI/reference value; not transition timing truth
+}
+```
+
+### 3. Contracts
+
+- `ConcatEditClips` and `ProbeClipDuration` signatures, `EditConcatRequest` JSON fields, and `compose_progress` event name are stable.
+- When normalized transitions are non-empty, every clip is probed with one JSON `ffprobe` call using the first video stream's `duration`, `width`, and `height`; `format.duration` is only a duration fallback when the stream value is missing or `N/A`.
+- Transition timing uses `round(probedVideoDuration * fps) / fps`; transition duration and all offsets use the same frame grid. The request `Duration` is never used for transition offsets or output progress.
+- A transition composition builds one `filter_complex`: each input is scaled/padded to the first clip's resolution, aligned to the configured FPS, and normalized to equal video/audio duration. Fade gaps use `xfade` + `acrossfade`; hard-cut gaps use the graph `concat` filter.
+- The complete graph is encoded once per `BuildEditEncodeArgs` retry profile. The output is mapped from `[v]` and `[a]`, and audio is encoded once as AAC. No transition intermediate files or concat-demuxer `-c copy` finalization are allowed.
+- The transition path emits one `compose_progress` stage named `合成输出`, with the graph's calculated total duration as its progress denominator. `concatSimple` remains outside this contract.
+
+### 4. Validation & Error Matrix
+
+- Missing/unstatable `ffprobe` on the transition path -> return an error before FFmpeg composition; do not fall back to the request `Duration`.
+- No video stream, invalid stream/format duration, or non-positive width/height -> return a clip-specific probe error.
+- Frame-aligned clip duration `< 2/fps` -> reject the graph; fade duration `< 1/fps` after alignment -> reject the graph.
+- Fade duration `>=` the accumulated left duration or the next clip duration -> reject with the gap index and both durations.
+- FFmpeg failure -> retry the entire graph with the existing profile chain; after all profiles fail, return the last output/error using the existing `ffmpeg transition failed` wrapper.
+
+### 5. Good/Base/Bad Cases
+
+- Good: Three clips with mixed fade/hard-cut gaps and different resolutions produce one FFmpeg command, one audio/video encode each, and equal output stream durations.
+- Base: A request with no transitions keeps the existing simple concat path and may use the UI duration for its legacy behavior.
+- Bad: Using `EditConcatClip.Duration` for `xfade offset`, because stale UI values recreate cumulative drift.
+- Bad: Normalizing every clip or every gap into an intermediate MP4, because the first clip then receives multiple generations of lossy encoding.
+- Bad: Mixing `xfade` with unnormalized audio or using concat demuxer `-c copy`, because video/audio transition points and AAC priming can diverge.
+
+### 6. Tests Required
+
+- `internal/app`: pure `buildTransitionFilterGraph` tests assert frame-aligned offsets, mixed fade/concat labels, total-duration arithmetic, short-clip/invalid-gap errors, and scale/pad for differing resolutions.
+- `internal/app`: `probeVideoStreamInfo` tests assert stream-duration priority, `N/A` -> format fallback, invalid JSON/duration, and invalid resolution errors.
+- `internal/app`: `resolveEditClips` regression asserts a positive request `Duration` is still overridden by the transition-path probe result.
+- `internal/app`: `editComposeStageCount` stays at one for transition composition; `go test ./...` and `go vet ./...` pass.
+- Real FFmpeg smoke coverage should include at least three mixed fade/hard-cut clips and compare `stream=duration` for video/audio; the expected difference is below 50 ms.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+// Stale UI duration and repeated intermediate encodes make timing and quality
+// depend on frontend state and the number of gaps.
+duration := clip.Duration
+normalizeTransitionInputClip(..., "clip.mp4")
+applyFadeTransition(..., duration, transition.Duration, ...)
+```
+
+#### Correct
+
+```go
+// Probe first, construct one graph, then retry the complete command by profile.
+info, err := probeVideoStreamInfo(ffprobeExe, clip.VideoPath)
+plan, err := buildTransitionFilterGraph(probedClips, transitionByIndex, encode.FPS)
+// -i ... -filter_complex plan.Filter -map [v] -map [a] <one encode profile>
+```
+
+The probe and graph are deliberately separate: the probe owns external I/O, while the graph builder remains pure and testable.

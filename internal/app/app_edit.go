@@ -30,6 +30,8 @@ type EditConcatRequest struct {
 type resolvedEditClip struct {
 	VideoPath string
 	Duration  float64
+	Width     int
+	Height    int
 }
 
 type editEncodeSettings struct {
@@ -45,13 +47,16 @@ const (
 	maxEditTransitionDuration     = 5.0
 )
 
+// ConcatEditClips merges edit clips. The transition path uses one filter graph
+// and one encode; request clip durations are retained for UI compatibility but
+// are not trusted for transition timing.
 func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
-	resolvedClips, err := a.resolveEditClips(request.Clips)
+	transitionByIndex, err := normalizeEditTransitions(len(request.Clips), request.Transitions)
 	if err != nil {
 		return "", err
 	}
 
-	transitionByIndex, err := normalizeEditTransitions(len(resolvedClips), request.Transitions)
+	resolvedClips, err := a.resolveEditClips(request.Clips, len(transitionByIndex) > 0)
 	if err != nil {
 		return "", err
 	}
@@ -92,12 +97,22 @@ func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
 	return outputPath, nil
 }
 
-func (a *App) resolveEditClips(input []EditConcatClip) ([]resolvedEditClip, error) {
+func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]resolvedEditClip, error) {
 	if len(input) == 0 {
 		return nil, fmt.Errorf("no clips provided")
 	}
 
+	probeForTransitions := len(forceProbe) > 0 && forceProbe[0]
 	ffprobeExe := a.resolveFFprobeExe()
+	if probeForTransitions {
+		if ffprobeExe == "" {
+			return nil, fmt.Errorf("ffprobe not found")
+		}
+		if _, err := os.Stat(ffprobeExe); err != nil {
+			return nil, fmt.Errorf("ffprobe not found at %s", ffprobeExe)
+		}
+	}
+
 	resolved := make([]resolvedEditClip, 0, len(input))
 	for i, clip := range input {
 		p := strings.TrimSpace(clip.VideoPath)
@@ -109,7 +124,17 @@ func (a *App) resolveEditClips(input []EditConcatClip) ([]resolvedEditClip, erro
 		}
 
 		duration := clip.Duration
-		if duration <= 0 {
+		width := 0
+		height := 0
+		if probeForTransitions {
+			info, err := probeVideoStreamInfo(ffprobeExe, p)
+			if err != nil {
+				return nil, fmt.Errorf("clip %d probe video stream failed: %w", i+1, err)
+			}
+			duration = info.Duration
+			width = info.Width
+			height = info.Height
+		} else if duration <= 0 {
 			if ffprobeExe == "" {
 				return nil, fmt.Errorf("clip %d duration is invalid and ffprobe not found", i+1)
 			}
@@ -126,9 +151,15 @@ func (a *App) resolveEditClips(input []EditConcatClip) ([]resolvedEditClip, erro
 			return nil, fmt.Errorf("clip %d duration must be > 0", i+1)
 		}
 
+		resolvedDuration := duration
+		if !probeForTransitions {
+			resolvedDuration = math.Round(duration*1000) / 1000
+		}
 		resolved = append(resolved, resolvedEditClip{
 			VideoPath: p,
-			Duration:  math.Round(duration*1000) / 1000,
+			Duration:  resolvedDuration,
+			Width:     width,
+			Height:    height,
 		})
 	}
 	return resolved, nil
@@ -282,269 +313,33 @@ func concatWithTransitions(
 		return nil, fmt.Errorf("at least 2 clips are required for transitions")
 	}
 
-	workDir := outputPath + ".work"
-	if err := os.MkdirAll(workDir, 0755); err != nil {
-		return nil, fmt.Errorf("create transition work directory failed: %w", err)
-	}
-	defer os.RemoveAll(workDir)
-
-	normalizedPaths := make([]string, 0, len(clips))
-	normalizedDurations := make([]float64, 0, len(clips))
-	for i, clip := range clips {
-		normalizedPath := filepath.Join(workDir, fmt.Sprintf("clip_%03d.mp4", i))
-		stageName := fmt.Sprintf("预处理片段 %d/%d", i+1, len(clips))
-		if err := normalizeTransitionInputClip(ffmpegExe, clip.VideoPath, normalizedPath, encode, clip.Duration, tracker, stageName); err != nil {
-			return nil, fmt.Errorf("normalize clip %d failed: %w", i+1, err)
-		}
-		normalizedPaths = append(normalizedPaths, normalizedPath)
-		normalizedDurations = append(normalizedDurations, clip.Duration)
-	}
-
-	currentPath := normalizedPaths[0]
-	currentDuration := normalizedDurations[0]
-	for gapIndex := 0; gapIndex < len(normalizedPaths)-1; gapIndex++ {
-		nextPath := normalizedPaths[gapIndex+1]
-		nextDuration := normalizedDurations[gapIndex+1]
-		stagePath := filepath.Join(workDir, fmt.Sprintf("stage_%03d.mp4", gapIndex))
-
-		if transition, ok := transitionByIndex[gapIndex]; ok {
-			if transition.Duration >= currentDuration || transition.Duration >= nextDuration {
-				return nil, fmt.Errorf(
-					"transition duration %.3f exceeds clip durations at gap %d (left=%.3f right=%.3f)",
-					transition.Duration,
-					gapIndex,
-					currentDuration,
-					nextDuration,
-				)
-			}
-			stageName := fmt.Sprintf("应用转场 %d/%d", gapIndex+1, len(normalizedPaths)-1)
-			stageDuration := currentDuration + nextDuration - transition.Duration
-			if err := applyFadeTransition(ffmpegExe, currentPath, nextPath, currentDuration, transition.Duration, stagePath, encode, stageDuration, tracker, stageName); err != nil {
-				return nil, fmt.Errorf("apply transition at gap %d failed: %w", gapIndex, err)
-			}
-			currentDuration = currentDuration + nextDuration - transition.Duration
-		} else {
-			stageName := fmt.Sprintf("拼接片段 %d/%d", gapIndex+1, len(normalizedPaths)-1)
-			stageDuration := currentDuration + nextDuration
-			if err := concatHardCutPair(ffmpegExe, currentPath, nextPath, stagePath, encode, stageDuration, tracker, stageName); err != nil {
-				return nil, fmt.Errorf("concat hard cut at gap %d failed: %w", gapIndex, err)
-			}
-			currentDuration = currentDuration + nextDuration
-		}
-		currentPath = stagePath
-	}
-
-	if tracker != nil {
-		tracker.stageStart("写出最终文件")
-	}
-	args := []string{
-		"-y",
-		"-i", currentPath,
-		"-c", "copy",
-		"-movflags", "+faststart",
-		outputPath,
-	}
-	cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
-	configureNoWindowProcess(cmd)
-	out, err := runFFmpegCommandWithProgress(cmd, currentDuration, tracker)
+	plan, err := buildTransitionFilterGraph(clips, transitionByIndex, encode.FPS)
 	if err != nil {
-		return out, fmt.Errorf("finalize output failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return nil, err
 	}
-	if tracker != nil {
-		tracker.stageDone()
-	}
-	return out, nil
-}
 
-func normalizeTransitionInputClip(
-	ffmpegExe string,
-	inputPath string,
-	outputPath string,
-	encode editEncodeSettings,
-	stageDuration float64,
-	tracker *composeProgressTracker,
-	stageName string,
-) error {
 	if tracker != nil {
-		tracker.stageStart(stageName)
+		tracker.stageStart("合成输出")
 	}
 	profiles := buildEditRetryProfiles(encode)
 	var lastOut []byte
 	var lastErr error
-	for _, profile := range profiles {
-		videoArgs, err := ffmpegprofile.BuildEditEncodeArgs(profile.ID, encode.Quality)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		args := []string{
-			"-y",
-			"-i", inputPath,
-			"-map", "0:v:0",
-			"-map", "0:a:0",
-			"-vf", fmt.Sprintf("settb=AVTB,setpts=PTS-STARTPTS,fps=%d,format=yuv420p", encode.FPS),
-			"-af", "asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo",
-		}
-		args = append(args, videoArgs...)
-		args = append(args,
-			"-c:a", "aac",
-			"-b:a", "192k",
-			"-movflags", "+faststart",
-			"-shortest",
-			outputPath,
-		)
-		cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
-		configureNoWindowProcess(cmd)
-		out, err := runFFmpegCommandWithProgress(cmd, stageDuration, tracker)
-		if err == nil {
-			if tracker != nil {
-				tracker.stageDone()
-			}
-			return nil
-		}
-		lastOut = out
-		lastErr = fmt.Errorf("[%s] %w", profile.ID, err)
-	}
-	return fmt.Errorf("ffmpeg normalize failed: %w: %s", lastErr, strings.TrimSpace(string(lastOut)))
-}
-
-func applyFadeTransition(
-	ffmpegExe string,
-	leftPath string,
-	rightPath string,
-	leftDuration float64,
-	transitionDuration float64,
-	outputPath string,
-	encode editEncodeSettings,
-	stageDuration float64,
-	tracker *composeProgressTracker,
-	stageName string,
-) error {
-	if tracker != nil {
-		tracker.stageStart(stageName)
-	}
-	offset := math.Round((leftDuration-transitionDuration)*1000) / 1000
-	filter := fmt.Sprintf(
-		"[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=%d,format=yuv420p[v0];"+
-			"[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=%d,format=yuv420p[v1];"+
-			"[v0][v1]xfade=transition=fade:duration=%.3f:offset=%.3f[v];"+
-			"[0:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a0];"+
-			"[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a1];"+
-			"[a0][a1]acrossfade=d=%.3f:c1=tri:c2=tri[a]",
-		encode.FPS,
-		encode.FPS,
-		transitionDuration,
-		offset,
-		transitionDuration,
-	)
-
-	profiles := buildEditRetryProfiles(encode)
-	var lastOut []byte
-	var lastErr error
-	for _, profile := range profiles {
-		videoArgs, err := ffmpegprofile.BuildEditEncodeArgs(profile.ID, encode.Quality)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		args := []string{
-			"-y",
-			"-i", leftPath,
-			"-i", rightPath,
-			"-filter_complex", filter,
-			"-map", "[v]",
-			"-map", "[a]",
-		}
-		args = append(args, videoArgs...)
-		args = append(args,
-			"-c:a", "aac",
-			"-b:a", "192k",
-			"-movflags", "+faststart",
-			outputPath,
-		)
-		cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
-		configureNoWindowProcess(cmd)
-		out, err := runFFmpegCommandWithProgress(cmd, stageDuration, tracker)
-		if err == nil {
-			if tracker != nil {
-				tracker.stageDone()
-			}
-			return nil
-		}
-		lastOut = out
-		lastErr = fmt.Errorf("[%s] %w", profile.ID, err)
-	}
-	return fmt.Errorf("ffmpeg transition failed: %w: %s", lastErr, strings.TrimSpace(string(lastOut)))
-}
-
-func concatHardCutPair(
-	ffmpegExe string,
-	leftPath string,
-	rightPath string,
-	outputPath string,
-	encode editEncodeSettings,
-	stageDuration float64,
-	tracker *composeProgressTracker,
-	stageName string,
-) error {
-	if tracker != nil {
-		tracker.stageStart(stageName)
-	}
-	listPath := outputPath + ".list.txt"
-	defer os.Remove(listPath)
-
-	leftAbs, err := filepath.Abs(leftPath)
-	if err != nil {
-		return fmt.Errorf("resolve left clip path failed: %w", err)
-	}
-	rightAbs, err := filepath.Abs(rightPath)
-	if err != nil {
-		return fmt.Errorf("resolve right clip path failed: %w", err)
-	}
-	content := []string{
-		fmt.Sprintf("file '%s'", strings.ReplaceAll(leftAbs, "'", "\\'")),
-		fmt.Sprintf("file '%s'", strings.ReplaceAll(rightAbs, "'", "\\'")),
-	}
-	if err := os.WriteFile(listPath, []byte(strings.Join(content, "\n")), 0644); err != nil {
-		return fmt.Errorf("write pair concat list failed: %w", err)
-	}
-
-	args := []string{
-		"-y",
-		"-f", "concat",
-		"-safe", "0",
-		"-i", listPath,
-		"-c", "copy",
-		"-movflags", "+faststart",
-		outputPath,
-	}
-	cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
-	configureNoWindowProcess(cmd)
-	out, err := runFFmpegCommandWithProgress(cmd, stageDuration, tracker)
-	if err == nil {
-		if tracker != nil {
-			tracker.stageDone()
-		}
-		return nil
-	}
-
-	profiles := buildEditRetryProfiles(encode)
-	var fallbackOut []byte
-	var fallbackErr error
 	for _, profile := range profiles {
 		videoArgs, buildErr := ffmpegprofile.BuildEditEncodeArgs(profile.ID, encode.Quality)
 		if buildErr != nil {
-			fallbackErr = buildErr
+			lastErr = buildErr
 			continue
 		}
-		args := []string{
-			"-y",
-			"-i", leftPath,
-			"-i", rightPath,
-			"-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
+
+		args := []string{"-y"}
+		for _, clip := range clips {
+			args = append(args, "-i", clip.VideoPath)
+		}
+		args = append(args,
+			"-filter_complex", plan.Filter,
 			"-map", "[v]",
 			"-map", "[a]",
-		}
+		)
 		args = append(args, videoArgs...)
 		args = append(args,
 			"-c:a", "aac",
@@ -552,25 +347,146 @@ func concatHardCutPair(
 			"-movflags", "+faststart",
 			outputPath,
 		)
-		fallbackCmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
-		configureNoWindowProcess(fallbackCmd)
-		currentOut, currentErr := runFFmpegCommandWithProgress(fallbackCmd, stageDuration, tracker)
-		if currentErr == nil {
+
+		cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
+		configureNoWindowProcess(cmd)
+		out, runErr := runFFmpegCommandWithProgress(cmd, plan.TotalDuration, tracker)
+		if runErr == nil {
 			if tracker != nil {
 				tracker.stageDone()
 			}
-			return nil
+			return out, nil
 		}
-		fallbackOut = currentOut
-		fallbackErr = fmt.Errorf("[%s] %w", profile.ID, currentErr)
+		lastOut = out
+		lastErr = fmt.Errorf("[%s] %w", profile.ID, runErr)
 	}
-	return fmt.Errorf(
-		"ffmpeg hard-cut concat failed: %w: %s; fallback failed: %w: %s",
-		err,
-		strings.TrimSpace(string(out)),
-		fallbackErr,
-		strings.TrimSpace(string(fallbackOut)),
-	)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no usable ffmpeg encoding profile")
+	}
+	return lastOut, fmt.Errorf("ffmpeg transition failed: %w: %s", lastErr, strings.TrimSpace(string(lastOut)))
+}
+
+type transitionGraphPlan struct {
+	Filter        string
+	TotalDuration float64
+}
+
+func buildTransitionFilterGraph(
+	clips []resolvedEditClip,
+	transitionByIndex map[int]EditConcatTransition,
+	fps int,
+) (transitionGraphPlan, error) {
+	if len(clips) < 2 {
+		return transitionGraphPlan{}, fmt.Errorf("at least 2 clips are required for transitions")
+	}
+	if fps <= 0 {
+		return transitionGraphPlan{}, fmt.Errorf("edit fps must be > 0")
+	}
+	for gapIndex := range transitionByIndex {
+		if gapIndex < 0 || gapIndex >= len(clips)-1 {
+			return transitionGraphPlan{}, fmt.Errorf("transition gap index out of range: %d", gapIndex)
+		}
+	}
+
+	frameDuration := 1.0 / float64(fps)
+	durations := make([]float64, len(clips))
+	for i, clip := range clips {
+		if clip.Width <= 0 || clip.Height <= 0 {
+			return transitionGraphPlan{}, fmt.Errorf("clip %d has invalid resolution: %dx%d", i, clip.Width, clip.Height)
+		}
+		durations[i] = alignToFrameGrid(clip.Duration, fps)
+		if durations[i] < 2*frameDuration {
+			return transitionGraphPlan{}, fmt.Errorf("clip %d is too short after frame alignment: %.6f seconds", i, durations[i])
+		}
+	}
+
+	width := clips[0].Width
+	height := clips[0].Height
+	filters := make([]string, 0, len(clips)*2+len(clips)-1)
+	for i, duration := range durations {
+		filters = append(filters, fmt.Sprintf(
+			"[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=%d,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p,trim=duration=%.6f,setpts=PTS-STARTPTS[v%d]",
+			i,
+			width,
+			height,
+			width,
+			height,
+			fps,
+			duration,
+			i,
+		))
+		filters = append(filters, fmt.Sprintf(
+			"[%d:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,apad,atrim=0:%.6f,asetpts=PTS-STARTPTS[a%d]",
+			i,
+			duration,
+			i,
+		))
+	}
+
+	currentVideo := "[v0]"
+	currentAudio := "[a0]"
+	currentDuration := durations[0]
+	for gapIndex := 0; gapIndex < len(clips)-1; gapIndex++ {
+		nextVideo := fmt.Sprintf("[v%d]", gapIndex+1)
+		nextAudio := fmt.Sprintf("[a%d]", gapIndex+1)
+		lastGap := gapIndex == len(clips)-2
+		outputVideo := fmt.Sprintf("[vx%d]", gapIndex)
+		outputAudio := fmt.Sprintf("[ax%d]", gapIndex)
+		if lastGap {
+			outputVideo = "[v]"
+			outputAudio = "[a]"
+		}
+
+		if transition, ok := transitionByIndex[gapIndex]; ok {
+			if strings.ToLower(strings.TrimSpace(transition.Type)) != "fade" {
+				return transitionGraphPlan{}, fmt.Errorf("unsupported transition type at gap %d: %s", gapIndex, transition.Type)
+			}
+			duration := alignToFrameGrid(transition.Duration, fps)
+			if duration < frameDuration {
+				return transitionGraphPlan{}, fmt.Errorf("transition duration at gap %d is too short after frame alignment: %.6f seconds", gapIndex, duration)
+			}
+			if duration >= currentDuration || duration >= durations[gapIndex+1] {
+				return transitionGraphPlan{}, fmt.Errorf(
+					"transition duration %.6f exceeds clip durations at gap %d (left=%.6f right=%.6f)",
+					duration,
+					gapIndex,
+					currentDuration,
+					durations[gapIndex+1],
+				)
+			}
+			offset := currentDuration - duration
+			filters = append(filters,
+				fmt.Sprintf("%s%sxfade=transition=fade:duration=%.6f:offset=%.6f%s", currentVideo, nextVideo, duration, offset, outputVideo),
+				fmt.Sprintf("%s%sacrossfade=d=%.6f:c1=tri:c2=tri%s", currentAudio, nextAudio, duration, outputAudio),
+			)
+			currentDuration += durations[gapIndex+1] - duration
+		} else {
+			filters = append(filters, fmt.Sprintf(
+				"%s%s%s%sconcat=n=2:v=1:a=1%s%s",
+				currentVideo,
+				currentAudio,
+				nextVideo,
+				nextAudio,
+				outputVideo,
+				outputAudio,
+			))
+			currentDuration += durations[gapIndex+1]
+		}
+		currentVideo = outputVideo
+		currentAudio = outputAudio
+	}
+
+	return transitionGraphPlan{
+		Filter:        strings.Join(filters, ";"),
+		TotalDuration: currentDuration,
+	}, nil
+}
+
+func alignToFrameGrid(seconds float64, fps int) float64 {
+	if fps <= 0 {
+		return seconds
+	}
+	return math.Round(seconds*float64(fps)) / float64(fps)
 }
 
 func editComposeStageCount(clipCount int, withTransitions bool) int {
@@ -580,7 +496,7 @@ func editComposeStageCount(clipCount int, withTransitions bool) int {
 	if !withTransitions {
 		return 1
 	}
-	return clipCount + (clipCount - 1) + 1
+	return 1
 }
 
 func totalClipDuration(clips []resolvedEditClip) float64 {

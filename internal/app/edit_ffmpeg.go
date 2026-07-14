@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -19,6 +20,12 @@ import (
 
 var ffmpegCommand = exec.Command
 var ffmpegCommandContext = exec.CommandContext
+
+type probedVideoInfo struct {
+	Duration float64
+	Width    int
+	Height   int
+}
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
 	videoPath = strings.TrimSpace(videoPath)
@@ -65,6 +72,72 @@ func probeDurationByFFprobe(ffprobeExe string, videoPath string) (float64, error
 	}
 
 	return math.Round(duration*1000) / 1000, nil
+}
+
+func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error) {
+	cmd := ffmpegCommand(
+		ffprobeExe,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=duration,width,height",
+		"-show_entries", "format=duration",
+		"-of", "json",
+		videoPath,
+	)
+	configureNoWindowProcess(cmd)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return probedVideoInfo{}, fmt.Errorf("ffprobe video stream failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	var payload struct {
+		Streams []struct {
+			Duration json.RawMessage `json:"duration"`
+			Width    int             `json:"width"`
+			Height   int             `json:"height"`
+		} `json:"streams"`
+		Format struct {
+			Duration json.RawMessage `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		return probedVideoInfo{}, fmt.Errorf("parse ffprobe video stream failed: %w", err)
+	}
+	if len(payload.Streams) == 0 {
+		return probedVideoInfo{}, fmt.Errorf("ffprobe returned no video stream")
+	}
+
+	stream := payload.Streams[0]
+	duration, ok := parseFFProbeDurationValue(stream.Duration)
+	if !ok {
+		duration, ok = parseFFProbeDurationValue(payload.Format.Duration)
+	}
+	if !ok {
+		return probedVideoInfo{}, fmt.Errorf("ffprobe returned invalid video duration")
+	}
+	if stream.Width <= 0 || stream.Height <= 0 {
+		return probedVideoInfo{}, fmt.Errorf("ffprobe returned invalid video resolution: %dx%d", stream.Width, stream.Height)
+	}
+
+	return probedVideoInfo{
+		Duration: duration,
+		Width:    stream.Width,
+		Height:   stream.Height,
+	}, nil
+}
+
+func parseFFProbeDurationValue(raw json.RawMessage) (float64, bool) {
+	value := strings.TrimSpace(string(raw))
+	value = strings.Trim(value, `"`)
+	if value == "" || strings.EqualFold(value, "N/A") {
+		return 0, false
+	}
+	duration, err := strconv.ParseFloat(value, 64)
+	if err != nil || duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
+		return 0, false
+	}
+	return duration, true
 }
 
 func (a *App) resolveEditOutputPaths() (string, string, editEncodeSettings) {
