@@ -26,11 +26,6 @@
           <span class="setting-label">{{ t("main.settings.auto_add_victim") }}</span>
           <n-switch v-model:value="settings.auto_add_victim_view" />
         </div>
-        <div class="setting-row">
-          <span class="setting-label">{{ t("main.settings.enable_voice") }}</span>
-          <n-switch v-model:value="settings.enable_voice" />
-        </div>
-
         <div class="setting-list-panel">
           <div class="setting-list-head">
             <div class="setting-list-title-row">
@@ -56,7 +51,15 @@
                     <template #trigger>
                       <span class="hint-dot">?</span>
                     </template>
-                    {{ t(item.hintKey) }}
+                    <div class="setting-hint-content">
+                      <span>{{ t(item.hintKey) }}</span>
+                      <img
+                        v-if="item.key === 'pov_radar_enabled'"
+                        :src="povRadarDemoImage"
+                        alt="POV radar demonstration"
+                        class="pov-radar-demo-image"
+                      />
+                    </div>
                   </n-tooltip>
                 </span>
                 <n-switch
@@ -213,6 +216,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
+import povRadarDemoImage from "@/assets/images/pov-radar-demo.png";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type { ClipSettings, DebugPluginDLLOverrideState, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
@@ -308,6 +312,7 @@ const editQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
 type SearchableSwitchSettingKey =
+  | "enable_voice"
   | "enable_spec_show_xray_zero"
   | "hide_all_ui"
   | "use_shoulder_camera"
@@ -337,6 +342,12 @@ type SearchableClipSettingItem =
       precision: number;
     };
 const searchableClipSettings: SearchableClipSettingItem[] = [
+  {
+    key: "enable_voice",
+    labelKey: "main.settings.enable_voice",
+    kind: "switch",
+    aliases: ["启用队伍语音", "队伍语音", "team voice", "voice"],
+  },
   {
     key: "enable_spec_show_xray_zero",
     labelKey: "main.settings.enable_spec_show_xray_zero",
@@ -803,6 +814,20 @@ function formatBytes(bytes: number): string {
   display: inline-flex;
   gap: 6px;
   min-width: 0;
+}
+
+.setting-hint-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pov-radar-demo-image {
+  display: block;
+  height: auto;
+  max-width: min(240px, 50vw);
+  width: 100%;
+  border-radius: 10px;
 }
 
 .hint-dot {

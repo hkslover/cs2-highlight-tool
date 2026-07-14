@@ -1621,3 +1621,69 @@ Added bounded diagnostics, reconnect recovery, redacted log export, and a gracef
 ### Next Steps
 
 - None - task complete
+
+
+## Session 49: Move team voice setting into config list
+
+**Date**: 2026-07-14
+**Task**: Move team voice setting into config list
+**Branch**: `main`
+
+### Summary
+
+Moved the standalone enable-team-voice switch into the searchable and paginated settings list. Frontend build and review checks passed; pre-existing locale and generated binding changes were left untouched.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `99cdd04` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 50: Add POV radar hint demonstration image
+
+**Date**: 2026-07-14
+**Task**: Add POV radar hint demonstration image
+**Branch**: `main`
+
+### Summary
+
+Moved the POV radar screenshot to frontend/src/assets/images/pov-radar-demo.png and displayed it alongside the localized beta warning in the settings tooltip. Added responsive tooltip image guidance and verified the frontend build.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8f2c4e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
