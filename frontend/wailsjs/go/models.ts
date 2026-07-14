@@ -58,6 +58,7 @@ export namespace app {
 	    hide_all_ui: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
+	    pov_radar_enabled: boolean;
 	    sky_blackout: boolean;
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
@@ -86,6 +87,7 @@ export namespace app {
 	        this.hide_all_ui = source["hide_all_ui"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.sky_blackout = source["sky_blackout"];
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
@@ -838,6 +840,7 @@ export namespace config {
 	    hide_all_ui: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
+	    pov_radar_enabled: boolean;
 	    sky_blackout: boolean;
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
@@ -879,6 +882,7 @@ export namespace config {
 	        this.hide_all_ui = source["hide_all_ui"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.sky_blackout = source["sky_blackout"];
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
