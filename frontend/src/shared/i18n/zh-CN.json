@@ -334,7 +334,7 @@
       "kill_feed_lifetime": "击杀信息留存时间(秒)",
       "block_kill_feed": "屏蔽所有击杀信息",
       "recording_options_list_title": "配置",
-      "recording_options_search_placeholder": "搜索设置",
+      "recording_options_search_placeholder": "搜索",
       "recording_options_empty": "没有匹配的设置",
       "outputs_video_count": "视频数量",
       "demo_count": "Dem数量",

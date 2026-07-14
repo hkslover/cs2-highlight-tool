@@ -825,8 +825,9 @@ function formatBytes(bytes: number): string {
 .pov-radar-demo-image {
   display: block;
   height: auto;
-  max-width: min(360px, 70vw);
+  max-width: min(240px, 50vw);
   width: 100%;
+  border-radius: 10px;
 }
 
 .hint-dot {
