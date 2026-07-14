@@ -138,6 +138,37 @@ The project uses **Naive UI** as the component library. Component imports are au
 | `n-checkbox` | Selection controls |
 | `n-upload` | File import UI |
 
+### Tooltip Content with Visual Demonstrations
+
+When a tooltip needs to explain a feature with a static screenshot, keep the localized explanatory text and image in the tooltip content, import the image from `src/assets/images/`, and constrain the image responsively so it cannot overflow the overlay.
+
+```vue
+<n-tooltip trigger="hover" placement="top">
+  <template #trigger><span class="hint-dot">?</span></template>
+  <div class="setting-hint-content">
+    <span>{{ t("main.settings.feature_hint") }}</span>
+    <img :src="featureDemoImage" alt="" class="feature-demo-image" />
+  </div>
+</n-tooltip>
+```
+
+```css
+.setting-hint-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feature-demo-image {
+  display: block;
+  height: auto;
+  max-width: min(360px, 70vw);
+  width: 100%;
+}
+```
+
+Use the conditional image only for the tooltip that owns the demonstration; other text-only hints should remain unchanged.
+
 ### Naive UI Composition API Hooks
 
 ```ts

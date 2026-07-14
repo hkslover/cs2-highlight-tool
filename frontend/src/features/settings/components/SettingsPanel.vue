@@ -51,7 +51,15 @@
                     <template #trigger>
                       <span class="hint-dot">?</span>
                     </template>
-                    {{ t(item.hintKey) }}
+                    <div class="setting-hint-content">
+                      <span>{{ t(item.hintKey) }}</span>
+                      <img
+                        v-if="item.key === 'pov_radar_enabled'"
+                        :src="povRadarDemoImage"
+                        alt="POV radar demonstration"
+                        class="pov-radar-demo-image"
+                      />
+                    </div>
                   </n-tooltip>
                 </span>
                 <n-switch
@@ -208,6 +216,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
+import povRadarDemoImage from "@/assets/images/pov-radar-demo.png";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type { ClipSettings, DebugPluginDLLOverrideState, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
@@ -805,6 +814,19 @@ function formatBytes(bytes: number): string {
   display: inline-flex;
   gap: 6px;
   min-width: 0;
+}
+
+.setting-hint-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pov-radar-demo-image {
+  display: block;
+  height: auto;
+  max-width: min(360px, 70vw);
+  width: 100%;
 }
 
 .hint-dot {
