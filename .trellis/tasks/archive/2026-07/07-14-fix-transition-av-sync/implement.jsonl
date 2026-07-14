@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/07-14-fix-transition-av-sync/plan.md", "reason": "文件级改动步骤、实施顺序与验证清单（主执行依据）"}
+{"file": ".trellis/tasks/07-14-fix-transition-av-sync/research/ffmpeg-transition-notes.md", "reason": "ffmpeg xfade/acrossfade 语义、AAC 粒度、帧网格对齐等设计依据，实施前必读"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量规范（错误信息风格、测试要求）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误包装与返回约定，重写 concatWithTransitions 时遵循"}
+{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "ConcatEditClips/ProbeClipDuration 是稳定公开契约，签名与事件名不可变"}
