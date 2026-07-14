@@ -42,6 +42,10 @@ export function ExportProduceHistoryVideos() {
   return window['go']['app']['App']['ExportProduceHistoryVideos']();
 }
 
+export function ExportProduceWSLogs() {
+  return window['go']['app']['App']['ExportProduceWSLogs']();
+}
+
 export function ExportStartupLogs() {
   return window['go']['app']['App']['ExportStartupLogs']();
 }

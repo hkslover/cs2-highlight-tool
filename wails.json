@@ -1,13 +1,13 @@
 {
   "name": "cs2-highlight-tool-v2",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "outputfilename": "cs2-highlight-tool-v2",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "info": {
-    "productVersion": "2.0.3"
+    "productVersion": "2.0.4"
   },
   "author": {
     "name": "hkslover",

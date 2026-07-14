@@ -27,6 +27,8 @@ export function ExitApp():Promise<void>;
 
 export function ExportProduceHistoryVideos():Promise<app.ExportProduceHistoryResult>;
 
+export function ExportProduceWSLogs():Promise<string>;
+
 export function ExportStartupLogs():Promise<string>;
 
 export function GeneratePluginJSON(arg1:app.GeneratePluginJSONRequest):Promise<app.GeneratePluginJSONResult>;
