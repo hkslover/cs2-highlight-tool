@@ -26,12 +26,12 @@ This is a **Wails v2** desktop application with a Go backend and Vue 3 + TypeScr
 │   ├── envsetup/             # Startup state machine (component detect/dl/install)
 │   ├── ffmpegprofile/        # FFmpeg capability detection and encoder profiles
 │   ├── fivee/                # 5EPlay API client: match listing, demo download/caching
-│   ├── logging/              # Structured slog adapter with sanitization
+│   ├── logging/              # Structured slog adapter plus shared support-export redaction
 │   ├── plugingen/            # Plugin JSON generation helpers: history keys, subdirs, preset resolution, history filtering
 │   ├── procutil/             # OS-specific process creation helpers (Windows/other)
 │   ├── producegame/          # CS2 game environment helpers: gameinfo.gi path resolution and plugin search path injection
 │   ├── producemerge/         # FFmpeg-based video/audio merge logic for produce session take files
-│   ├── producews/            # WebSocket server (OS-assigned loopback port) for HLAE/CS2 game comm
+│   ├── producews/            # Loopback WebSocket server, reconnect health, bounded diagnostics/reports
 │   ├── release/              # Unified release API client, version compare, asset select
 │   └── wanmei/               # Wanmei (完美) API client: match listing, demo download/caching
 ├── frontend/                 # Vue 3 + TypeScript frontend

@@ -270,6 +270,88 @@ func TestService_DefaultUsesOSAssignedPort(t *testing.T) {
 	}
 }
 
+func TestService_DynamicPortStaysStableAfterServeRestart(t *testing.T) {
+	origSeq := backoffSequence
+	backoffSequence = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond, 80 * time.Millisecond, 160 * time.Millisecond}
+	t.Cleanup(func() { backoffSequence = origSeq })
+
+	svc := NewDefault(nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	portBefore, err := svc.Port()
+	if err != nil {
+		t.Fatalf("Port before restart: %v", err)
+	}
+	svc.mu.Lock()
+	listener := svc.listener
+	svc.mu.Unlock()
+	if listener == nil {
+		t.Fatal("listener missing before restart")
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
+	waitFor(t, 2*time.Second, func() bool {
+		port, err := svc.Port()
+		if err != nil || port != portBefore {
+			return false
+		}
+		svc.mu.Lock()
+		current := svc.listener
+		svc.mu.Unlock()
+		return current != nil && current != listener
+	})
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+}
+
+func TestService_DynamicPortRebindExhaustionKeepsOriginalPort(t *testing.T) {
+	origSeq := backoffSequence
+	backoffSequence = []time.Duration{10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond}
+	t.Cleanup(func() { backoffSequence = origSeq })
+
+	svc := NewDefault(nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	portBefore, err := svc.Port()
+	if err != nil {
+		t.Fatalf("Port before restart: %v", err)
+	}
+	addressBefore := svc.Address()
+	var attemptedAddress atomic.Value
+	withListenFn(t, func(_ string, address string) (net.Listener, error) {
+		attemptedAddress.Store(address)
+		return nil, errors.New("simulated stable-port rebind failure")
+	})
+
+	svc.mu.Lock()
+	listener := svc.listener
+	svc.mu.Unlock()
+	if listener == nil {
+		t.Fatal("listener missing before forced failure")
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
+	waitFor(t, time.Second, func() bool {
+		return strings.Contains(svc.GetWSState().LastError, "插件仍指向旧端口")
+	})
+	if got, err := svc.Port(); err != nil || got != portBefore {
+		t.Fatalf("Port after failed rebind = %d, %v; want stable %d", got, err, portBefore)
+	}
+	if got, _ := attemptedAddress.Load().(string); got != addressBefore {
+		t.Fatalf("rebind address = %q, want original %q", got, addressBefore)
+	}
+}
+
 func TestService_PortBeforeStartReturnsError(t *testing.T) {
 	svc := NewDefault(nil)
 	if _, err := svc.Port(); err == nil {

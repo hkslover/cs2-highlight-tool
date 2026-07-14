@@ -212,9 +212,24 @@
         <n-alert v-if="runtimeStateMessage" :type="runtimeStateType" :bordered="false">
           {{ runtimeStateMessage }}
         </n-alert>
-        <n-alert v-if="wsState.last_error" type="error" :bordered="false">{{ wsState.last_error }}</n-alert>
-        <n-alert v-if="queueState.last_error" type="error" :bordered="false">{{ queueState.last_error }}</n-alert>
-        <n-alert v-if="errorMessage" type="error" :bordered="false">{{ errorMessage }}</n-alert>
+        <n-alert v-if="wsState.last_error" type="error" :bordered="false">
+          {{ wsState.last_error }}
+        </n-alert>
+        <n-alert v-if="queueState.last_error" type="error" :bordered="false">
+          {{ queueState.last_error }}
+        </n-alert>
+        <n-alert v-if="errorMessage" type="error" :bordered="false">
+          {{ errorMessage }}
+        </n-alert>
+        <n-button
+          v-if="canExportProduceLogs"
+          type="error"
+          secondary
+          :loading="exportProduceLogsLoading"
+          @click="exportProduceLogs"
+        >
+          {{ t("main.produce.export_logs") }}
+        </n-button>
       </n-space>
       </div>
 
@@ -256,6 +271,7 @@ const { debugEnabled } = useDebugSettings();
 const {
   generatingAndLaunching,
   generatingConfigOnlyLoading,
+  exportProduceLogsLoading,
   expandedNames,
   queueState,
   wsState,
@@ -281,6 +297,7 @@ const {
   openProducedClip,
   runtimeStateType,
   runtimeStateMessage,
+  canExportProduceLogs,
   generateAndLaunch,
   generateConfigOnly,
   showPlatformCheckModal,
@@ -289,6 +306,7 @@ const {
   openHistoryDrawer,
   goToEdit,
   errorMessage,
+  exportProduceLogs,
   getFullRoundPOVSelection,
   getFullRoundPOVTrackingLabel,
   fullRoundPlanByDemo,

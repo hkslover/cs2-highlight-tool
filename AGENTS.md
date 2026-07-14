@@ -59,6 +59,10 @@
 - `EnterMainApp`
 - `CancelStartupDownload(componentID string)` StartupState
 - `ExportStartupLogs`
+- `ExportProduceWSLogs`
+- `ExportProduceWSLogs` 返回值语义：使用保存对话框导出单个已脱敏制作 WebSocket 诊断文件；无 Wails context 时写入 `<dataDir>/logs/producews-export-<timestamp>.txt`，内容包含当前 WS/队列/take 快照、内存事件环、滚动 host 日志、incident report 与插件日志尾部。
+- HLAE/CS2 插件启动环境约定：`CSDM_WS_PORT` 始终传入当前 producews 会话固定的 loopback 端口；`CSDM_LOG_PATH` 指向 `<dataDir>/logs/cs2-server-plugin.log`（插件无法打开时自行回退 `csdm.log`）。
+- 制作会话有序退出协议：仅在制作队列成功结束后，应用向插件发送 `end_produce_session`（`payload.request_id`）；插件以一次性 `session_exit_ack` 回应后，在游戏线程排入 `quit`。该 request 对应连接在有限窗口内断开属于正常收尾，不写入 `WSState.last_error` 或 incident；确认超时才退回 PID 关闭。
 - `PickDemoFiles`
 - `PickDemoFiles` 返回值语义：返回位于 `<dataDir>/demo/raw/...` 的受管控 Demo 路径（非原始选择路径）
 - `ListWanmeiRecentMatches(page)`

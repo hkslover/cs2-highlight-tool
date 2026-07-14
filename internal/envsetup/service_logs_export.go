@@ -1,11 +1,10 @@
 package envsetup
 
 import (
+	"cs2-highlight-tool-v2/internal/logging"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -250,17 +249,7 @@ func sanitizeLogsForExport(logs []LogMessage) []LogMessage {
 }
 
 func sanitizeMetaValueForExport(key, value string) string {
-	keyLower := strings.ToLower(strings.TrimSpace(key))
-	switch {
-	case isSensitiveKey(keyLower):
-		return "***"
-	case strings.Contains(keyLower, "url"):
-		return sanitizeURLForExport(value)
-	case strings.Contains(keyLower, "path"), strings.Contains(keyLower, "dir"), strings.Contains(keyLower, "file"):
-		return sanitizePathForExport(value)
-	default:
-		return sanitizeTextForExport(value)
-	}
+	return logging.SanitizeExportMetaValue(key, value)
 }
 
 func sortLogsByTime(logs []LogMessage) []LogMessage {
@@ -383,14 +372,7 @@ func emptyFallback(value, fallback string) string {
 }
 
 func sanitizeTextForExport(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	value = sanitizeURLsInText(value)
-	value = maskSensitiveCredentialText(value)
-	value = sanitizePathPrefixInText(value)
-	return value
+	return logging.SanitizeExportText(value)
 }
 
 func sanitizeErrorForExport(value string) string {
@@ -398,104 +380,9 @@ func sanitizeErrorForExport(value string) string {
 }
 
 func sanitizePathForExport(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	return sanitizePathPrefixInText(value)
-}
-
-var (
-	reSensitiveKeyValue = regexp.MustCompile(`(?i)\b(token|access_token|apikey|api_key|secret|password|passwd|signature|sign|auth|authorization|credential|private_key|key)\s*([=:])\s*([^\s&;,]+)`)
-	reBearerToken       = regexp.MustCompile(`(?i)\b(Bearer\s+)[A-Za-z0-9\-\._~\+/=]+`)
-	reAuthorizationHdr  = regexp.MustCompile(`(?i)\bAuthorization\s*:\s*[^\s]+(?:\s+[^\s]+)?`)
-	reURLInText         = regexp.MustCompile(`https?://[^\s"'<>()]+`)
-	reWindowsUserHome   = regexp.MustCompile(`(?i)[a-z]:\\users\\[^\\\s]+`)
-	reMacUserHome       = regexp.MustCompile(`/Users/[^/\s]+`)
-	reLinuxUserHome     = regexp.MustCompile(`/home/[^/\s]+`)
-)
-
-func maskSensitiveCredentialText(value string) string {
-	value = reAuthorizationHdr.ReplaceAllString(value, "Authorization:***")
-	value = reBearerToken.ReplaceAllString(value, "${1}***")
-	value = reSensitiveKeyValue.ReplaceAllString(value, "$1$2***")
-	return value
-}
-
-func sanitizeURLsInText(value string) string {
-	return reURLInText.ReplaceAllStringFunc(value, sanitizeURLForExport)
+	return logging.SanitizeExportPath(value)
 }
 
 func sanitizeURLForExport(rawURL string) string {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return ""
-	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return maskSensitiveCredentialText(rawURL)
-	}
-	parsed.User = nil
-	parsed.Fragment = ""
-	values := parsed.Query()
-	sanitized := url.Values{}
-	for key, items := range values {
-		keyLower := strings.ToLower(strings.TrimSpace(key))
-		switch {
-		case isSensitiveKey(keyLower):
-			sanitized.Set(key, "***")
-		case isAllowedURLQueryKey(keyLower):
-			for _, item := range items {
-				sanitized.Add(key, maskSensitiveCredentialText(item))
-			}
-		}
-	}
-	parsed.RawQuery = sanitized.Encode()
-	return parsed.String()
-}
-
-func isAllowedURLQueryKey(key string) bool {
-	switch key {
-	case "id", "name", "tag", "version", "arch", "os", "platform", "file", "filename", "source", "mirror", "channel":
-		return true
-	default:
-		return false
-	}
-}
-
-func isSensitiveKey(key string) bool {
-	switch {
-	case strings.Contains(key, "token"),
-		strings.Contains(key, "secret"),
-		strings.Contains(key, "pass"),
-		strings.Contains(key, "auth"),
-		strings.Contains(key, "sign"),
-		strings.Contains(key, "credential"),
-		strings.Contains(key, "private"),
-		key == "key",
-		strings.HasSuffix(key, "_key"),
-		strings.HasPrefix(key, "key_"):
-		return true
-	default:
-		return false
-	}
-}
-
-func sanitizePathPrefixInText(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	home, err := os.UserHomeDir()
-	if err == nil {
-		home = strings.TrimSpace(home)
-		if home != "" {
-			value = strings.ReplaceAll(value, home, "~")
-			value = strings.ReplaceAll(value, filepath.ToSlash(home), "~")
-		}
-	}
-	value = reWindowsUserHome.ReplaceAllString(value, "~")
-	value = reMacUserHome.ReplaceAllString(value, "~")
-	value = reLinuxUserHome.ReplaceAllString(value, "~")
-	return value
+	return logging.SanitizeExportURL(rawURL)
 }

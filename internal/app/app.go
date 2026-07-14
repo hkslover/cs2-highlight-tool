@@ -47,7 +47,18 @@ func New(wailsConfigData []byte) *App {
 		produceW: producews.NewDefault(nil),
 	}
 	a.initWorkspaceLocked()
+	a.configureProduceDiagnostics(a.dataRoot())
 	return a
+}
+
+func (a *App) configureProduceDiagnostics(dataDir string) {
+	if a == nil || a.produceW == nil {
+		return
+	}
+	if dataDir == "" {
+		dataDir = a.exeDir
+	}
+	a.produceW.SetDiagnostics(producews.NewDiagnostics(dataDir))
 }
 
 // initWorkspaceLocked 解析 dataDir 来源：

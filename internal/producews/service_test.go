@@ -3,6 +3,7 @@ package producews
 import (
 	"encoding/json"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ type wsMessage struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-func TestService_AcceptsLegacyClientWithoutProcessQuery(t *testing.T) {
+func TestService_AcceptsLegacyClientWithoutGameProcessQuery(t *testing.T) {
 	svc := New("127.0.0.1:0", nil)
 	if err := svc.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -27,15 +28,109 @@ func TestService_AcceptsLegacyClientWithoutProcessQuery(t *testing.T) {
 		Host:   svc.Address(),
 		Path:   "/",
 	}
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		t.Fatalf("Dial legacy client: %v", err)
+	conn, response, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if conn != nil {
+		defer conn.Close()
 	}
+	if err != nil {
+		t.Fatalf("Dial without process=game: %v (response=%#v)", err, response)
+	}
+	if !svc.GetWSState().Connected {
+		t.Fatal("legacy client connected but service is not marked connected")
+	}
+}
+
+func TestService_RejectsClientWithUnsupportedProcessQuery(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	u := url.URL{
+		Scheme:   "ws",
+		Host:     svc.Address(),
+		Path:     "/",
+		RawQuery: "process=browser",
+	}
+	conn, response, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if conn != nil {
+		defer conn.Close()
+	}
+	if err == nil {
+		t.Fatal("Dial with unsupported process unexpectedly succeeded")
+	}
+	if response == nil || response.StatusCode != 400 {
+		t.Fatalf("Dial response = %#v, want HTTP 400", response)
+	}
+}
+
+func TestService_InvalidEnvelopeAndPayloadDoNotDisconnectClient(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
 	defer conn.Close()
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"name":`)); err != nil {
+		t.Fatalf("write invalid envelope: %v", err)
+	}
+	mustWriteJSON(t, conn, map[string]any{
+		"name":    "record_status",
+		"payload": "not-an-object",
+	})
+	mustWriteJSON(t, conn, map[string]any{
+		"name":    "unknown_plugin_message",
+		"payload": map[string]any{"ignored": true},
+	})
+	mustWriteJSON(t, conn, map[string]any{
+		"name": "record_status",
+		"payload": map[string]any{
+			"demo_path":    "valid.dem",
+			"take_index":   1,
+			"record_phase": "start",
+		},
+	})
 
 	waitFor(t, 2*time.Second, func() bool {
-		return svc.GetWSState().Connected
+		return svc.GetWSState().Connected && svc.GetTakeSnapshot().TotalTakes == 1
 	})
+}
+
+func TestService_DisconnectWritesSingleIncidentReport(t *testing.T) {
+	diagnostics := NewDiagnostics(t.TempDir())
+	svc := New("127.0.0.1:0", nil)
+	svc.SetReconnectGrace(100 * time.Millisecond)
+	svc.SetDiagnostics(diagnostics)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	if err := svc.StartQueue([]string{"incident.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	_ = mustReadWSMessage(t, conn)
+	_ = conn.Close()
+
+	waitFor(t, 2*time.Second, func() bool {
+		state := svc.GetQueueState()
+		if state.Running {
+			return false
+		}
+		paths, _ := filepath.Glob(filepath.Join(diagnostics.logDir, "producews-incident-*.txt"))
+		return len(paths) == 1 && strings.Contains(state.LastError, "诊断报告:")
+	})
+}
+
+func TestService_RejectsNonLoopbackListener(t *testing.T) {
+	svc := New("0.0.0.0:0", nil)
+	if err := svc.Start(); err == nil || !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("Start non-loopback error = %v, want loopback validation", err)
+	}
 }
 
 func TestService_StartQueue_StatusAckAndDemoDoneDispatchesNext(t *testing.T) {
@@ -368,13 +463,14 @@ func TestService_AckTimeoutStopsQueue(t *testing.T) {
 
 	waitFor(t, 2*time.Second, func() bool {
 		state := svc.GetQueueState()
-		return !state.Running && strings.Contains(state.LastError, "ack timeout")
+		return !state.Running && strings.Contains(state.LastError, "确认超时")
 	})
 }
 
 func TestService_DisconnectStopsQueue(t *testing.T) {
 	svc := New("127.0.0.1:0", nil)
 	svc.SetAckTimeout(2 * time.Second)
+	svc.SetReconnectGrace(100 * time.Millisecond)
 	if err := svc.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -436,7 +532,7 @@ func TestService_DisconnectStopsQueue(t *testing.T) {
 
 	waitFor(t, 2*time.Second, func() bool {
 		state := svc.GetQueueState()
-		return !state.Running && strings.Contains(state.LastError, "disconnected")
+		return !state.Running && strings.Contains(state.LastError, "WebSocket")
 	})
 	waitFor(t, 2*time.Second, func() bool {
 		snapshot := svc.GetTakeSnapshot()
@@ -448,6 +544,130 @@ func TestService_DisconnectStopsQueue(t *testing.T) {
 			statusByTake[item.TakeIndex] = item.Status
 		}
 		return statusByTake[1] == "pending" && statusByTake[2] == "completed"
+	})
+}
+
+func TestService_ReconnectBeforeAckResendsSameDemo(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.SetReconnectGrace(time.Second)
+	svc.SetReplayWindow(25 * time.Millisecond)
+	svc.SetAckTimeout(time.Second)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	firstConn := mustConnectGameClient(t, svc.Address())
+	if err := svc.StartQueue([]string{"retry-same.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	first := mustReadWSMessage(t, firstConn)
+	if got := mustStringPayload(t, first.Payload); first.Name != "playdemo" || got != "retry-same.dem" {
+		t.Fatalf("initial message = %+v, want playdemo retry-same.dem", first)
+	}
+	_ = firstConn.Close()
+
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && state.PendingAck && !svc.GetWSState().Connected
+	})
+
+	secondConn := mustConnectGameClient(t, svc.Address())
+	defer secondConn.Close()
+	replayed := mustReadWSMessage(t, secondConn)
+	if got := mustStringPayload(t, replayed.Payload); replayed.Name != "playdemo" || got != "retry-same.dem" {
+		t.Fatalf("replayed message = %+v, want same playdemo", replayed)
+	}
+	mustWriteJSON(t, secondConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck && state.CurrentIndex == 0 && state.Completed == 0
+	})
+}
+
+func TestService_ReconnectAfterAckAcceptsDurableDemoDone(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.SetReconnectGrace(time.Second)
+	svc.SetReplayWindow(25 * time.Millisecond)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	firstConn := mustConnectGameClient(t, svc.Address())
+	if err := svc.StartQueue([]string{"durable.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	_ = mustReadWSMessage(t, firstConn)
+	mustWriteJSON(t, firstConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck
+	})
+	_ = firstConn.Close()
+
+	secondConn := mustConnectGameClient(t, svc.Address())
+	defer secondConn.Close()
+	mustWriteJSON(t, secondConn, map[string]any{
+		"name": "demo_done",
+		"payload": map[string]any{
+			"demo_path": "durable.dem",
+			"reason":    "plugin_replay",
+			"ts_ms":     time.Now().UnixMilli(),
+		},
+	})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return !state.Running && state.Completed == 1 && state.LastError == ""
+	})
+}
+
+func TestService_HeartbeatPongKeepsConnectionAlive(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.heartbeatInterval = 15 * time.Millisecond
+	svc.pongWait = 75 * time.Millisecond
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
+	time.Sleep(225 * time.Millisecond)
+	if !svc.GetWSState().Connected {
+		t.Fatalf("connection closed despite client pong handling: %+v", svc.GetWSState())
+	}
+	_ = conn.Close()
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
+		t.Fatal("client read loop did not stop")
+	}
+}
+
+func TestService_HeartbeatDeadlineClosesUnresponsiveClient(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.heartbeatInterval = 15 * time.Millisecond
+	svc.pongWait = 75 * time.Millisecond
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	waitFor(t, time.Second, func() bool {
+		return !svc.GetWSState().Connected
 	})
 }
 
@@ -472,6 +692,116 @@ func TestService_SendCommand_DeliversToGameClient(t *testing.T) {
 	msg := mustReadWSMessage(t, conn)
 	if msg.Name != "quit" {
 		t.Fatalf("message name=%q want quit", msg.Name)
+	}
+}
+
+func TestService_GracefulExitAckClassifiesFollowingDisconnectAsExpected(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	waitFor(t, time.Second, func() bool { return svc.GetWSState().Connected })
+
+	if err := svc.RequestGracefulExit(); err != nil {
+		t.Fatalf("RequestGracefulExit: %v", err)
+	}
+	message := mustReadWSMessage(t, conn)
+	if message.Name != "end_produce_session" {
+		t.Fatalf("message name=%q want end_produce_session", message.Name)
+	}
+	var request gracefulExitRequestPayload
+	if err := json.Unmarshal(message.Payload, &request); err != nil {
+		t.Fatalf("request payload: %v", err)
+	}
+	if request.RequestID == "" {
+		t.Fatal("graceful exit request_id is empty")
+	}
+	mustWriteJSON(t, conn, map[string]any{
+		"name": "session_exit_ack",
+		"payload": map[string]any{
+			"request_id": request.RequestID,
+		},
+	})
+	waitFor(t, time.Second, func() bool {
+		return svc.GracefulExitStatus().Acknowledged
+	})
+
+	_ = conn.Close()
+	waitFor(t, time.Second, func() bool {
+		return svc.GracefulExitStatus().Completed && !svc.GetWSState().Connected
+	})
+	if got := svc.GetWSState().LastError; got != "" {
+		t.Fatalf("LastError=%q, want empty for expected graceful exit", got)
+	}
+}
+
+func TestService_GracefulExitWithoutAckKeepsUnexpectedDisconnectError(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	if err := svc.RequestGracefulExit(); err != nil {
+		t.Fatalf("RequestGracefulExit: %v", err)
+	}
+	_ = mustReadWSMessage(t, conn)
+	_ = conn.Close()
+	waitFor(t, time.Second, func() bool { return !svc.GetWSState().Connected })
+	if got := svc.GetWSState().LastError; !strings.Contains(got, "游戏插件 WebSocket 已断开") {
+		t.Fatalf("LastError=%q, want unexpected disconnect", got)
+	}
+	if svc.GracefulExitStatus().Completed {
+		t.Fatal("unacknowledged disconnect must not be marked completed")
+	}
+}
+
+func TestService_GracefulExitFallbackClassifiesKnownPIDCloseAsExpected(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	if err := svc.RequestGracefulExit(); err != nil {
+		t.Fatalf("RequestGracefulExit: %v", err)
+	}
+	_ = mustReadWSMessage(t, conn)
+	if !svc.ExpectGracefulExitFallback() {
+		t.Fatal("ExpectGracefulExitFallback returned false for pending request")
+	}
+	_ = conn.Close()
+	waitFor(t, time.Second, func() bool {
+		return svc.GracefulExitStatus().Completed && !svc.GetWSState().Connected
+	})
+	if got := svc.GetWSState().LastError; got != "" {
+		t.Fatalf("LastError=%q, want empty for expected PID fallback close", got)
+	}
+}
+
+func TestService_RequestGracefulExitRejectsRunningQueue(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	if err := svc.StartQueue([]string{"still-recording.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	_ = mustReadWSMessage(t, conn)
+	if err := svc.RequestGracefulExit(); err == nil || !strings.Contains(err.Error(), "尚未完成") {
+		t.Fatalf("RequestGracefulExit error=%v, want active queue rejection", err)
 	}
 }
 

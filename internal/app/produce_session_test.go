@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"cs2-highlight-tool-v2/internal/producemerge"
 	"cs2-highlight-tool-v2/internal/producews"
 
+	"github.com/gorilla/websocket"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -996,7 +998,7 @@ func TestRequestCloseCS2Process_InvokesCloserOnce(t *testing.T) {
 	})
 
 	app := &App{}
-	state := &produceSessionRuntime{cs2PID: 9527}
+	state := &produceSessionRuntime{cs2PID: 9527, queueSucceeded: true}
 	app.requestCloseCS2Process(state)
 	app.requestCloseCS2Process(state)
 
@@ -1005,6 +1007,107 @@ func TestRequestCloseCS2Process_InvokesCloserOnce(t *testing.T) {
 	}
 	if calls != 1 || gotPID != 9527 {
 		t.Fatalf("close calls mismatch: calls=%d pid=%d", calls, gotPID)
+	}
+}
+
+func TestRequestCloseCS2Process_UsesPluginGracefulExitBeforePIDFallback(t *testing.T) {
+	svc := producews.New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start produce websocket: %v", err)
+	}
+	defer svc.Stop()
+
+	u := url.URL{Scheme: "ws", Host: svc.Address(), Path: "/", RawQuery: "process=game"}
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		t.Fatalf("connect plugin client: %v", err)
+	}
+	defer conn.Close()
+
+	old := closeCS2ProcessByPIDFn
+	closeCalls := 0
+	closeCS2ProcessByPIDFn = func(int) error {
+		closeCalls++
+		return nil
+	}
+	t.Cleanup(func() { closeCS2ProcessByPIDFn = old })
+
+	app := &App{produceW: svc}
+	state := &produceSessionRuntime{cs2PID: 9527, queueSucceeded: true}
+	app.requestCloseCS2Process(state)
+	if !state.closeRequested || state.closeDone || !state.gracefulExit {
+		t.Fatalf("unexpected close state after graceful request: %+v", state)
+	}
+	if closeCalls != 0 {
+		t.Fatalf("PID fallback called before plugin acknowledgement: %d", closeCalls)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	var command struct {
+		Name    string `json:"name"`
+		Payload struct {
+			RequestID string `json:"request_id"`
+		} `json:"payload"`
+	}
+	if err := conn.ReadJSON(&command); err != nil {
+		t.Fatalf("read graceful exit command: %v", err)
+	}
+	if command.Name != "end_produce_session" || command.Payload.RequestID == "" {
+		t.Fatalf("unexpected graceful exit command: %+v", command)
+	}
+	if err := conn.WriteJSON(map[string]any{
+		"name": "session_exit_ack",
+		"payload": map[string]any{
+			"request_id": command.Payload.RequestID,
+		},
+	}); err != nil {
+		t.Fatalf("write graceful exit acknowledgement: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for !svc.GracefulExitStatus().Acknowledged && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !svc.GracefulExitStatus().Acknowledged {
+		t.Fatal("service did not accept graceful exit acknowledgement")
+	}
+	_ = conn.Close()
+	deadline = time.Now().Add(time.Second)
+	for !svc.GracefulExitStatus().Completed && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !svc.GracefulExitStatus().Completed {
+		t.Fatal("service did not classify acknowledged close as completed")
+	}
+
+	app.advanceCloseCS2Process(state, time.Now())
+	if !state.closeDone || closeCalls != 0 {
+		t.Fatalf("completed graceful close should skip PID fallback: state=%+v calls=%d", state, closeCalls)
+	}
+}
+
+func TestAdvanceCloseCS2Process_FallsBackAfterGracefulExitTimeout(t *testing.T) {
+	old := closeCS2ProcessByPIDFn
+	closeCalls := 0
+	closeCS2ProcessByPIDFn = func(pid int) error {
+		closeCalls++
+		if pid != 9527 {
+			t.Fatalf("pid=%d want 9527", pid)
+		}
+		return nil
+	}
+	t.Cleanup(func() { closeCS2ProcessByPIDFn = old })
+
+	app := &App{}
+	state := &produceSessionRuntime{
+		cs2PID:         9527,
+		closeRequested: true,
+		gracefulExit:   true,
+		gracefulExitAt: time.Now().Add(-time.Millisecond),
+	}
+	app.advanceCloseCS2Process(state, time.Now())
+	if !state.closeDone || state.gracefulExit || closeCalls != 1 {
+		t.Fatalf("graceful timeout should use PID fallback once: state=%+v calls=%d", state, closeCalls)
 	}
 }
 
