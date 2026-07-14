@@ -137,16 +137,20 @@ func (a *App) GeneratePluginJSONBatch(req GeneratePluginJSONBatchRequest) (*Gene
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
 	}
+	jobs, err := normalizeGeneratePluginBatchJobs(req.Jobs)
+	if err != nil {
+		return nil, err
+	}
 	results := make([]GeneratePluginJSONBatchItemResult, 0, len(req.Jobs))
 	successCount := 0
 	failureCount := 0
 	batchTimestamp := time.Now().Format("20060102_150405")
-	demoPaths0 := make([]string, len(req.Jobs))
-	for i, j := range req.Jobs {
+	demoPaths0 := make([]string, len(jobs))
+	for i, j := range jobs {
 		demoPaths0[i] = j.DemoPath
 	}
 	recordSubDirs := plugingen.BuildBatchRecordSubDirs(demoPaths0)
-	for idx, job := range req.Jobs {
+	for idx, job := range jobs {
 		item := GeneratePluginJSONBatchItemResult{DemoPath: strings.TrimSpace(job.DemoPath)}
 		job.BatchTimestamp = batchTimestamp
 		result, _, err := a.generatePluginJSONInternal(job, generatePluginJSONInternalOptions{
@@ -182,18 +186,22 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
 	}
+	jobs, err := normalizeGeneratePluginBatchJobs(req.Jobs)
+	if err != nil {
+		return nil, err
+	}
 
 	batchTimestamp := time.Now().Format("20060102_150405")
-	demoPaths1 := make([]string, len(req.Jobs))
-	for i, j := range req.Jobs {
+	demoPaths1 := make([]string, len(jobs))
+	for i, j := range jobs {
 		demoPaths1[i] = j.DemoPath
 	}
 	recordSubDirs := plugingen.BuildBatchRecordSubDirs(demoPaths1)
-	results := make([]GeneratePluginJSONBatchItemResult, len(req.Jobs))
-	contexts := make([]*launchJobContext, len(req.Jobs))
+	results := make([]GeneratePluginJSONBatchItemResult, len(jobs))
+	contexts := make([]*launchJobContext, len(jobs))
 	failureCount := 0
 
-	for idx, job := range req.Jobs {
+	for idx, job := range jobs {
 		item := GeneratePluginJSONBatchItemResult{DemoPath: strings.TrimSpace(job.DemoPath)}
 		job.BatchTimestamp = batchTimestamp
 		preview, normalizedItems, err := a.generatePluginJSONInternal(job, generatePluginJSONInternalOptions{
@@ -425,6 +433,22 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 	return result, nil
 }
 
+func normalizeGeneratePluginBatchJobs(input []GeneratePluginJSONRequest) ([]GeneratePluginJSONRequest, error) {
+	jobs := append([]GeneratePluginJSONRequest(nil), input...)
+	for idx := range jobs {
+		demoPath := strings.TrimSpace(jobs[idx].DemoPath)
+		if demoPath == "" {
+			continue
+		}
+		absDemoPath, err := filepath.Abs(demoPath)
+		if err != nil {
+			return nil, fmt.Errorf("解析 demo 路径失败: %w", err)
+		}
+		jobs[idx].DemoPath = absDemoPath
+	}
+	return jobs, nil
+}
+
 func (a *App) GeneratePluginJSON(req GeneratePluginJSONRequest) (*GeneratePluginJSONResult, error) {
 	result, _, err := a.generatePluginJSONInternal(req, generatePluginJSONInternalOptions{
 		WriteJSON: true,
@@ -448,7 +472,7 @@ func (a *App) generatePluginJSONInternal(
 		return nil, nil, fmt.Errorf("demo 文件不存在: %s", absDemoPath)
 	}
 
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, nil, err
 	}

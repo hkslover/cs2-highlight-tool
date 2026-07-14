@@ -95,6 +95,77 @@ func ApplyDefaults(cfg *Config, dataDir string) {
 
 ---
 
+## Scenario: Atomic App-level config updates
+
+### 1. Scope / Trigger
+
+This applies whenever a Wails-bound method in `internal/app` reads and changes
+`config.json`, especially settings, changelog acknowledgements, and 5E query
+state. Concurrent Wails calls must not overwrite one another or expose a
+partially written JSON file.
+
+### 2. Signatures
+
+```go
+func (a *App) loadConfig() (*config.Config, error)
+func (a *App) updateConfig(func(*config.Config) error) (*config.Config, error)
+func config.LoadOrCreate(path, dataDir string) (*Config, error)
+func config.Save(path string, cfg *Config) error
+```
+
+### 3. Contracts
+
+- `App.loadConfig` and `App.updateConfig` serialize access with `App.configMu`.
+- Every App read-modify-write uses `updateConfig`; callers must not pair a
+  direct `LoadOrCreate` with a later `Save`.
+- `LoadOrCreate` only writes after creation or when defaults/normalization/
+  field migration changes the effective config.
+- `Save` writes a temp file beside the target, flushes and closes it, then
+  replaces the target with `os.Rename`; the target is never truncated in
+  place.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Config is missing | Create defaults and return the config |
+| Config is normalized and complete | Return without rewriting the file |
+| Defaults or a managed field is missing | Apply defaults and persist migration |
+| Temp write/sync/rename fails | Return a wrapped error and leave the existing target intact |
+
+### 5. Good/Base/Bad Cases
+
+- Good: two App updates serialize and the final config contains both changes.
+- Base: a read-only settings query does not rewrite an already normalized file.
+- Bad: call `LoadOrCreate`, unlock, mutate, and call `Save` from a Wails method;
+  the second caller can overwrite the first caller's snapshot.
+
+### 6. Tests Required
+
+- `internal/config`: normalized config does not change its file timestamp;
+  concurrent `Save` calls leave valid JSON; legacy fields are persisted.
+- `internal/app`: two blocked `updateConfig` callbacks execute serially and
+  preserve both mutations.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+cfg, _ := config.LoadOrCreate(path, dataDir)
+cfg.FiveEPlayerName = name
+config.Save(path, cfg)
+```
+
+#### Correct
+
+```go
+_, err := a.updateConfig(func(cfg *config.Config) error {
+    cfg.FiveEPlayerName = name
+    return nil
+})
+```
+
 ## Config Fields Convention
 
 ```go

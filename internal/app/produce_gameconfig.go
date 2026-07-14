@@ -43,7 +43,7 @@ type povSessionState struct {
 }
 
 func (a *App) prepareGameInfoForProduce() error {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -53,6 +53,9 @@ func (a *App) prepareGameInfoForProduce() error {
 	}
 	gameInfoPath, err := producegame.ResolveGameInfoPath(cs2Exe, config.CleanPath(cfg.CS2Dir))
 	if err != nil {
+		return err
+	}
+	if err := a.recoverStaleGameInfoBackup(gameInfoPath); err != nil {
 		return err
 	}
 	contentBytes, err := os.ReadFile(gameInfoPath)
@@ -113,6 +116,37 @@ func (a *App) prepareGameInfoForProduce() error {
 	return nil
 }
 
+func (a *App) recoverStaleGameInfoBackup(gameInfoPath string) error {
+	gameInfoPath = strings.TrimSpace(gameInfoPath)
+	if gameInfoPath == "" {
+		return nil
+	}
+
+	a.produceStateMu.Lock()
+	activeState := a.produceState.gameInfo
+	a.produceStateMu.Unlock()
+	if activeState.modified &&
+		samePath(activeState.gameInfoPath, gameInfoPath) &&
+		strings.TrimSpace(activeState.backupPath) != "" {
+		return nil
+	}
+
+	backupPath := gameInfoPath + produceGameInfoBackupSuffix
+	if _, err := os.Stat(backupPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("读取残留 gameinfo 备份失败: %w", err)
+	}
+	if err := copyFile(backupPath, gameInfoPath); err != nil {
+		return fmt.Errorf("恢复残留 gameinfo.gi 失败: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理残留 gameinfo 备份失败: %w", err)
+	}
+	return nil
+}
+
 // preparePovForProduce drops the embedded pov.vpk into csgo/pov.vpk when the
 // POV HUD toggle is enabled. Per Decision D3 in the POV HUD recording PRD, an
 // existing pov.vpk file is left strictly alone (sourcing the user's own bytes),
@@ -120,7 +154,7 @@ func (a *App) prepareGameInfoForProduce() error {
 // .cs2ht_pov.bak. Callers must invoke forceRestoreProduceEnvironmentForProduce
 // on failure to roll back any earlier gameinfo / plugin-DLL preparation.
 func (a *App) preparePovForProduce() error {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -177,7 +211,7 @@ func (a *App) preparePovForProduce() error {
 }
 
 func (a *App) preparePluginDLLForProduce() (retErr error) {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return err
 	}

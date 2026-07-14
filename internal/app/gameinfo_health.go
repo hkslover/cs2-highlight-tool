@@ -77,7 +77,7 @@ func (a *App) readGameInfoHealth() (*GameInfoHealth, error) {
 	if a == nil || (a.dataDir == "" && a.service == nil) {
 		return unknownGameInfoHealth("", fmt.Errorf("工作目录尚未初始化")), nil
 	}
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return unknownGameInfoHealth("", fmt.Errorf("读取配置失败: %w", err)), nil
 	}

@@ -457,7 +457,7 @@ func collectTakePlans(results []GeneratePluginJSONBatchItemResult, onlySuccess b
 }
 
 func (a *App) resolveProduceSessionPaths(batchTimestamp string) (string, string) {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		return "", ""
 	}

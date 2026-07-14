@@ -12,7 +12,7 @@ import (
 )
 
 func (a *App) GetFiveEPlayerName() string {
-	cfg, err := config.LoadOrCreate(a.configPath(), a.dataRoot())
+	cfg, err := a.loadConfig()
 	if err != nil {
 		if a != nil && a.ctx != nil {
 			wailsruntime.LogError(a.ctx, fmt.Sprintf("load config for 5e player name failed: %v", err))
@@ -45,16 +45,11 @@ func (a *App) ListFiveERecentMatches(playerName string, page int) (*fivee.FiveEM
 }
 
 func (a *App) saveFiveEPlayerName(playerName string) error {
-	configPath := a.configPath()
-	cfg, err := config.LoadOrCreate(configPath, a.dataRoot())
-	if err != nil {
-		return err
-	}
-	cfg.FiveEPlayerName = strings.TrimSpace(playerName)
-	if err := config.Save(configPath, cfg); err != nil {
-		return err
-	}
-	return nil
+	_, err := a.updateConfig(func(cfg *config.Config) error {
+		cfg.FiveEPlayerName = strings.TrimSpace(playerName)
+		return nil
+	})
+	return err
 }
 
 func (a *App) ImportFiveEMatch(matchID string) ([]string, error) {

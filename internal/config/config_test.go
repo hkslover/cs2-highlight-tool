@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestConfigCreateLoadSave(t *testing.T) {
@@ -24,6 +27,54 @@ func TestConfigCreateLoadSave(t *testing.T) {
 	}
 	if loaded.CS2Exe != cfg.CS2Exe {
 		t.Fatalf("CS2Exe = %q, want %q", loaded.CS2Exe, cfg.CS2Exe)
+	}
+}
+
+func TestLoadOrCreateDoesNotRewriteNormalizedConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := Save(path, Default(dir)); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	fixedTime := time.Unix(123, 456)
+	if err := os.Chtimes(path, fixedTime, fixedTime); err != nil {
+		t.Fatalf("set config timestamp: %v", err)
+	}
+	if _, err := LoadOrCreate(path, dir); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if !info.ModTime().Equal(fixedTime) {
+		t.Fatalf("normalized config was rewritten: modtime=%v want=%v", info.ModTime(), fixedTime)
+	}
+}
+
+func TestSaveConcurrentWritersAlwaysLeaveValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(version int) {
+			defer wg.Done()
+			cfg := Default(dir)
+			cfg.LastChangelogVersion = string(rune('a' + version))
+			if err := Save(path, cfg); err != nil {
+				t.Errorf("Save: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("final config is invalid JSON: %v", err)
 	}
 }
 

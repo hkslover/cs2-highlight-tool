@@ -113,6 +113,12 @@ type Service struct {
 	emit EventEmitter
 
 	mu sync.Mutex
+	// gorilla/websocket permits one concurrent writer at a time. Keep this
+	// separate from mu so a stalled network write cannot block state readers.
+	writeMu sync.Mutex
+
+	writeTimeout time.Duration
+	writeJSONFn  func(*websocket.Conn, outgoingMessage, time.Duration) error
 
 	server          *http.Server
 	listener        net.Listener
@@ -147,6 +153,7 @@ func New(addr string, emit EventEmitter) *Service {
 		ackTimeout:      defaultAckTimeout,
 		connectWait:     defaultConnectWaitTimout,
 		demoSwitchDelay: defaultDemoSwitchDelay,
+		writeTimeout:    5 * time.Second,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -157,6 +164,7 @@ func New(addr string, emit EventEmitter) *Service {
 			CurrentIndex: -1,
 		},
 	}
+	s.writeJSONFn = writeJSONWithDeadline
 	return s
 }
 
@@ -529,17 +537,21 @@ func (s *Service) SendCommand(name string, payload any) error {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !s.started {
+		s.mu.Unlock()
 		return fmt.Errorf("produce websocket server is not started")
 	}
 	if s.gameConn == nil {
+		s.mu.Unlock()
 		return fmt.Errorf("game websocket not connected")
 	}
-	return s.gameConn.WriteJSON(outgoingMessage{
+	conn := s.gameConn
+	writeTimeout := s.writeTimeout
+	s.mu.Unlock()
+	return s.writeOutgoing(conn, outgoingMessage{
 		Name:    command,
 		Payload: payload,
-	})
+	}, writeTimeout)
 }
 
 func (s *Service) waitForConnection() error {
@@ -773,16 +785,18 @@ func (s *Service) dispatchNextDemoAfterDelay() {
 
 func (s *Service) dispatchNextDemo() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !s.queueState.Running {
+		s.mu.Unlock()
 		return
 	}
 	if s.queueState.Completed >= s.queueState.Total {
 		s.finishQueueLocked()
+		s.mu.Unlock()
 		return
 	}
 	if s.gameConn == nil {
 		s.failQueueLocked("game websocket disconnected")
+		s.mu.Unlock()
 		return
 	}
 
@@ -792,17 +806,55 @@ func (s *Service) dispatchNextDemo() {
 	s.queueState.CurrentDemoPath = nextDemo
 	s.queueState.PendingAck = true
 	s.queueState.UpdatedAtMs = nowMs()
+	conn := s.gameConn
+	connID := s.gameConnID
+	writeTimeout := s.writeTimeout
+	s.mu.Unlock()
 
-	if err := s.gameConn.WriteJSON(outgoingMessage{
+	if err := s.writeOutgoing(conn, outgoingMessage{
 		Name:    "playdemo",
 		Payload: nextDemo,
-	}); err != nil {
-		s.failQueueLocked("failed to send playdemo: " + err.Error())
+	}, writeTimeout); err != nil {
+		s.mu.Lock()
+		if s.queueState.Running &&
+			s.queueState.CurrentIndex == nextIndex &&
+			s.queueState.CurrentDemoPath == nextDemo &&
+			s.gameConnID == connID {
+			s.failQueueLocked("failed to send playdemo: " + err.Error())
+		}
+		s.mu.Unlock()
 		return
 	}
 
-	s.startAckTimerLocked(nextDemo)
-	s.emitQueueStateLocked()
+	s.mu.Lock()
+	if s.queueState.Running &&
+		s.queueState.PendingAck &&
+		s.queueState.CurrentIndex == nextIndex &&
+		s.queueState.CurrentDemoPath == nextDemo &&
+		s.gameConnID == connID {
+		s.startAckTimerLocked(nextDemo)
+		s.emitQueueStateLocked()
+	}
+	s.mu.Unlock()
+}
+
+func (s *Service) writeOutgoing(conn *websocket.Conn, message outgoingMessage, timeout time.Duration) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	writeJSON := s.writeJSONFn
+	if writeJSON == nil {
+		writeJSON = writeJSONWithDeadline
+	}
+	return writeJSON(conn, message, timeout)
+}
+
+func writeJSONWithDeadline(conn *websocket.Conn, message outgoingMessage, timeout time.Duration) error {
+	if timeout > 0 {
+		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+			return fmt.Errorf("设置 websocket 写超时失败: %w", err)
+		}
+	}
+	return conn.WriteJSON(message)
 }
 
 func (s *Service) startAckTimerLocked(expectedDemo string) {

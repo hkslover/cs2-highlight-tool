@@ -26,6 +26,10 @@ type App struct {
 	produceW *producews.Service
 
 	serviceMu sync.Mutex
+	// configMu serializes App-level read-modify-write operations on config.json.
+	// It intentionally does not cover external work; callers load or persist
+	// through the helpers below and release the lock before doing other I/O.
+	configMu sync.Mutex
 
 	produceStateMu sync.Mutex
 	produceState   produceSessionState
@@ -199,4 +203,30 @@ func (a *App) dataPath(elem ...string) string {
 
 func (a *App) configPath() string {
 	return a.dataPath("config.json")
+}
+
+func (a *App) loadConfig() (*config.Config, error) {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	return config.LoadOrCreate(a.configPath(), a.dataRoot())
+}
+
+func (a *App) updateConfig(mutate func(*config.Config) error) (*config.Config, error) {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+
+	path := a.configPath()
+	cfg, err := config.LoadOrCreate(path, a.dataRoot())
+	if err != nil {
+		return nil, err
+	}
+	if mutate != nil {
+		if err := mutate(cfg); err != nil {
+			return nil, err
+		}
+	}
+	if err := config.Save(path, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
