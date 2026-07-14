@@ -1588,3 +1588,36 @@ Added bounded diagnostics, reconnect recovery, redacted log export, and a gracef
 ### Next Steps
 
 - None - task complete
+
+
+## Session 48: 修复剪辑转场音画同步
+
+**Date**: 2026-07-14
+**Task**: 修复剪辑转场音画同步
+**Branch**: `main`
+
+### Summary
+
+将转场合并重写为单条 filter_complex 一次编码，强制视频流 probe 与帧对齐，硬切改为图内 concat；补齐单测、规范和真实 FFmpeg 烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69bea87` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

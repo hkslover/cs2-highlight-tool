@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/07-14-fix-transition-av-sync/prd.md", "reason": "验收标准（音画同步阈值、单次编码、分辨率归一、进度事件）"}
+{"file": ".trellis/tasks/07-14-fix-transition-av-sync/plan.md", "reason": "对照改动清单核查：旧函数已删、测试覆盖点齐全、验证步骤已执行"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量核查基线"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核查前后端契约（Duration 语义变化不破坏前端）"}
