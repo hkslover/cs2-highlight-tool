@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/producews.md","reason":"Preserve the dynamic-port, queue-write, lock and race contracts while adding recovery."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Use the existing structured logging fields and update the scope for produce diagnostics."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Keep technical log causes separate from concise user-facing Wails/state errors."}
+{"file":".trellis/spec/backend/wails-bindings.md","reason":"Add ExportProduceWSLogs without hand-editing generated frontend bindings."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Place persistent logs and reports under the managed dataDir and preserve package ownership."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply Go unit, integration, vet and race checks to lifecycle/concurrency changes."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Reuse existing produce WS/queue state and avoid a redundant public reconnect enum."}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"Add only Simplified Chinese text for the export/error UI."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Validate Vue/TypeScript changes with the repository build contract."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Coordinate env propagation, plugin behavior, Wails export and frontend display across boundaries."}
+{"file":".trellis/tasks/07-14-producews-disconnect-diagnostics-recovery/research/joint-websocket-lifecycle.md","reason":"Use the verified two-repository lifecycle findings and corrections to the supplied analysis."}
