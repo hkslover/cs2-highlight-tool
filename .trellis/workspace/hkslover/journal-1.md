@@ -1654,3 +1654,36 @@ Moved the standalone enable-team-voice switch into the searchable and paginated 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 50: Add POV radar hint demonstration image
+
+**Date**: 2026-07-14
+**Task**: Add POV radar hint demonstration image
+**Branch**: `main`
+
+### Summary
+
+Moved the POV radar screenshot to frontend/src/assets/images/pov-radar-demo.png and displayed it alongside the localized beta warning in the settings tooltip. Added responsive tooltip image guidance and verified the frontend build.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8f2c4e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
