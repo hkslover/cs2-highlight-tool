@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 48
+- **Total Sessions**: 49
 - **Last Active**: 2026-07-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1623 | Active |
+| `journal-1.md` | ~1656 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 49 | 2026-07-14 | Move team voice setting into config list | `99cdd04` | `main` |
 | 48 | 2026-07-14 | 修复剪辑转场音画同步 | `69bea87` | `main` |
 | 47 | 2026-07-14 | Harden production WebSocket recovery and graceful shutdown | `ed978f6`, `08887a0` | `agent/producews-recovery` |
 | 46 | 2026-07-13 | Audit and reliability fixes | `e94597c`, `3517972` | `main` |
