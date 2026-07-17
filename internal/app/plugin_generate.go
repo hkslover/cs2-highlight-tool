@@ -486,6 +486,7 @@ func (a *App) generatePluginJSONInternal(
 		AutoAddVictimView:  cfg.AutoAddVictimView,
 		EnableVoice:        actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH,
 		RecordFPS:          cfg.RecordFPS,
+		RecordQuality:      cfg.RecordQuality,
 		VideoPreset:        cfg.VideoPreset,
 		RecordOutputDir:    a.fixedRecordOutputDir(),
 		EnableSpecShowXray: cfg.EnableSpecShowXray,

@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	produceGameInfoBackupSuffix  = ".cs2ht_produce.bak"
-	producePluginDLLBackupSuffix = ".cs2ht_plugin.bak"
+	produceGameInfoBackupSuffix   = ".cs2ht_produce.bak"
+	producePluginDLLBackupSuffix  = ".cs2ht_plugin.bak"
+	producePluginDLLMissingMarker = "cs2-highlight-tool:plugin-dll-target-missing:v1\n"
 )
 
 type gameInfoSessionState struct {
@@ -138,13 +139,88 @@ func (a *App) recoverStaleGameInfoBackup(gameInfoPath string) error {
 		}
 		return fmt.Errorf("读取残留 gameinfo 备份失败: %w", err)
 	}
-	if err := copyFile(backupPath, gameInfoPath); err != nil {
-		return fmt.Errorf("恢复残留 gameinfo.gi 失败: %w", err)
+	backupBytes, err := os.ReadFile(backupPath)
+	if err != nil {
+		return fmt.Errorf("读取残留 gameinfo 备份失败: %w", err)
+	}
+	currentBytes, err := os.ReadFile(gameInfoPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("读取当前 gameinfo.gi 失败: %w", err)
+		}
+		// There is no live content to preserve if the file disappeared.
+		if err := copyFile(backupPath, gameInfoPath); err != nil {
+			return fmt.Errorf("恢复残留 gameinfo.gi 失败: %w", err)
+		}
+	} else {
+		recovered, changed := removeStaleInjectedSearchPaths(string(currentBytes), string(backupBytes))
+		if changed {
+			mode := os.FileMode(0644)
+			if info, statErr := os.Stat(gameInfoPath); statErr == nil {
+				mode = info.Mode().Perm()
+			}
+			if err := os.WriteFile(gameInfoPath, []byte(recovered), mode); err != nil {
+				return fmt.Errorf("恢复残留 gameinfo.gi 失败: %w", err)
+			}
+		}
 	}
 	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("清理残留 gameinfo 备份失败: %w", err)
 	}
 	return nil
+}
+
+// removeStaleInjectedSearchPaths removes only extra known search-path entries
+// that the previous produce session could have added. Entries already present
+// in the backup are kept, preserving pre-existing user/Steam configuration.
+func removeStaleInjectedSearchPaths(current string, backup string) (string, bool) {
+	backupCounts := make(map[string]int, len(knownInjectedSearchPaths()))
+	currentCounts := make(map[string]int, len(knownInjectedSearchPaths()))
+	for _, searchPath := range knownInjectedSearchPaths() {
+		backupCounts[searchPath] = countSearchPathEntries(backup, searchPath)
+		currentCounts[searchPath] = countSearchPathEntries(current, searchPath)
+	}
+
+	removeCounts := make(map[string]int, len(knownInjectedSearchPaths()))
+	for _, searchPath := range knownInjectedSearchPaths() {
+		// One produce session can add at most one entry for each path. Remove
+		// only that one so additional entries written by the user/Steam survive.
+		if currentCounts[searchPath] > backupCounts[searchPath] {
+			removeCounts[searchPath] = 1
+		}
+	}
+
+	changed := false
+	lines := strings.Split(current, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		removed := false
+		for _, searchPath := range knownInjectedSearchPaths() {
+			if removeCounts[searchPath] > 0 && producegame.HasSearchPath(line, searchPath) {
+				removeCounts[searchPath]--
+				changed = true
+				removed = true
+				break
+			}
+		}
+		if !removed {
+			kept = append(kept, line)
+		}
+	}
+	if !changed {
+		return current, false
+	}
+	return strings.Join(kept, "\n"), true
+}
+
+func countSearchPathEntries(content string, searchPath string) int {
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		if producegame.HasSearchPath(line, searchPath) {
+			count++
+		}
+	}
+	return count
 }
 
 // preparePovForProduce drops the embedded pov.vpk into csgo/pov.vpk when the
@@ -253,6 +329,9 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 	backupPath := ""
 	pluginDirCreated := false
 	binDirCreated := false
+	if err := a.recoverStalePluginDLLBackup(targetPath); err != nil {
+		return err
+	}
 
 	defer func() {
 		if retErr == nil {
@@ -260,8 +339,7 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 		}
 		if modified {
 			if strings.TrimSpace(backupPath) != "" {
-				_ = copyFileWithReplace(backupPath, targetPath)
-				_ = os.Remove(backupPath)
+				_ = restorePluginDLLBackup(backupPath, targetPath)
 			} else if strings.TrimSpace(targetPath) != "" {
 				_ = os.Remove(targetPath)
 			}
@@ -310,6 +388,11 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 			}
 		} else if !os.IsNotExist(targetErr) {
 			return fmt.Errorf("读取目标插件 DLL 失败: %w", targetErr)
+		} else {
+			backupPath = targetPath + producePluginDLLBackupSuffix
+			if err := os.WriteFile(backupPath, []byte(producePluginDLLMissingMarker), 0644); err != nil {
+				return fmt.Errorf("记录目标插件 DLL 缺失状态失败: %w", err)
+			}
 		}
 
 		if err := copyFileWithReplace(pluginSourcePath, targetPath); err != nil {
@@ -328,6 +411,65 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 		pluginDirCreated: pluginDirCreated,
 	}
 	a.produceStateMu.Unlock()
+	return nil
+}
+
+func (a *App) recoverStalePluginDLLBackup(targetPath string) error {
+	targetPath = strings.TrimSpace(targetPath)
+	if targetPath == "" {
+		return nil
+	}
+
+	a.produceStateMu.Lock()
+	activeState := a.produceState.pluginDLL
+	a.produceStateMu.Unlock()
+	backupPath := targetPath + producePluginDLLBackupSuffix
+	if activeState.modified &&
+		samePath(activeState.targetPath, targetPath) &&
+		samePath(activeState.backupPath, backupPath) {
+		return nil
+	}
+
+	backupBytes, err := os.ReadFile(backupPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("读取残留插件 DLL 备份失败: %w", err)
+	}
+	if string(backupBytes) == producePluginDLLMissingMarker {
+		if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("移除残留注入插件 DLL 失败: %w", err)
+		}
+	} else if err := copyFileWithReplace(backupPath, targetPath); err != nil {
+		return fmt.Errorf("恢复残留插件 DLL 失败: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理残留插件 DLL 备份失败: %w", err)
+	}
+	return nil
+}
+
+func restorePluginDLLBackup(backupPath string, targetPath string) error {
+	backupPath = strings.TrimSpace(backupPath)
+	targetPath = strings.TrimSpace(targetPath)
+	if backupPath == "" || targetPath == "" {
+		return fmt.Errorf("插件 DLL 恢复路径为空")
+	}
+	backupBytes, err := os.ReadFile(backupPath)
+	if err != nil {
+		return err
+	}
+	if string(backupBytes) == producePluginDLLMissingMarker {
+		if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	} else if err := copyFileWithReplace(backupPath, targetPath); err != nil {
+		return err
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
 }
 
@@ -369,11 +511,8 @@ func (a *App) forceRestorePluginDLLForProduce() error {
 			} else {
 				restoreErr = errors.Join(restoreErr, fmt.Errorf("读取插件 DLL 备份失败: %w", err))
 			}
-		} else if err := copyFileWithReplace(state.backupPath, state.targetPath); err != nil {
+		} else if err := restorePluginDLLBackup(state.backupPath, state.targetPath); err != nil {
 			restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复目标插件 DLL 失败: %w", err))
-		}
-		if err := os.Remove(state.backupPath); err != nil && !os.IsNotExist(err) {
-			restoreErr = errors.Join(restoreErr, fmt.Errorf("清理插件 DLL 备份失败: %w", err))
 		}
 	} else if strings.TrimSpace(state.targetPath) != "" {
 		if err := os.Remove(state.targetPath); err != nil && !os.IsNotExist(err) {
