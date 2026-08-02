@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,10 +29,12 @@ type EditConcatRequest struct {
 }
 
 type resolvedEditClip struct {
-	VideoPath string
-	Duration  float64
-	Width     int
-	Height    int
+	VideoPath          string
+	Duration           float64
+	Width              int
+	Height             int
+	SampleAspectRatio  string
+	DisplayAspectRatio string
 }
 
 type editEncodeSettings struct {
@@ -126,6 +129,8 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 		duration := clip.Duration
 		width := 0
 		height := 0
+		sampleAspectRatio := ""
+		displayAspectRatio := ""
 		if probeForTransitions {
 			info, err := probeVideoStreamInfo(ffprobeExe, p)
 			if err != nil {
@@ -134,6 +139,8 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 			duration = info.Duration
 			width = info.Width
 			height = info.Height
+			sampleAspectRatio = info.SampleAspectRatio
+			displayAspectRatio = info.DisplayAspectRatio
 		} else if duration <= 0 {
 			if ffprobeExe == "" {
 				return nil, fmt.Errorf("clip %d duration is invalid and ffprobe not found", i+1)
@@ -156,10 +163,12 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 			resolvedDuration = math.Round(duration*1000) / 1000
 		}
 		resolved = append(resolved, resolvedEditClip{
-			VideoPath: p,
-			Duration:  resolvedDuration,
-			Width:     width,
-			Height:    height,
+			VideoPath:          p,
+			Duration:           resolvedDuration,
+			Width:              width,
+			Height:             height,
+			SampleAspectRatio:  sampleAspectRatio,
+			DisplayAspectRatio: displayAspectRatio,
 		})
 	}
 	return resolved, nil
@@ -402,15 +411,17 @@ func buildTransitionFilterGraph(
 
 	width := clips[0].Width
 	height := clips[0].Height
+	targetSampleAspectRatio := editClipSampleAspectRatio(clips[0])
 	filters := make([]string, 0, len(clips)*2+len(clips)-1)
 	for i, duration := range durations {
 		filters = append(filters, fmt.Sprintf(
-			"[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=%d,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p,trim=duration=%.6f,setpts=PTS-STARTPTS[v%d]",
+			"[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=%s,fps=%d,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p,trim=duration=%.6f,setpts=PTS-STARTPTS[v%d]",
 			i,
 			width,
 			height,
 			width,
 			height,
+			targetSampleAspectRatio,
 			fps,
 			duration,
 			i,
@@ -480,6 +491,80 @@ func buildTransitionFilterGraph(
 		Filter:        strings.Join(filters, ";"),
 		TotalDuration: currentDuration,
 	}, nil
+}
+
+func editClipSampleAspectRatio(clip resolvedEditClip) string {
+	if ratio, ok := parseEditAspectRatio(clip.SampleAspectRatio); ok {
+		return ratio.String()
+	}
+
+	displayRatio, ok := parseEditAspectRatio(clip.DisplayAspectRatio)
+	if !ok || clip.Width <= 0 || clip.Height <= 0 {
+		return "1/1"
+	}
+
+	return reduceEditAspectRatio(
+		displayRatio.num*int64(clip.Height),
+		displayRatio.den*int64(clip.Width),
+	)
+}
+
+type editAspectRatio struct {
+	num int64
+	den int64
+}
+
+func (ratio editAspectRatio) String() string {
+	return fmt.Sprintf("%d/%d", ratio.num, ratio.den)
+}
+
+func parseEditAspectRatio(raw string) (editAspectRatio, bool) {
+	ratio := strings.TrimSpace(raw)
+	if ratio == "" || strings.EqualFold(ratio, "N/A") {
+		return editAspectRatio{}, false
+	}
+
+	separator := ":"
+	if !strings.Contains(ratio, separator) {
+		separator = "/"
+	}
+	parts := strings.Split(ratio, separator)
+	if len(parts) != 2 {
+		return editAspectRatio{}, false
+	}
+	numerator, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil || numerator <= 0 {
+		return editAspectRatio{}, false
+	}
+	denominator, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil || denominator <= 0 {
+		return editAspectRatio{}, false
+	}
+
+	return reduceEditAspectRatioParts(numerator, denominator), true
+}
+
+func reduceEditAspectRatio(numerator, denominator int64) string {
+	if numerator <= 0 || denominator <= 0 {
+		return "1/1"
+	}
+	reduced := reduceEditAspectRatioParts(numerator, denominator)
+	return reduced.String()
+}
+
+func reduceEditAspectRatioParts(numerator, denominator int64) editAspectRatio {
+	common := editAspectRatioGCD(numerator, denominator)
+	return editAspectRatio{num: numerator / common, den: denominator / common}
+}
+
+func editAspectRatioGCD(a, b int64) int64 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 func alignToFrameGrid(seconds float64, fps int) float64 {
