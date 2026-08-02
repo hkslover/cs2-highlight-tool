@@ -15,6 +15,7 @@ import (
 	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/plugingen"
+	"cs2-highlight-tool-v2/internal/producegame"
 	"cs2-highlight-tool-v2/internal/producemerge"
 	"cs2-highlight-tool-v2/internal/producews"
 
@@ -199,6 +200,47 @@ func TestPrepareGameInfoForProduce_RecoversStaleBackupBeforeReinjecting(t *testi
 	}
 }
 
+func TestPrepareGameInfoForProduce_StaleRecoveryPreservesExternalChanges(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	firstApp := &App{exeDir: env.exeDir}
+	if err := firstApp.prepareGameInfoForProduce(); err != nil {
+		t.Fatalf("first prepare gameinfo: %v", err)
+	}
+
+	current, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read injected gameinfo: %v", err)
+	}
+	externalLine := "\t\tGame\tcustom_external_mount\n"
+	if err := os.WriteFile(env.gameInfoPath, append(current, []byte(externalLine)...), 0644); err != nil {
+		t.Fatalf("write externally changed gameinfo: %v", err)
+	}
+
+	secondApp := &App{exeDir: env.exeDir}
+	if err := secondApp.prepareGameInfoForProduce(); err != nil {
+		t.Fatalf("second prepare gameinfo: %v", err)
+	}
+	if err := secondApp.forceRestoreGameInfoForProduce(); err != nil {
+		t.Fatalf("restore after external gameinfo change: %v", err)
+	}
+	restored, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read restored gameinfo: %v", err)
+	}
+	withoutInjected := string(current)
+	for _, searchPath := range knownInjectedSearchPaths() {
+		var changed bool
+		withoutInjected, changed = producegame.RemoveSearchPath(withoutInjected, searchPath)
+		if !changed {
+			t.Fatalf("test setup should contain the injected %q path", searchPath)
+		}
+	}
+	want := withoutInjected + externalLine
+	if string(restored) != want {
+		t.Fatalf("external gameinfo change was lost:\n got:\n%s\nwant:\n%s", restored, want)
+	}
+}
+
 func TestPrepareAndRestorePluginDLLForProduce_NewTarget(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	app := &App{exeDir: env.exeDir}
@@ -270,6 +312,68 @@ func TestPrepareAndRestorePluginDLLForProduce_BackupExistingTarget(t *testing.T)
 	}
 	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
 		t.Fatalf("backup path should be removed after restore, stat err=%v", err)
+	}
+}
+
+func TestPreparePluginDLLForProduce_RecoversStaleBackupAcrossAppInstances(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	if err := os.MkdirAll(env.binDirPath, 0755); err != nil {
+		t.Fatalf("mkdir plugin bin dir: %v", err)
+	}
+	if err := os.WriteFile(env.targetDLLPath, []byte("plugin-old"), 0644); err != nil {
+		t.Fatalf("write existing target dll: %v", err)
+	}
+
+	firstApp := &App{exeDir: env.exeDir}
+	if err := firstApp.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("first preparePluginDLLForProduce: %v", err)
+	}
+	secondApp := &App{exeDir: env.exeDir}
+	if err := secondApp.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("second preparePluginDLLForProduce: %v", err)
+	}
+	if err := secondApp.forceRestorePluginDLLForProduce(); err != nil {
+		t.Fatalf("restore after stale plugin backup: %v", err)
+	}
+	restored, err := os.ReadFile(env.targetDLLPath)
+	if err != nil {
+		t.Fatalf("read restored target dll: %v", err)
+	}
+	if string(restored) != "plugin-old" {
+		t.Fatalf("stale backup recovery lost original target, got %q", restored)
+	}
+	if _, err := os.Stat(env.targetDLLPath + producePluginDLLBackupSuffix); !os.IsNotExist(err) {
+		t.Fatalf("stale backup should be removed, stat err=%v", err)
+	}
+}
+
+func TestPreparePluginDLLForProduce_RecoversMissingTargetMarkerAcrossAppInstances(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	firstApp := &App{exeDir: env.exeDir}
+	if err := firstApp.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("first preparePluginDLLForProduce: %v", err)
+	}
+	backupPath := env.targetDLLPath + producePluginDLLBackupSuffix
+	marker, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Fatalf("read missing-target marker: %v", err)
+	}
+	if string(marker) != producePluginDLLMissingMarker {
+		t.Fatalf("unexpected missing-target marker: %q", marker)
+	}
+
+	secondApp := &App{exeDir: env.exeDir}
+	if err := secondApp.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("second preparePluginDLLForProduce: %v", err)
+	}
+	if err := secondApp.forceRestorePluginDLLForProduce(); err != nil {
+		t.Fatalf("restore after missing-target marker recovery: %v", err)
+	}
+	if _, err := os.Stat(env.targetDLLPath); !os.IsNotExist(err) {
+		t.Fatalf("target dll should be removed after restoring missing target, stat err=%v", err)
+	}
+	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
+		t.Fatalf("missing-target marker should be removed, stat err=%v", err)
 	}
 }
 

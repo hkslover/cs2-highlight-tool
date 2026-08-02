@@ -393,6 +393,36 @@ func TestGeneratePluginJSON_ContainsMirvRecordingCommands(t *testing.T) {
 	}
 }
 
+func TestGeneratePluginJSON_PassesRecordQualityToFFmpegBootstrap(t *testing.T) {
+	exeDir := t.TempDir()
+	app := &App{exeDir: exeDir}
+	if _, err := app.SaveClipSettings(ClipSettings{
+		RecordQuality: "ultra",
+		VideoPreset:   "n1",
+	}); err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+
+	demoPath := writeDemoFile(t)
+	if _, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7}, IncludeVictim: false},
+		},
+	}); err != nil {
+		t.Fatalf("GeneratePluginJSON: %v", err)
+	}
+
+	sequences := readGeneratedSequences(t, demoPath+".json")
+	for _, action := range sequences[0].Actions {
+		if strings.Contains(action.Cmd, "mirv_streams settings add ffmpeg n1") && strings.Contains(action.Cmd, "-qp 10") {
+			return
+		}
+	}
+	t.Fatalf("record quality was not passed to the generated ffmpeg bootstrap: %#v", sequences[0].Actions)
+}
+
 func TestGeneratePluginJSON_EmitsTakePlans(t *testing.T) {
 	exeDir := t.TempDir()
 	app := &App{exeDir: exeDir}
