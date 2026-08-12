@@ -36,6 +36,7 @@
 - Must：`ClipSettings.sky_blackout` 需与后端保持一致，默认 `true`；开启时仅写入 `r_drawskybox 0`，不得联动关闭云层。
 - Must：`ClipSettings.disable_clouds` 需与后端保持一致，默认 `false`；开启时仅写入 `mirv_sky clouds draw 0`，关闭时不写入该命令。
 - Must：`ClipSettings.pov_radar_enabled` 需与后端保持一致，默认 `false`；开启时生成插件 JSON bootstrap 写入 `csdm_radar_pov 1`，关闭时不写入该命令。
+- Must：`ClipSettings.hide_player_avatars` 需与后端保持一致，默认 `false`；开启时生成插件 JSON bootstrap 写入 `cl_teamcounter_playercount_instead_of_avatars true`，关闭时不写入该命令。
 - Must：整局 POV 录制状态必须作为 demo 级独立状态维护，不得伪装成普通击杀片段；生成请求通过 `full_round_pov.player_steam_id` 传递，普通 victim clip 仍通过 `selected_items[]` 传递。
 - Must：全玩家选择器需要精确 SteamID 时使用 `DemoPlayerInfo.steam_id_text`，不得使用 JS number 形式的 `steam_id` 作为后端请求值。
 - Must：整局 POV 模式下新增的 victim-only `selected_items[]` 必须传 `include_killer=false`，避免额外生成击杀者片段。

@@ -594,6 +594,42 @@ func TestGeneratePluginJSON_ExtraCommandsOnlyInBootstrapSequence(t *testing.T) {
 	}
 }
 
+func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *testing.T) {
+	exeDir := t.TempDir()
+	app := &App{exeDir: exeDir}
+	demoPath := writeDemoFile(t)
+
+	if _, err := app.SaveClipSettings(ClipSettings{HidePlayerAvatars: true}); err != nil {
+		t.Fatalf("SaveClipSettings enabled: %v", err)
+	}
+	if _, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7}, IncludeVictim: false},
+		},
+	}); err != nil {
+		t.Fatalf("GeneratePluginJSON enabled: %v", err)
+	}
+	enabled := readGeneratedSequences(t, demoPath+".json")
+	assertHasAction(t, enabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
+
+	if _, err := app.SaveClipSettings(ClipSettings{HidePlayerAvatars: false}); err != nil {
+		t.Fatalf("SaveClipSettings disabled: %v", err)
+	}
+	if _, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7}, IncludeVictim: false},
+		},
+	}); err != nil {
+		t.Fatalf("GeneratePluginJSON disabled: %v", err)
+	}
+	disabled := readGeneratedSequences(t, demoPath+".json")
+	assertNoPrefixAction(t, disabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
+}
+
 func TestGeneratePluginJSON_VoiceIndicesFollowEnableSwitch(t *testing.T) {
 	exeDir := t.TempDir()
 	app := &App{exeDir: exeDir}
@@ -726,6 +762,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.HideAllUI {
 		t.Fatalf("hide_all_ui should default to false: %+v", initial)
 	}
+	if initial.HidePlayerAvatars {
+		t.Fatalf("hide_player_avatars should default to false: %+v", initial)
+	}
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
@@ -752,6 +791,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		VideoPreset:       "n1",
 		LaunchResolution:  "16:9",
 		HideAllUI:         true,
+		HidePlayerAvatars: true,
 		UseShoulderCamera: true,
 		PovRadarEnabled:   true,
 		DisableClouds:     true,
@@ -779,6 +819,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !saved.HideAllUI {
 		t.Fatalf("hide_all_ui should persist true: %+v", saved)
+	}
+	if !saved.HidePlayerAvatars {
+		t.Fatalf("hide_player_avatars should persist true: %+v", saved)
 	}
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
@@ -814,6 +857,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.HideAllUI {
 		t.Fatalf("saved hide_all_ui mismatch: %+v", loaded)
+	}
+	if !loaded.HidePlayerAvatars {
+		t.Fatalf("saved hide_player_avatars mismatch: %+v", loaded)
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)

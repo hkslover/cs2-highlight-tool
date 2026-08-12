@@ -267,6 +267,7 @@ const settings = reactive<ClipSettings>({
   record_output_dir: "",
   enable_spec_show_xray_zero: true,
   hide_all_ui: false,
+  hide_player_avatars: false,
   use_shoulder_camera: false,
   pov_hud_enabled: true,
   pov_radar_enabled: false,
@@ -315,6 +316,7 @@ type SearchableSwitchSettingKey =
   | "enable_voice"
   | "enable_spec_show_xray_zero"
   | "hide_all_ui"
+  | "hide_player_avatars"
   | "use_shoulder_camera"
   | "pov_hud_enabled"
   | "pov_radar_enabled"
@@ -359,6 +361,12 @@ const searchableClipSettings: SearchableClipSettingItem[] = [
     labelKey: "main.settings.hide_all_ui",
     kind: "switch",
     aliases: ["隐藏所有ui", "hidden ui", "hide ui"],
+  },
+  {
+    key: "hide_player_avatars",
+    labelKey: "main.settings.hide_player_avatars",
+    kind: "switch",
+    aliases: ["隐藏玩家头像", "玩家头像", "player avatars", "teamcounter"],
   },
   {
     key: "use_shoulder_camera",
