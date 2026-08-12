@@ -51,6 +51,7 @@ export interface GeneratePluginSelectedItem {
   include_victim: boolean;
   killer_spec_mode: number;
   victim_spec_mode: number;
+  primary_view?: ClipPrimaryView;
   clip_overrides?: ClipParameterOverrides;
 }
 
@@ -199,7 +200,7 @@ export interface PlatformClientCloseResult {
   error?: string;
 }
 
-import type { DemoClipKill } from "./demo";
+import type { ClipPrimaryView, DemoClipKill } from "./demo";
 
 export interface ProduceTakeStatusSnapshot {
   items: ProduceTakeStatus[];

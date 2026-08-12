@@ -16,6 +16,15 @@ export const materialByDemo = ref<Record<string, DemoMaterialSelection[]>>({});
 export const fullRoundPovByDemo = ref<Record<string, DemoFullRoundPOVSelection>>({});
 export const fullRoundPlanByDemo = ref<Record<string, FullRoundPOVPlan>>({});
 export const fullRoundPlanErrorByDemo = ref<Record<string, string>>({});
+export const clipSelectModeByDemo = ref<Record<string, ClipSelectMode>>({});
+
+/**
+ * Which set of clips the selection list offers for the selected player:
+ * "kills" (the player killed someone) or "deaths" (the player got killed).
+ * Both record the selected player's own first-person view — death mode just
+ * makes them the victim of the event instead of the killer.
+ */
+export type ClipSelectMode = "kills" | "deaths";
 
 export interface DemoFullRoundPOVSelection {
   enabled: boolean;
@@ -35,6 +44,31 @@ export function getClipPlayers(entry: DemoListEntry | null): DemoClipPlayer[] {
   return entry.meta.clip_players;
 }
 
+export function getDeathPlayers(entry: DemoListEntry | null): DemoClipPlayer[] {
+  if (!entry?.meta?.death_players) return [];
+  return entry.meta.death_players;
+}
+
+export function getClipSelectMode(entry: DemoListEntry | null): ClipSelectMode {
+  if (!entry) return "kills";
+  return clipSelectModeByDemo.value[entry.key] ?? "kills";
+}
+
+export function setClipSelectMode(entry: DemoListEntry | null, mode: ClipSelectMode) {
+  if (!entry) return;
+  clipSelectModeByDemo.value = {
+    ...clipSelectModeByDemo.value,
+    [entry.key]: mode,
+  };
+  // The two modes offer different player sets (killers vs. victims), so the
+  // currently selected player may not exist in the one we just switched to.
+  if (mode === "deaths") {
+    syncDefaultDeathPlayer(entry);
+  } else {
+    syncDefaultPlayer(entry);
+  }
+}
+
 export function getFullRoundPlayers(entry: DemoListEntry | null): DemoPlayerInfo[] {
   if (!entry?.meta?.players) return [];
   return entry.meta.players;
@@ -42,7 +76,11 @@ export function getFullRoundPlayers(entry: DemoListEntry | null): DemoPlayerInfo
 
 export function getSelectedPlayerSteamID(entry: DemoListEntry | null): string {
   if (!entry) return "";
-  syncDefaultPlayer(entry);
+  if (getClipSelectMode(entry) === "deaths") {
+    syncDefaultDeathPlayer(entry);
+  } else {
+    syncDefaultPlayer(entry);
+  }
   return selectedPlayerByDemo.value[entry.key] ?? "";
 }
 
@@ -67,6 +105,12 @@ export function getClipRounds(entry: DemoListEntry | null, playerSteamID: string
   return player?.rounds ?? [];
 }
 
+export function getDeathRounds(entry: DemoListEntry | null, playerSteamID: string): DemoClipRound[] {
+  if (!entry || !playerSteamID) return [];
+  const player = getDeathPlayers(entry).find((item) => item.steam_id === playerSteamID);
+  return player?.rounds ?? [];
+}
+
 export function getFullRoundPOVSelection(entry: DemoListEntry | null): DemoFullRoundPOVSelection {
   if (!entry) return { enabled: false, player_steam_id: "" };
   return fullRoundPovByDemo.value[entry.key] ?? { enabled: false, player_steam_id: "" };
@@ -76,6 +120,14 @@ export function setFullRoundPOVEnabled(entry: DemoListEntry | null, enabled: boo
   if (!entry) return;
   clearFullRoundPOVPlanState(entry);
   if (enabled) {
+    // Full-round POV already covers the tracked player's whole round including
+    // the moment they die, so death mode has nothing left to add. Reset the
+    // flag without re-defaulting the player — syncDefaultFullRoundPlayer below
+    // picks from the wider meta.players list and may well keep the current one.
+    clipSelectModeByDemo.value = {
+      ...clipSelectModeByDemo.value,
+      [entry.key]: "kills",
+    };
     syncDefaultFullRoundPlayer(entry);
     const playerSteamID = selectedPlayerByDemo.value[entry.key] || "";
     setDemoMaterials(entry, []);
@@ -143,6 +195,17 @@ export function syncDefaultPlayer(entry: DemoListEntry | null): void {
   const current = selectedPlayerByDemo.value[entry.key];
   const exists = players.some((player) => player.steam_id === current);
   if (exists) return;
+  selectedPlayerByDemo.value = {
+    ...selectedPlayerByDemo.value,
+    [entry.key]: players[0].steam_id,
+  };
+}
+
+export function syncDefaultDeathPlayer(entry: DemoListEntry | null): void {
+  if (!entry?.meta?.death_players?.length) return;
+  const players = entry.meta.death_players;
+  const current = selectedPlayerByDemo.value[entry.key];
+  if (players.some((player) => player.steam_id === current)) return;
   selectedPlayerByDemo.value = {
     ...selectedPlayerByDemo.value,
     [entry.key]: players[0].steam_id,

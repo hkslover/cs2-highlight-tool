@@ -16,6 +16,7 @@ export type {
 } from "./app";
 
 export type {
+  ClipPrimaryView,
   DemoMetadata,
   DemoPlayerInfo,
   DemoClipPlayer,

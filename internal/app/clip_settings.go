@@ -43,13 +43,30 @@ type ClipActionSettings struct {
 	VoiceIndicesHValue  int  `json:"voice_indices_h_value"`
 }
 
+// PrimaryView values mark which side of a kill event is the player the user
+// selected on the clip page. It never changes which camera a pass uses — the
+// killer pass always specs the killer and the victim pass always specs the
+// victim — it only decides which side gets the primary (long) recording
+// window and which gets the opponent (short) one.
+const (
+	PrimaryViewKiller = "killer"
+	PrimaryViewVictim = "victim"
+)
+
 type SelectedClipItem struct {
 	Kill           demo.ClipKill      `json:"kill"`
 	IncludeKiller  *bool              `json:"include_killer,omitempty"`
 	IncludeVictim  bool               `json:"include_victim"`
 	KillerSpecMode int                `json:"killer_spec_mode"`
 	VictimSpecMode int                `json:"victim_spec_mode"`
+	PrimaryView    string             `json:"primary_view,omitempty"`
 	ClipOverrides  *ClipItemOverrides `json:"clip_overrides,omitempty"`
+}
+
+// isVictimPrimaryView reports whether the selected player is the victim of
+// this kill, i.e. the item came from the clip page's death mode.
+func isVictimPrimaryView(primaryView string) bool {
+	return strings.EqualFold(strings.TrimSpace(primaryView), PrimaryViewVictim)
 }
 
 type ClipItemOverrides struct {
