@@ -325,6 +325,7 @@
       "record_output_dir_placeholder": "例如: D:/cs2/outputs",
       "enable_spec_show_xray_zero": "关闭 X 光",
       "hide_all_ui": "隐藏所有 UI",
+      "hide_player_avatars": "隐藏玩家头像",
       "use_shoulder_camera": "使用越肩视角",
       "pov_hud_enabled": "启用 POV HUD",
       "pov_radar_enabled": "启用 POV雷达",

@@ -408,6 +408,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	if cfg.HideAllUI {
 		t.Fatalf("hide_all_ui should default to false")
 	}
+	if cfg.HidePlayerAvatars {
+		t.Fatalf("hide_player_avatars should default to false")
+	}
 	if cfg.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false")
 	}
@@ -433,6 +436,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(saved), "hide_all_ui") {
 		t.Fatalf("saved config should contain hide_all_ui, got: %s", string(saved))
+	}
+	if !strings.Contains(string(saved), "hide_player_avatars") {
+		t.Fatalf("saved config should contain hide_player_avatars, got: %s", string(saved))
 	}
 	if !strings.Contains(string(saved), "use_shoulder_camera") {
 		t.Fatalf("saved config should contain use_shoulder_camera, got: %s", string(saved))

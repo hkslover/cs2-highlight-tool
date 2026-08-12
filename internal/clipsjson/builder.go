@@ -78,6 +78,7 @@ type BuildOptions struct {
 	RecordBatchName           string
 	EnableSpecShowXray        bool
 	HideAllUI                 bool
+	HidePlayerAvatars         bool
 	UseShoulderCamera         bool
 	PovRadarEnabled           bool
 	SkyBlackout               bool
@@ -157,6 +158,7 @@ type bootstrapOptions struct {
 	ExtraCommands      []string
 	EnableSpecShowXray bool
 	HideAllUI          bool
+	HidePlayerAvatars  bool
 	UseShoulderCamera  bool
 	PovRadarEnabled    bool
 	SkyBlackout        bool
@@ -245,6 +247,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		ExtraCommands:      opts.ExtraCommands,
 		EnableSpecShowXray: opts.EnableSpecShowXray,
 		HideAllUI:          opts.HideAllUI,
+		HidePlayerAvatars:  opts.HidePlayerAvatars,
 		UseShoulderCamera:  opts.UseShoulderCamera,
 		PovRadarEnabled:    opts.PovRadarEnabled,
 		SkyBlackout:        opts.SkyBlackout,
@@ -620,6 +623,9 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	actions = append(actions, Action{Cmd: fmt.Sprintf("spec_show_xray %d", xrayCommandValue(opts.EnableSpecShowXray)), Tick: actionTick})
 	if opts.HideAllUI {
 		actions = append(actions, Action{Cmd: "cl_draw_only_deathnotices 1", Tick: actionTick})
+	}
+	if opts.HidePlayerAvatars {
+		actions = append(actions, Action{Cmd: "cl_teamcounter_playercount_instead_of_avatars true", Tick: actionTick})
 	}
 	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices %d", voiceValue), Tick: actionTick})
 	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices_h %d", voiceValue), Tick: actionTick})

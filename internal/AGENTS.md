@@ -30,6 +30,7 @@
 - Must：`pov_radar_enabled` 通过 `GetClipSettings` / `SaveClipSettings` 持久化，默认值为 `false`。
 - Must：仅当 `pov_radar_enabled=true` 时，插件 JSON bootstrap 才写入 `csdm_radar_pov 1`；关闭时不得写入该命令或重置命令。
 - Must Not：将 `pov_radar_enabled` 与现有 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动。
+- Must：`hide_player_avatars` 通过 `GetClipSettings` / `SaveClipSettings` 持久化，默认值为 `false`；仅当启用时插件 JSON bootstrap 才写入 `cl_teamcounter_playercount_instead_of_avatars true`。
 
 ## 日志字段规范
 - Must：启动链路日志后端统一使用 `internal/logging`（`log/slog` 适配层），业务侧通过统一 logger API 记录结构化字段。

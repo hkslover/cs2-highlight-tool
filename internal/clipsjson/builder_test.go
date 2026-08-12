@@ -112,6 +112,35 @@ func TestBuild_DrawOnlyDeathnoticesOnlyWhenHideAllUIEnabled(t *testing.T) {
 	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "cl_draw_only_deathnotices")
 }
 
+func TestBuild_HidePlayerAvatarsCommandOnlyWhenEnabled(t *testing.T) {
+	baseOptions := BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	}
+	items := []Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+		IncludeVictim: false,
+	}}
+
+	enabledOptions := baseOptions
+	enabledOptions.HidePlayerAvatars = true
+	enabled, err := Build(items, enabledOptions)
+	if err != nil {
+		t.Fatalf("Build enabled hide_player_avatars: %v", err)
+	}
+	assertHasAction(t, enabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
+
+	disabled, err := Build(items, baseOptions)
+	if err != nil {
+		t.Fatalf("Build disabled hide_player_avatars: %v", err)
+	}
+	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
+}
+
 func TestBuild_ShoulderCameraCommandBeforeBuildInfoOnlyWhenEnabled(t *testing.T) {
 	shoulderCameraCommand := "cam_command 1;cam_idealdist 30;cam_idealyaw 0;cam_idealpitch 0;c_thirdpersonshoulder 1;c_thirdpersonshoulderaimdist 300;c_thirdpersonshoulderdist 40;c_thirdpersonshoulderheight 2;c_thirdpersonshoulderoffset 20;"
 	enabled, err := Build([]Item{{
