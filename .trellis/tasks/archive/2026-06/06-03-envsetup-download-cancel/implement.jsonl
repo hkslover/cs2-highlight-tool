@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error wrapping patterns for cancel error creation and propagation"}
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "Wails binding convention and contract format for new CancelStartupDownload method"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Frontend composable pattern for cancel button state"}

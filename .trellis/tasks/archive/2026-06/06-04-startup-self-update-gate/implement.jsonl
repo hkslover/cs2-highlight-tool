@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Startup self-update gating spans backend state, Wails state events, and frontend button behavior."}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend guideline entry point for envsetup state-machine changes."}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Preserve existing fatal vs non-fatal startup error semantics when self-update check fails."}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Testing and state-machine quality requirements for internal/envsetup changes."}
-{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Startup task deferral should use existing structured logging conventions."}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guideline entry point if button state or startup display logic needs adjustment."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Startup state is consumed reactively from backend events and should not fork local state."}
-{"file": ".trellis/tasks/06-04-startup-self-update-gate/research/startup-self-update-flow.md", "reason": "Code research, root cause, recommended design, and test strategy for this task."}

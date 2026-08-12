@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/startup-state-machine.md", "reason": "Verify implementation matches the documented self-update + browser handoff contract"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify fetch-failure fallback still uses ManualURLFor — error-handling conventions"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality bar for this change (logging, mutex use, emitState)"}

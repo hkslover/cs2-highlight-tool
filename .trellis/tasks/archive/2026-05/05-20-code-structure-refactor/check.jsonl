@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Primary compliance target — verify internal/app no longer contains HTTP clients, crypto, or complex parsing; verify new packages exist and follow naming conventions"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify new packages follow Go quality conventions: error handling, naming, test coverage"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify dependency direction is correct: app/ → wanmei/fivee/plugingen → clipsjson, no reverse imports"}

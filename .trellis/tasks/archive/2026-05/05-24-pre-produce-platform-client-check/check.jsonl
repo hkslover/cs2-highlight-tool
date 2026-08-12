@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验证新 Go 文件的测试覆盖、编译标签使用是否符合规范"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查 Wails 方法返回值和错误处理是否遵循项目约定"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 npm run build 通过、无手动编辑 wailsjs/ 文件、callBackend 模式正确"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查 modal 组件结构、Naive UI 用法、scoped styles"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "检查所有新 UI 字符串均通过 t() 引用，zh-CN.json 已更新"}

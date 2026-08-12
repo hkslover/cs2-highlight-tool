@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec entry point; lists all guideline files for internal/ packages"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "R2/R4 refactor touches prepare*/restore* error paths; must wrap with fmt.Errorf %w and Chinese user-facing messages"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Adding embed asset under internal/producegame/assets + new embed code; must follow module layout rules"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Table-driven tests required for HasSearchPath/RemoveSearchPath; no injectable function vars in internal/app"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "R2 collapses duplicated gameinfo backup logic; the Asymmetric Mechanisms gotcha directly governs the plugin/POV convergence"}
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "pov_hud_enabled is a stable Wails/ClipSettings contract; refactor must not break the binding signature"}

@@ -1,2 +1,0 @@
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "处理 mirror_url 为空时的降级逻辑，需符合项目错误处理规范"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试更新需符合质量标准"}

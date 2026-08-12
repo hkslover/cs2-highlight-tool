@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Defines the architecture layering rules, package layout, and the 'thin wrapper' principle for internal/app — the core constraint this refactor enforces"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Go quality conventions (error handling, naming, test patterns) to follow when creating the three new packages"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error wrapping and propagation patterns — must be preserved when extracting logic into new packages"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Guides how to correctly split responsibilities across layers, directly applies to deciding what stays in app/ vs moves to wanmei/fivee/plugingen"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Helps avoid inadvertently duplicating logic or creating wrong abstractions during extraction"}

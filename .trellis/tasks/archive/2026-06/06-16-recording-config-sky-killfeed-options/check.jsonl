@@ -1,7 +1,0 @@
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality bar for Go code: normalization, mutex usage, no blocking I/O in locks"}
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "Verify stable public method contracts are not broken by ClipSettings field additions"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Config save / load error handling conventions"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend code quality bar: types in shared/, no hand-edit of wailsjs/auto-imports/components.d.ts"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "Verify only zh-CN.json is modified, en-US.json untouched"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify ClipSettings struct shape stays consistent across Go config / Go app / TS shared types"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Verify the new options follow existing patterns (e.g. EnableSpecShowXray migration pattern) instead of inventing parallel mechanisms"}

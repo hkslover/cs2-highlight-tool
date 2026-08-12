@@ -1,4 +1,0 @@
-{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review import list component changes against Vue/Naive UI conventions"}
-{"file":".trellis/spec/frontend/state-management.md","reason":"Verify pagination and loading state wiring remains consistent"}
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Enforce build validation and no forbidden frontend patterns"}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Ensure shared import list logic stays centralized for both platforms"}

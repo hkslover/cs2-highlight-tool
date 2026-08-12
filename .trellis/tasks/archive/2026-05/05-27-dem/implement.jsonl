@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Vue 组件编写规范，确保 collapse 结构符合项目约定"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "i18n key 命名规范，确认是否需要新增 key"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "组件内 ref/computed 状态管理规范"}

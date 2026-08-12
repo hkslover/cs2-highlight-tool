@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend guidelines overview"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Directory and file naming conventions for internal/app package"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error wrapping and step-based failure patterns to preserve"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality standards and forbidden patterns"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Ensure Wails binding layer split doesn't break frontend contracts"}

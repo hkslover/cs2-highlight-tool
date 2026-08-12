@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Vue 组件规范，简化弹窗组件时遵循"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "composable 状态管理规范，清理 usePlatformClientCheck 时参考"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "需要新增/修改 i18n key（刷新按钮、提示文字）"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量要求，确保 TypeScript 无错误"}

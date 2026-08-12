@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify Vue conventions and Naive UI usage"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Build verification requirements"}
-{"file": "frontend/src/features/import/components/ImportMatchList.vue", "reason": "Target file to verify"}

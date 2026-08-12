@@ -1,7 +1,0 @@
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec entrypoint with package dependency rules and stable Wails bindings list"}
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "GetClipSettings/SaveClipSettings are stable public methods; extending ClipSettings struct must follow binding boundary rules"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend code conventions including ClipSettings normalization patterns and config defaults"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entrypoint with directory structure and shared types rules"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Naive UI component patterns for n-switch / n-input-number used in SettingsPanel"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "Only zh-CN.json should be modified; en-US.json is user-maintained"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "ClipSettings flows across Go config/app and TS shared types — must keep three layers in sync"}

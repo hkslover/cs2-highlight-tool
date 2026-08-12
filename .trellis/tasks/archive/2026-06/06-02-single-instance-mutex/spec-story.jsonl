@@ -1,2 +1,0 @@
-{"agent": "read", "role": "spec", "files": ["internal/app/cs2_process_windows.go", "internal/app/cs2_process_other.go", "main.go", "internal/updater/updater.go"]}
-{"agent": "implement", "role": "code", "prompt": "实现单例运行功能，详情见 prd.md 和下面列出的文件路径"}

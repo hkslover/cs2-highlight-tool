@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新建 platform_client.go / _windows.go / _other.go，需遵循 internal/app 模块布局约定"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "后端 Wails 方法返回错误需遵循项目错误包装模式"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试模式、禁止用法、代码标准，确保新 Go 文件符合项目规范"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新建 composable usePlatformClientCheck.ts 和组件 PlatformClientCheckModal.vue，需遵循 features/produce 目录结构"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "n-modal 使用规范、<script setup> 模式、scoped styles"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "新 composable 需遵循 module-level singleton 模式，正确使用 ref/computed"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "需向 zh-CN.json 添加新文案 key，遵循点路径约定"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "callBackend 调用模式、auto-imports、禁止手动编辑 wailsjs/ 文件"}

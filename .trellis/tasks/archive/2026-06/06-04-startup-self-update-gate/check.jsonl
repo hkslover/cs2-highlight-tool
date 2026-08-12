@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review cross-layer contract between backend startup state and frontend update button behavior."}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend guideline entry point for envsetup review."}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify self-update failure remains non-fatal while update availability gates components."}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify tests cover state transitions and startup task gating."}
-{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify any new startup logs use structured fields and sanitization-safe metadata."}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Review frontend contract only if display/button files are touched."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify frontend continues to rely on backend StartupState as source of truth."}
-{"file": ".trellis/tasks/06-04-startup-self-update-gate/research/startup-self-update-flow.md", "reason": "Review implementation against researched root cause and intended gating behavior."}

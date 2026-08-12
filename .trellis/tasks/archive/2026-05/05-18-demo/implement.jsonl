@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Vue component conventions, template patterns, and composable patterns"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Module-level singleton ref pattern for composable state"}
-{"file": "frontend/src/features/import/components/ImportMatchList.vue", "reason": "Target file for the fix"}
-{"file": "frontend/src/features/import/composables/useWanmeiImport.ts", "reason": "Understanding pagination state (hasMorePages, loadingMore, loadMoreMatches)"}
-{"file": "frontend/src/features/import/composables/useFiveEImport.ts", "reason": "Understanding pagination state (hasMorePages, loadingMore, loadMoreMatches)"}
