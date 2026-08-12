@@ -112,6 +112,97 @@ func TestBuild_DrawOnlyDeathnoticesOnlyWhenHideAllUIEnabled(t *testing.T) {
 	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "cl_draw_only_deathnotices")
 }
 
+func TestBuild_ClampsRecordingWindowsToMatchEndTick(t *testing.T) {
+	// killer post window (200+4*64=456) and victim post window (200+2*64=328)
+	// both overshoot a win panel at tick 220 without the clamp.
+	result, err := Build([]Item{{
+		Kill:              demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7, VictimSlot: 11},
+		IncludeVictim:     true,
+		KillerPostSeconds: 4,
+		VictimPostSeconds: 2,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 4,
+		VictimPreSeconds:  1,
+		VictimPostSeconds: 2,
+		MatchEndTick:      220,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.TakePlans) != 2 {
+		t.Fatalf("take plans len=%d want 2", len(result.TakePlans))
+	}
+	// matchEndSafetySec=0.25 * 64 ticks/s = 16 ticks of safety margin before tick 220.
+	const wantBoundTick = 220 - 16
+	for _, plan := range result.TakePlans {
+		if plan.EndTick > wantBoundTick {
+			t.Fatalf("view=%s end tick=%d want <= %d (match end bound)", plan.View, plan.EndTick, wantBoundTick)
+		}
+		if plan.EndTick >= 220 {
+			t.Fatalf("view=%s end tick=%d bled into match end tick 220", plan.View, plan.EndTick)
+		}
+	}
+}
+
+func TestBuild_MatchEndClampNeverCutsOffTheKillItself(t *testing.T) {
+	// The kill happens only 2 ticks before the match end tick, well inside the
+	// safety margin; the clip must still include the kill moment rather than
+	// end before it.
+	result, err := Build([]Item{{
+		Kill:              demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, VictimSlot: 11},
+		IncludeVictim:     true,
+		KillerPostSeconds: 4,
+		VictimPostSeconds: 2,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 4,
+		VictimPreSeconds:  1,
+		VictimPostSeconds: 2,
+		MatchEndTick:      502,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for _, plan := range result.TakePlans {
+		if plan.EndTick < 500 {
+			t.Fatalf("view=%s end tick=%d cut off before the kill at tick 500", plan.View, plan.EndTick)
+		}
+	}
+}
+
+func TestBuild_NoMatchEndTickLeavesRecordingWindowUnclamped(t *testing.T) {
+	result, err := Build([]Item{{
+		Kill:              demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+		IncludeVictim:     false,
+		KillerPostSeconds: 4,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 4,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.TakePlans) != 1 {
+		t.Fatalf("take plans len=%d want 1", len(result.TakePlans))
+	}
+	if want := 200 + int(4*64); result.TakePlans[0].EndTick != want {
+		t.Fatalf("end tick=%d want %d", result.TakePlans[0].EndTick, want)
+	}
+}
+
 func TestBuild_HidePlayerAvatarsCommandOnlyWhenEnabled(t *testing.T) {
 	baseOptions := BuildOptions{
 		TickRate:          64,

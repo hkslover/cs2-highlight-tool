@@ -57,6 +57,7 @@ export interface GeneratePluginSelectedItem {
 export interface GeneratePluginJSONRequest {
   demo_path: string;
   tick_rate: number;
+  match_end_tick?: number;
   selected_items: GeneratePluginSelectedItem[];
   full_round_pov?: {
     player_steam_id: string;

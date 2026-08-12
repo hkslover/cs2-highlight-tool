@@ -19,6 +19,7 @@ const (
 	segmentSpecPlayerDelay = 8
 	segmentRecordDelay     = 2
 	segmentSeekSettleSec   = 2.0
+	matchEndSafetySec      = 0.25
 )
 
 const shoulderCameraCommand = "cam_command 1;cam_idealdist 30;cam_idealyaw 0;cam_idealpitch 0;c_thirdpersonshoulder 1;c_thirdpersonshoulderaimdist 300;c_thirdpersonshoulderdist 40;c_thirdpersonshoulderheight 2;c_thirdpersonshoulderoffset 20;"
@@ -63,11 +64,15 @@ type Item struct {
 }
 
 type BuildOptions struct {
-	TickRate                  float64
-	KillerPreSeconds          float64
-	KillerPostSeconds         float64
-	VictimPreSeconds          float64
-	VictimPostSeconds         float64
+	TickRate          float64
+	KillerPreSeconds  float64
+	KillerPostSeconds float64
+	VictimPreSeconds  float64
+	VictimPostSeconds float64
+	// MatchEndTick is the tick of the post-match win panel (final scoreboard),
+	// as parsed from the demo. When set, killer/victim recording windows are
+	// clamped so they never extend into it. Zero disables the clamp.
+	MatchEndTick              int
 	FullRoundPOVSegments      []FullRoundPOVSegment
 	ExtraCommands             []string
 	ActionSettings            ActionSettings
@@ -217,6 +222,13 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 	if victimPostTicks < 0 {
 		victimPostTicks = 0
 	}
+	matchEndBoundTick := 0
+	if opts.MatchEndTick > 0 {
+		matchEndBoundTick = opts.MatchEndTick - int(math.Round(matchEndSafetySec*tickRate))
+		if matchEndBoundTick < 0 {
+			matchEndBoundTick = 0
+		}
+	}
 	recordFPS := opts.RecordFPS
 	if recordFPS <= 0 {
 		recordFPS = 60
@@ -235,8 +247,8 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		recordName = normalizePathForCommand(recordOutputDir + "/" + recordBatchName)
 	}
 
-	killerSegments := buildKillerSegments(normalized, tickRate, preTicks, postTicks)
-	victimSegments := buildVictimSegments(normalized, tickRate, victimPreTicks, victimPostTicks)
+	killerSegments := buildKillerSegments(normalized, tickRate, preTicks, postTicks, matchEndBoundTick)
+	victimSegments := buildVictimSegments(normalized, tickRate, victimPreTicks, victimPostTicks, matchEndBoundTick)
 	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, buildPassCommandOptions{
 		ForceVoice: opts.ForcePerPassVoiceCommands,
 		ForceXray:  opts.ForcePerPassXrayCommands,
@@ -343,19 +355,27 @@ func normalizeSpecMode(_mode int) int {
 	return defaultSpecMode
 }
 
-func killWindow(kill demo.ClipKill, preTicks int, postTicks int) (int, int) {
+func killWindow(kill demo.ClipKill, preTicks int, postTicks int, matchEndBoundTick int) (int, int) {
 	startTick := kill.Tick - preTicks
 	if startTick < 0 {
 		startTick = 0
 	}
 	endTick := kill.Tick + postTicks
+	if matchEndBoundTick > 0 && endTick > matchEndBoundTick {
+		endTick = matchEndBoundTick
+		if endTick < kill.Tick {
+			// The kill itself happens too close to (or after) the win panel;
+			// always show the kill rather than cut it off entirely.
+			endTick = kill.Tick
+		}
+	}
 	if endTick < startTick {
 		endTick = startTick
 	}
 	return startTick, endTick
 }
 
-func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defaultPreTicks int, defaultPostTicks int) []killSegment {
+func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defaultPreTicks int, defaultPostTicks int, matchEndBoundTick int) []killSegment {
 	if len(items) == 0 {
 		return nil
 	}
@@ -385,7 +405,7 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 		if postTicks <= 0 {
 			postTicks = defaultPostTicks
 		}
-		startTick, endTick := killWindow(item.Kill, preTicks, postTicks)
+		startTick, endTick := killWindow(item.Kill, preTicks, postTicks, matchEndBoundTick)
 		if len(segments) == 0 {
 			segments = append(segments, killSegment{
 				StartTick:          startTick,
@@ -429,7 +449,7 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 	return segments
 }
 
-func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defaultPreTicks int, defaultPostTicks int) []killSegment {
+func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defaultPreTicks int, defaultPostTicks int, matchEndBoundTick int) []killSegment {
 	if tickRate <= 0 {
 		tickRate = DefaultTickRate
 	}
@@ -456,7 +476,7 @@ func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defau
 		if postTicks <= 0 {
 			postTicks = defaultPostTicks
 		}
-		startTick, endTick := killWindow(item.Kill, preTicks, postTicks)
+		startTick, endTick := killWindow(item.Kill, preTicks, postTicks, matchEndBoundTick)
 		segments = append(segments, killSegment{
 			StartTick:          startTick,
 			EndTick:            endTick,

@@ -19,8 +19,12 @@ import (
 )
 
 type GeneratePluginJSONRequest struct {
-	DemoPath       string             `json:"demo_path"`
-	TickRate       float64            `json:"tick_rate"`
+	DemoPath string  `json:"demo_path"`
+	TickRate float64 `json:"tick_rate"`
+	// MatchEndTick is the demo tick of the post-match win panel (final
+	// scoreboard), as reported by demo.Metadata.MatchEndTick from the earlier
+	// parse. Used to keep recordings from bleeding into the settlement screen.
+	MatchEndTick   int                `json:"match_end_tick,omitempty"`
 	SelectedItems  []SelectedClipItem `json:"selected_items,omitempty"`
 	FullRoundPOV   *FullRoundPOVItem  `json:"full_round_pov,omitempty"`
 	ExtraCommands  []string           `json:"extra_commands,omitempty"`
@@ -546,6 +550,7 @@ func (a *App) generatePluginJSONInternal(
 	}
 	buildResult, err := clipsjson.Build(items, clipsjson.BuildOptions{
 		TickRate:             req.TickRate,
+		MatchEndTick:         req.MatchEndTick,
 		KillerPreSeconds:     clipSettings.KillerPreSeconds,
 		KillerPostSeconds:    clipSettings.KillerPostSeconds,
 		VictimPreSeconds:     clipSettings.VictimPreSeconds,

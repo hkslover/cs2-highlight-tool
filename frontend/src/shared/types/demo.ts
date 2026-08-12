@@ -13,6 +13,7 @@ export interface DemoMetadata {
   clan_name_t: string;
   players: DemoPlayerInfo[];
   clip_players: DemoClipPlayer[];
+  match_end_tick?: number;
 }
 
 export interface DemoPlayerInfo {
