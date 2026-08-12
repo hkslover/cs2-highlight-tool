@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量检查标准 — go test、错误处理"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量检查标准 — npm run build、TS 无错误"}
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "验证 Wails 暴露方法签名未破坏已有契约"}

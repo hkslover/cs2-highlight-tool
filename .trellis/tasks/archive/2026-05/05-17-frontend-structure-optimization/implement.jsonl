@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend guidelines overview"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Directory and file naming conventions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Vue component composition patterns to follow during splitting"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Composable/state management patterns for extracted logic"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality standards and forbidden patterns"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Ensure Wails binding contracts stay intact after frontend changes"}

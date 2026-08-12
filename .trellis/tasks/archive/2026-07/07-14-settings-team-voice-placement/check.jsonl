@@ -1,5 +1,0 @@
-{"file":".trellis/spec/frontend/index.md","reason":"Frontend spec index and quality checklist for reviewing the change."}
-{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review Vue 3/Naive UI component conventions and explicit API imports."}
-{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"Review translation usage and locale-file constraints."}
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review build/type-check requirements and generated-file restrictions."}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review reuse and missed-reference checks for the settings list."}

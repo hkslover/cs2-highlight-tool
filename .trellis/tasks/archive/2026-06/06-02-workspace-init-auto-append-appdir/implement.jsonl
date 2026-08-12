@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "Wails binding conventions — PickWorkspaceDir 是 Wails 暴露方法，拼接逻辑加在此处需遵循命名与返回值规范"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "i18n 修改规范 — 只改 zh-CN.json，key 命名约定"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "useWorkspaceInit composable 遵循前端状态管理规范"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "WorkspaceInitModal.vue 修改需符合组件规范"}

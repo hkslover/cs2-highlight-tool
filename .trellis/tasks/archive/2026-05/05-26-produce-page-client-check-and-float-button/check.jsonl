@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "验证弹窗和布局改动符合组件规范"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证 TypeScript 类型、lint 无错误"}
-{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "验证 i18n key 使用规范"}

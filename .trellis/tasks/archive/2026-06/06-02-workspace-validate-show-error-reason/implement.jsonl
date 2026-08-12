@@ -1,2 +1,0 @@
-{"file": ".trellis/spec/backend/wails-bindings.md", "reason": "Wails 返回值绑定规范 — struct 是多字段返回的正确方式"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "composable 错误状态处理规范"}

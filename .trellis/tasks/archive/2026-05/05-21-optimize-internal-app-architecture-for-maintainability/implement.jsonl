@@ -1,7 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"Backend spec entrypoint and scope map"}
-{"file":".trellis/spec/backend/directory-structure.md","reason":"Refactor target: keep internal/app as thin Wails binding layer"}
-{"file":".trellis/spec/backend/error-handling.md","reason":"Keep error wrapping and behavior compatibility during service extraction"}
-{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Preserve structured logging conventions while moving logic"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Maintain backend coding/testing quality constraints"}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"This task spans binding layer and service layer boundaries"}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Guide helper extraction and duplication reduction in refactor"}
