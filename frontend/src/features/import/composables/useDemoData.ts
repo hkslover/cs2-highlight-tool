@@ -10,6 +10,15 @@ import type {
   DemoPlayerInfo,
   FullRoundPOVPlan,
 } from "@/shared/types";
+import {
+  clearKillFilterConditions,
+  collectDemoKills,
+  createDefaultKillFilter,
+  filterKills,
+  groupKillsByRound,
+  type KillFilter,
+  type KillPlayerRole,
+} from "@/shared/kill-filter";
 
 export const selectedPlayerByDemo = ref<Record<string, string>>({});
 export const materialByDemo = ref<Record<string, DemoMaterialSelection[]>>({});
@@ -17,6 +26,7 @@ export const fullRoundPovByDemo = ref<Record<string, DemoFullRoundPOVSelection>>
 export const fullRoundPlanByDemo = ref<Record<string, FullRoundPOVPlan>>({});
 export const fullRoundPlanErrorByDemo = ref<Record<string, string>>({});
 export const clipSelectModeByDemo = ref<Record<string, ClipSelectMode>>({});
+export const killFilterByDemo = ref<Record<string, KillFilter>>({});
 
 /**
  * Which set of clips the selection list offers for the selected player:
@@ -69,6 +79,51 @@ export function setClipSelectMode(entry: DemoListEntry | null, mode: ClipSelectM
   }
 }
 
+export function getKillFilter(entry: DemoListEntry | null): KillFilter {
+  if (!entry) return createDefaultKillFilter();
+  return killFilterByDemo.value[entry.key] ?? createDefaultKillFilter();
+}
+
+export function patchKillFilter(entry: DemoListEntry | null, patch: Partial<KillFilter>) {
+  if (!entry) return;
+  killFilterByDemo.value = {
+    ...killFilterByDemo.value,
+    [entry.key]: { ...getKillFilter(entry), ...patch },
+  };
+}
+
+/**
+ * Switches which side of a kill the selected player must be on.
+ *
+ * This is what the death-mode switch used to do, so ClipSelectMode is kept
+ * mirroring the role: it still drives the default-player sync and the primary
+ * view of newly added clips.
+ */
+export function setKillFilterRole(entry: DemoListEntry | null, role: KillPlayerRole) {
+  if (!entry) return;
+  patchKillFilter(entry, { role });
+  setClipSelectMode(entry, role === "victim" ? "deaths" : "kills");
+}
+
+export function resetKillFilterConditions(entry: DemoListEntry | null) {
+  if (!entry) return;
+  patchKillFilter(entry, clearKillFilterConditions(getKillFilter(entry)));
+}
+
+/** Every kill in the demo, before filtering — the denominator of "23 / 97". */
+export function getAllDemoKills(entry: DemoListEntry | null): DemoClipKill[] {
+  return collectDemoKills(entry?.meta);
+}
+
+export function getFilteredKills(entry: DemoListEntry | null): DemoClipKill[] {
+  if (!entry) return [];
+  return filterKills(getAllDemoKills(entry), getKillFilter(entry), getSelectedPlayerSteamID(entry));
+}
+
+export function getFilteredRounds(entry: DemoListEntry | null): DemoClipRound[] {
+  return groupKillsByRound(getFilteredKills(entry));
+}
+
 export function getFullRoundPlayers(entry: DemoListEntry | null): DemoPlayerInfo[] {
   if (!entry?.meta?.players) return [];
   return entry.meta.players;
@@ -76,12 +131,22 @@ export function getFullRoundPlayers(entry: DemoListEntry | null): DemoPlayerInfo
 
 export function getSelectedPlayerSteamID(entry: DemoListEntry | null): string {
   if (!entry) return "";
-  if (getClipSelectMode(entry) === "deaths") {
-    syncDefaultDeathPlayer(entry);
-  } else {
-    syncDefaultPlayer(entry);
-  }
+  syncDefaultPlayerForRole(entry);
   return selectedPlayerByDemo.value[entry.key] ?? "";
+}
+
+/**
+ * Re-points the selection at a valid player whenever the current one is absent
+ * from the roster the active role offers: killers for "killer", victims for
+ * "victim".
+ */
+export function syncDefaultPlayerForRole(entry: DemoListEntry | null): void {
+  if (!entry) return;
+  if (getKillFilter(entry).role === "victim") {
+    syncDefaultDeathPlayer(entry);
+    return;
+  }
+  syncDefaultPlayer(entry);
 }
 
 export function setSelectedPlayerSteamID(entry: DemoListEntry | null, steamID: string) {
@@ -124,10 +189,14 @@ export function setFullRoundPOVEnabled(entry: DemoListEntry | null, enabled: boo
     // the moment they die, so death mode has nothing left to add. Reset the
     // flag without re-defaulting the player — syncDefaultFullRoundPlayer below
     // picks from the wider meta.players list and may well keep the current one.
+    // The filter role is reset alongside it: it now drives the same default
+    // sync, so leaving it on "victim" would validate the tracked player against
+    // the victim list instead of the scoreboard.
     clipSelectModeByDemo.value = {
       ...clipSelectModeByDemo.value,
       [entry.key]: "kills",
     };
+    patchKillFilter(entry, { role: "killer" });
     syncDefaultFullRoundPlayer(entry);
     const playerSteamID = selectedPlayerByDemo.value[entry.key] || "";
     setDemoMaterials(entry, []);

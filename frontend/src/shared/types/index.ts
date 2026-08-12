@@ -22,6 +22,8 @@ export type {
   DemoClipPlayer,
   DemoClipRound,
   DemoClipKill,
+  DemoWeaponClass,
+  DemoHitGroup,
   DemoListEntry,
   DemoMaterialSelection,
 } from "./demo";

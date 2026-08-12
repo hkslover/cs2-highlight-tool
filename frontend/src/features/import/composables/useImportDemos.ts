@@ -15,10 +15,19 @@ import {
   fullRoundPlanByDemo,
   fullRoundPlanErrorByDemo,
   clipSelectModeByDemo,
+  killFilterByDemo,
   getClipPlayers,
   getDeathPlayers,
   getClipSelectMode,
   setClipSelectMode,
+  getKillFilter,
+  patchKillFilter,
+  syncDefaultPlayerForRole,
+  setKillFilterRole,
+  resetKillFilterConditions,
+  getAllDemoKills,
+  getFilteredKills,
+  getFilteredRounds,
   getFullRoundPlayers,
   getSelectedPlayerSteamID,
   setSelectedPlayerSteamID,
@@ -31,7 +40,6 @@ import {
   getDemoMaterials,
   setDemoMaterials,
   syncDefaultPlayer,
-  syncDefaultDeathPlayer,
   syncDefaultFullRoundPlayer,
   fetchFullRoundPOVPlan,
   getFullRoundPOVTrackingLabel,
@@ -133,6 +141,10 @@ function removeDemoAt(index: number) {
     const nextClipSelectMode = { ...clipSelectModeByDemo.value };
     delete nextClipSelectMode[removed.key];
     clipSelectModeByDemo.value = nextClipSelectMode;
+
+    const nextKillFilter = { ...killFilterByDemo.value };
+    delete nextKillFilter[removed.key];
+    killFilterByDemo.value = nextKillFilter;
   }
 
   if (selectedIndex.value === index) {
@@ -169,15 +181,13 @@ function selectDemoByKey(key: string) {
 }
 
 function syncDefaultPlayerForMode(entry: DemoListEntry) {
-  if (getClipSelectMode(entry) === "deaths" && (entry.meta?.death_players?.length ?? 0) > 0) {
-    syncDefaultDeathPlayer(entry);
+  // Demos with no kill data at all have no roster for any role to validate
+  // against, so those fall straight through to the scoreboard.
+  if ((entry.meta?.clip_players?.length ?? 0) === 0) {
+    syncDefaultFullRoundPlayer(entry);
     return;
   }
-  if ((entry.meta?.clip_players?.length ?? 0) > 0) {
-    syncDefaultPlayer(entry);
-    return;
-  }
-  syncDefaultFullRoundPlayer(entry);
+  syncDefaultPlayerForRole(entry);
 }
 
 function ensureClipDemoSelected(): DemoListEntry | null {
@@ -384,6 +394,13 @@ export function useImportDemos() {
     getDeathPlayers,
     getClipSelectMode,
     setClipSelectMode,
+    getKillFilter,
+    patchKillFilter,
+    setKillFilterRole,
+    resetKillFilterConditions,
+    getAllDemoKills,
+    getFilteredKills,
+    getFilteredRounds,
     getFullRoundPlayers,
     getSelectedPlayerSteamID,
     setSelectedPlayerSteamID,
