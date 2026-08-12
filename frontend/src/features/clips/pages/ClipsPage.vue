@@ -275,35 +275,60 @@
 
           <template v-else>
             <div class="select-toolbar">
-              <n-grid :cols="24" :x-gap="12" :y-gap="8">
-                <n-gi :span="14">
-                  <n-select
-                    :value="selectedPlayerSteamID"
-                    :options="playerOptions"
-                    :placeholder="t('main.clips.player_placeholder')"
-                    @update:value="handlePlayerChange"
-                  />
-                </n-gi>
-                <n-gi :span="10">
-                  <div class="summary-box">
-                    <n-text depth="3">
-                      {{ t("main.clips.material_summary", { count: getMaterialSelectionCount(activeDemoEntry) }) }}
-                    </n-text>
-                  </div>
-                </n-gi>
-              </n-grid>
-              <div class="mode-switch-row">
-                <span class="switch-label">{{ t("main.clips.death_mode_switch") }}</span>
-                <n-switch
-                  size="small"
-                  :value="deathModeEnabled"
-                  :disabled="fullRoundPOVEnabled"
-                  @update:value="handleDeathModeSwitch"
+              <!--
+                Full-round POV records whole rounds, so per-kill predicates have
+                nothing to act on. The player picker stays — it chooses who to
+                track — but the filter itself steps aside.
+              -->
+              <template v-if="fullRoundPOVEnabled">
+                <n-grid :cols="24" :x-gap="12" :y-gap="8">
+                  <n-gi :span="14">
+                    <n-select
+                      :value="selectedPlayerSteamID"
+                      :options="playerOptions"
+                      :placeholder="t('main.clips.player_placeholder')"
+                      @update:value="handlePlayerChange"
+                    />
+                  </n-gi>
+                  <n-gi :span="10">
+                    <div class="summary-box">
+                      <n-text depth="3">
+                        {{ t("main.clips.material_summary", { count: getMaterialSelectionCount(activeDemoEntry) }) }}
+                      </n-text>
+                    </div>
+                  </n-gi>
+                </n-grid>
+                <div class="mode-switch-row">
+                  <span class="switch-hint">{{ t("main.clips.filter.disabled_in_pov") }}</span>
+                </div>
+              </template>
+
+              <template v-else>
+                <KillFilterBar
+                  :filter="killFilter"
+                  :player-options="playerOptions"
+                  :player-steam-id="selectedPlayerSteamID"
+                  :matched-count="filteredKills.length"
+                  :total-count="allDemoKills.length"
+                  :addable-count="addableKills.length"
+                  :selected-count="getMaterialSelectionCount(activeDemoEntry)"
+                  :max-round="maxRound"
+                  :max-distance="maxDistance"
+                  :weapon-groups="weaponGroups"
+                  @update:role="handleRoleChange"
+                  @update:player="handlePlayerChange"
+                  @update:ignore-player="handleIgnorePlayerChange"
+                  @update:traits="(value) => patchKillFilter(activeDemoEntry, { traits: value })"
+                  @update:weapons="(value) => patchKillFilter(activeDemoEntry, { weapons: value })"
+                  @update:hit-groups="(value) => patchKillFilter(activeDemoEntry, { hit_groups: value })"
+                  @update:sides="(value) => patchKillFilter(activeDemoEntry, { sides: value })"
+                  @update:rounds="(value) => patchKillFilter(activeDemoEntry, { rounds: value })"
+                  @update:distance="(value) => patchKillFilter(activeDemoEntry, { distance: value })"
+                  @apply-preset="handleApplyPreset"
+                  @clear="resetKillFilterConditions(activeDemoEntry)"
+                  @select-all="handleSelectAllFiltered"
                 />
-                <span v-if="fullRoundPOVEnabled" class="switch-hint">
-                  {{ t("main.clips.death_mode_disabled_hint") }}
-                </span>
-              </div>
+              </template>
             </div>
 
             <n-scrollbar class="select-scroll" trigger="none">
@@ -365,6 +390,7 @@ import {
   NSwitch,
   NTag,
   NText,
+  useMessage,
   type SelectOption,
 } from "naive-ui";
 import { t } from "@/shared/i18n";
@@ -385,8 +411,19 @@ import {
   type ViewPosition,
   type WindowEdge,
 } from "@/shared/clip-views";
+import {
+  ALL_PLAYERS_VALUE,
+  groupDemoWeapons,
+  isKillFilterActive,
+  maxKillDistance,
+  resolvePresetPatch,
+  resolvePrimaryView,
+  type KillFilterPreset,
+  type KillPlayerRole,
+} from "@/shared/kill-filter";
 import { useImportDemos } from "@/features/import/composables/useImportDemos";
 import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
+import KillFilterBar from "@/features/clips/components/KillFilterBar.vue";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
 
 const {
@@ -397,14 +434,18 @@ const {
   autoAddVictimView,
   getClipPlayers,
   getDeathPlayers,
-  getClipSelectMode,
-  setClipSelectMode,
+  getKillFilter,
+  patchKillFilter,
+  setKillFilterRole,
+  resetKillFilterConditions,
+  getAllDemoKills,
+  getFilteredKills,
+  getFilteredRounds,
   getFullRoundPlayers,
   getSelectedPlayerSteamID,
   setSelectedPlayerSteamID,
   getFullRoundPlayerSteamID,
   getClipRounds,
-  getDeathRounds,
   getFullRoundPOVSelection,
   setFullRoundPOVEnabled,
   syncFullRoundPOVPlayer,
@@ -422,6 +463,7 @@ const {
   isKillSelectedInDemo,
 } = useImportDemos();
 const { historySnapshot } = useProduceHistory();
+const message = useMessage();
 
 const expandedRounds = ref<string[]>([]);
 const expandedDemoNames = ref<string[]>([]);
@@ -472,11 +514,27 @@ const activeDemoEntry = computed<DemoListEntry | null>(() => {
 
 const fullRoundPOVSelection = computed(() => getFullRoundPOVSelection(activeDemoEntry.value));
 const fullRoundPOVEnabled = computed(() => fullRoundPOVSelection.value.enabled);
-const deathModeEnabled = computed(() => getClipSelectMode(activeDemoEntry.value) === "deaths");
+const killFilter = computed(() => getKillFilter(activeDemoEntry.value));
 const selectedPlayerSteamID = computed(() => getSelectedPlayerSteamID(activeDemoEntry.value));
 const clipPlayers = computed(() => getClipPlayers(activeDemoEntry.value));
 const deathPlayers = computed(() => getDeathPlayers(activeDemoEntry.value));
 const fullRoundPlayers = computed(() => getFullRoundPlayers(activeDemoEntry.value));
+
+const allDemoKills = computed(() => getAllDemoKills(activeDemoEntry.value));
+const filteredKills = computed(() =>
+  fullRoundPOVEnabled.value ? [] : getFilteredKills(activeDemoEntry.value),
+);
+// Bulk add skips whatever is already in the material list, so the button count
+// is what would actually be added rather than what is merely on screen.
+const addableKills = computed(() =>
+  filteredKills.value.filter((kill) => !isKillSelectedInDemo(activeDemoEntry.value, kill.id)),
+);
+const maxRound = computed(() =>
+  Math.max(activeDemoEntry.value?.meta?.total_rounds ?? 0, ...allDemoKills.value.map((k) => k.round), 1),
+);
+const maxDistance = computed(() => Math.max(maxKillDistance(allDemoKills.value), 1));
+const weaponGroups = computed(() => groupDemoWeapons(allDemoKills.value));
+
 const playerOptions = computed<SelectOption[]>(() => {
   if (fullRoundPOVEnabled.value) {
     return fullRoundPlayers.value.map((player) => ({
@@ -484,26 +542,29 @@ const playerOptions = computed<SelectOption[]>(() => {
       value: getFullRoundPlayerSteamID(player),
     }));
   }
-  if (deathModeEnabled.value) {
-    return deathPlayers.value.map((player) => ({
-      label: `${player.name} (${player.total_deaths ?? 0})`,
-      value: player.steam_id,
-    }));
-  }
-  return clipPlayers.value.map((player) => ({
-    label: `${player.name} (${player.total_kills})`,
-    value: player.steam_id,
-  }));
+  // Each role has its own roster and count: killers by frags, victims by deaths.
+  const options: SelectOption[] =
+    killFilter.value.role === "victim"
+      ? deathPlayers.value.map((player) => ({
+          label: `${player.name} (${player.total_deaths ?? 0})`,
+          value: player.steam_id,
+        }))
+      : clipPlayers.value.map((player) => ({
+          label: `${player.name} (${player.total_kills})`,
+          value: player.steam_id,
+        }));
+  return [{ label: t("main.clips.filter.all_players"), value: ALL_PLAYERS_VALUE }, ...options];
 });
 
 const currentRounds = computed(() =>
-  deathModeEnabled.value && !fullRoundPOVEnabled.value
-    ? getDeathRounds(activeDemoEntry.value, selectedPlayerSteamID.value)
-    : getClipRounds(activeDemoEntry.value, selectedPlayerSteamID.value),
+  fullRoundPOVEnabled.value
+    ? getClipRounds(activeDemoEntry.value, selectedPlayerSteamID.value)
+    : getFilteredRounds(activeDemoEntry.value),
 );
 const emptyKillDescription = computed(() => {
   if (fullRoundPOVEnabled.value) return t("main.clips.no_full_round_player_kills");
-  if (deathModeEnabled.value) {
+  if (isKillFilterActive(killFilter.value)) return t("main.clips.filter.no_match");
+  if (killFilter.value.role === "victim") {
     return deathPlayers.value.length
       ? t("main.clips.no_round_deaths")
       : t("main.clips.no_death_players");
@@ -515,13 +576,13 @@ watch(
   () => [
     activeDemoEntry.value?.key,
     selectedPlayerSteamID.value,
-    deathModeEnabled.value,
+    killFilter.value,
     currentRounds.value.length,
   ],
   () => {
     expandedRounds.value = currentRounds.value.map((round) => String(round.round));
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 );
 
 watch(
@@ -635,7 +696,7 @@ function addKill(kill: DemoClipKill) {
     addMaterialSelection(entry, kill, true, false, "killer");
     return;
   }
-  if (deathModeEnabled.value) {
+  if (resolvePrimaryView(killFilter.value) === "victim") {
     // The selected player is the victim: their own camera is the victim pass.
     addMaterialSelection(entry, kill, true, autoAddOpponent, "victim");
     return;
@@ -651,10 +712,30 @@ function toggleKillSelection(kill: DemoClipKill) {
   addKill(kill);
 }
 
-function handleDeathModeSwitch(value: boolean) {
-  const entry = activeDemoEntry.value;
-  if (!entry) return;
-  setClipSelectMode(entry, value ? "deaths" : "kills");
+function handleRoleChange(role: KillPlayerRole) {
+  setKillFilterRole(activeDemoEntry.value, role);
+}
+
+function handleIgnorePlayerChange(ignore: boolean) {
+  patchKillFilter(activeDemoEntry.value, { ignore_player: ignore });
+}
+
+function handleApplyPreset(preset: KillFilterPreset) {
+  // Presets name weapon families; they only become concrete weapon names once
+  // there is a demo to resolve them against.
+  patchKillFilter(activeDemoEntry.value, resolvePresetPatch(preset, allDemoKills.value));
+}
+
+function handleSelectAllFiltered() {
+  const pending = addableKills.value;
+  if (!pending.length) {
+    message.info(t("main.clips.filter.select_all_none"));
+    return;
+  }
+  for (const kill of pending) {
+    addKill(kill);
+  }
+  message.success(t("main.clips.filter.select_all_done", { count: pending.length }));
 }
 
 async function handleFullRoundPOVSwitch(value: boolean) {

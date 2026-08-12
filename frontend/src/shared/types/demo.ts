@@ -12,6 +12,13 @@ export interface DemoMetadata {
   clan_name_ct: string;
   clan_name_t: string;
   players: DemoPlayerInfo[];
+  /**
+   * Flat, chronological list of every kill in the demo, and the source the clip
+   * filter runs over — a filter can constrain both sides of a kill at once,
+   * which the pre-grouped views below cannot express. Optional because demos
+   * parsed by an older build have no such field.
+   */
+  kills?: DemoClipKill[];
   clip_players: DemoClipPlayer[];
   /** Same kills as clip_players, grouped by victim instead of by killer. */
   death_players?: DemoClipPlayer[];
@@ -60,7 +67,68 @@ export interface DemoClipKill {
   weapon_name: string;
   is_headshot: boolean;
   is_wallbang: boolean;
+
+  /*
+   * Filter facts. All optional: clips carried over from a demo parsed by an
+   * older build lack them, and a missing field must read as "not special"
+   * rather than break the predicate.
+   */
+
+  /** Weapon family. Snipers and machine guns are their own class, not rifles/heavies. */
+  weapon_class?: DemoWeaponClass;
+  /** Surfaces penetrated — the count behind is_wallbang. */
+  penetrated_objects?: number;
+  /** Killer-to-victim distance, in metres. */
+  distance?: number;
+  /** Fatal hit group; 0 when the damage carried none (grenades, fire). */
+  hit_group?: DemoHitGroup;
+
+  is_noscope?: boolean;
+  is_through_smoke?: boolean;
+  is_attacker_blind?: boolean;
+  is_assisted_flash?: boolean;
+  /** Covers suicides too, since those also land on the killer's own team. */
+  is_team_kill?: boolean;
+  has_assist?: boolean;
+  assister_name?: string;
+  assister_steam_id?: string;
+
+  /** Killer and victim state at the tick the kill landed. */
+  killer_health?: number;
+  killer_armor?: number;
+  killer_airborne?: boolean;
+  killer_ducking?: boolean;
+  killer_scoped?: boolean;
+  victim_blinded?: boolean;
+
+  /** First kill of the round, by any player. */
+  is_opening_kill?: boolean;
+  /**
+   * Frags the killer finished this round with, so a 3K filter keeps all three
+   * of its kills. Team kills do not count and carry 0.
+   */
+  killer_round_kills?: number;
+  /** Kill made with no living teammate left, including the one that closes it out. */
+  is_clutch_kill?: boolean;
+  /** Whether the bomb was down when the kill landed. */
+  bomb_planted?: boolean;
 }
+
+/** Mirrors the WeaponClass* constants in internal/demo/killfacts.go. */
+export type DemoWeaponClass =
+  | "pistol"
+  | "smg"
+  | "rifle"
+  | "sniper"
+  | "shotgun"
+  | "machinegun"
+  | "grenade"
+  | "knife"
+  | "zeus"
+  | "other";
+
+/** Mirrors demoinfocs events.HitGroup. */
+export type DemoHitGroup = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface DemoListEntry {
   key: string;

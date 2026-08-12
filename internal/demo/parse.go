@@ -29,7 +29,13 @@ type Metadata struct {
 	ClanNameCT    string       `json:"clan_name_ct"`
 	ClanNameT     string       `json:"clan_name_t"`
 	Players       []PlayerInfo `json:"players"`
-	ClipPlayers   []ClipPlayer `json:"clip_players"`
+	// Kills is the flat, chronological list of every kill in the demo and is the
+	// single source of truth for clip selection. ClipPlayers and DeathPlayers are
+	// pre-grouped views of these same kills; filtering works off this list because
+	// a filter can constrain both sides of a kill at once, which a tree already
+	// grouped by one side cannot express.
+	Kills       []ClipKill   `json:"kills"`
+	ClipPlayers []ClipPlayer `json:"clip_players"`
 	// DeathPlayers groups the very same kills by victim instead of by killer,
 	// so the clip page can offer "record the moments this player got killed".
 	DeathPlayers []ClipPlayer `json:"death_players"`
@@ -87,6 +93,50 @@ type ClipKill struct {
 	WeaponName     string `json:"weapon_name"`
 	IsHeadshot     bool   `json:"is_headshot"`
 	IsWallbang     bool   `json:"is_wallbang"`
+
+	// WeaponClass buckets WeaponName into a weapon family. See classifyWeapon —
+	// snipers and machine guns are split out from the library's own classes.
+	WeaponClass string `json:"weapon_class"`
+	// PenetratedObjects is the surface count behind IsWallbang, kept so a filter
+	// can ask for double-penetration frags specifically.
+	PenetratedObjects int `json:"penetrated_objects"`
+	// Distance between killer and victim, in metres.
+	Distance float64 `json:"distance"`
+	// HitGroup is the events.HitGroup of the fatal hit (1 = head, 2 = chest,
+	// 3 = stomach, 4/5 = arms, 6/7 = legs, 8 = neck). It is 0 when the fatal
+	// damage carried no hit group, which is the normal case for grenades and
+	// fire, and when no matching damage event was seen on the kill's tick.
+	HitGroup int `json:"hit_group"`
+
+	IsNoScope       bool `json:"is_noscope"`
+	IsThroughSmoke  bool `json:"is_through_smoke"`
+	IsAttackerBlind bool `json:"is_attacker_blind"`
+	IsAssistedFlash bool `json:"is_assisted_flash"`
+	// IsTeamKill covers suicides too, since those also land on the same team.
+	IsTeamKill      bool   `json:"is_team_kill"`
+	HasAssist       bool   `json:"has_assist"`
+	AssisterName    string `json:"assister_name,omitempty"`
+	AssisterSteamID string `json:"assister_steam_id,omitempty"`
+
+	// Killer and victim state sampled at the tick the kill landed.
+	KillerHealth   int  `json:"killer_health"`
+	KillerArmor    int  `json:"killer_armor"`
+	KillerAirborne bool `json:"killer_airborne"`
+	KillerDucking  bool `json:"killer_ducking"`
+	KillerScoped   bool `json:"killer_scoped"`
+	VictimBlinded  bool `json:"victim_blinded"`
+
+	// Round context. IsOpeningKill and KillerRoundKills are filled in after
+	// parsing by annotateRoundContext, because they depend on later kills.
+	IsOpeningKill bool `json:"is_opening_kill"`
+	// KillerRoundKills is how many frags the killer finished this round with, so
+	// a 3K filter can keep all three of its kills. Team kills do not count and
+	// carry 0.
+	KillerRoundKills int `json:"killer_round_kills"`
+	// IsClutchKill marks a kill made with no living teammate left.
+	IsClutchKill bool `json:"is_clutch_kill"`
+	// BombPlanted is whether the bomb was down when the kill landed.
+	BombPlanted bool `json:"bomb_planted"`
 }
 
 type clipPlayerBuilder struct {
@@ -110,6 +160,17 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 	currentRound := 0
 	killSeq := 0
 	matchEndTick := 0
+	bombPlanted := false
+
+	// Kill events carry no hit group, so the fatal PlayerHurt is remembered per
+	// victim and read back when the kill lands. The tick is stored alongside it
+	// and must match, otherwise an earlier non-fatal hit would be misreported as
+	// the killing blow.
+	type fatalHit struct {
+		tick     int
+		hitGroup int
+	}
+	lastHit := make(map[uint64]fatalHit)
 
 	type playerStats struct {
 		Name    string
@@ -169,6 +230,21 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 
 	parser.RegisterEventHandler(func(_ events.RoundStart) {
 		currentRound = parser.GameState().TotalRoundsPlayed() + 1
+		bombPlanted = false
+	})
+
+	parser.RegisterEventHandler(func(_ events.BombPlanted) {
+		bombPlanted = true
+	})
+
+	parser.RegisterEventHandler(func(e events.PlayerHurt) {
+		if e.Player == nil || e.Player.SteamID64 == 0 {
+			return
+		}
+		lastHit[e.Player.SteamID64] = fatalHit{
+			tick:     parser.GameState().IngameTick(),
+			hitGroup: int(e.HitGroup),
+		}
 	})
 
 	parser.RegisterEventHandler(func(_ events.AnnouncementWinPanelMatch) {
@@ -188,6 +264,17 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 			return
 		}
 		if e.Killer.SteamID64 == 0 || e.Victim.SteamID64 == 0 {
+			return
+		}
+
+		// World damage — falling, and the automatic suicide the server settles a
+		// player with — reports the victim as their own killer. There is no frag
+		// and nothing worth watching, so it never becomes a clip and never earns
+		// a kill. The death itself still happened, so the scoreboard keeps it.
+		if e.Weapon != nil && e.Weapon.Type == common.EqWorld {
+			if s := ensurePlayer(e.Victim); s != nil {
+				s.Deaths++
+			}
 			return
 		}
 
@@ -216,9 +303,37 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 
 		killSeq++
 		weaponName := "unknown"
+		weaponClass := WeaponClassOther
 		if e.Weapon != nil {
 			weaponName = e.Weapon.String()
+			weaponClass = classifyWeapon(e.Weapon.Type)
 		}
+
+		hitGroup := 0
+		if hit, ok := lastHit[e.Victim.SteamID64]; ok && hit.tick == tick {
+			hitGroup = hit.hitGroup
+		}
+
+		assisterName := ""
+		assisterSteamID := ""
+		if e.Assister != nil && e.Assister.SteamID64 != 0 {
+			assisterName = e.Assister.Name
+			assisterSteamID = strconv.FormatUint(e.Assister.SteamID64, 10)
+		}
+
+		participants := parser.GameState().Participants().Playing()
+		alive := make([]alivePlayer, 0, len(participants))
+		for _, p := range participants {
+			if p == nil {
+				continue
+			}
+			alive = append(alive, alivePlayer{
+				SteamID: p.SteamID64,
+				Team:    p.Team,
+				Alive:   p.IsAlive(),
+			})
+		}
+
 		killerSlot := 0
 		if e.Killer.UserID > 0 {
 			killerSlot = e.Killer.UserID + 1
@@ -246,6 +361,30 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 			WeaponName:     weaponName,
 			IsHeadshot:     e.IsHeadshot,
 			IsWallbang:     e.PenetratedObjects > 0,
+
+			WeaponClass:       weaponClass,
+			PenetratedObjects: e.PenetratedObjects,
+			Distance:          float64(e.Distance),
+			HitGroup:          hitGroup,
+
+			IsNoScope:       e.NoScope,
+			IsThroughSmoke:  e.ThroughSmoke,
+			IsAttackerBlind: e.AttackerBlind,
+			IsAssistedFlash: e.AssistedFlash,
+			IsTeamKill:      e.Killer.Team == e.Victim.Team,
+			HasAssist:       assisterSteamID != "",
+			AssisterName:    assisterName,
+			AssisterSteamID: assisterSteamID,
+
+			KillerHealth:   e.Killer.Health(),
+			KillerArmor:    e.Killer.Armor(),
+			KillerAirborne: e.Killer.IsAirborne(),
+			KillerDucking:  e.Killer.IsDucking(),
+			KillerScoped:   e.Killer.IsScoped(),
+			VictimBlinded:  e.Victim.IsBlinded(),
+
+			IsClutchKill: isClutchKill(alive, e.Killer.SteamID64, e.Killer.Team, e.Victim.Team),
+			BombPlanted:  bombPlanted,
 		})
 	})
 
@@ -293,6 +432,14 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 		return playerList[i].Kills > playerList[j].Kills
 	})
 	meta.Players = playerList
+
+	// Round context depends on kills that come later in the same round, so it is
+	// filled in here rather than inside the event handler. It must run before the
+	// grouped views are built, since those copy the kill structs.
+	annotateRoundContext(allKills)
+	sortKillsChronologically(allKills)
+
+	meta.Kills = allKills
 	meta.ClipPlayers = buildClipPlayers(allKills)
 	meta.DeathPlayers = buildDeathPlayers(allKills)
 	return meta, nil
