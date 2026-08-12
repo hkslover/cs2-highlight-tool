@@ -26,6 +26,7 @@ type ClipSettings struct {
 	RecordOutputDir    string  `json:"record_output_dir"`
 	EnableSpecShowXray bool    `json:"enable_spec_show_xray_zero"`
 	HideAllUI          bool    `json:"hide_all_ui"`
+	HidePlayerAvatars  bool    `json:"hide_player_avatars"`
 	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
 	PovHudEnabled      bool    `json:"pov_hud_enabled"`
 	PovRadarEnabled    bool    `json:"pov_radar_enabled"`
@@ -80,6 +81,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 		RecordOutputDir:    a.fixedRecordOutputDir(),
 		EnableSpecShowXray: cfg.EnableSpecShowXray,
 		HideAllUI:          cfg.HideAllUI,
+		HidePlayerAvatars:  cfg.HidePlayerAvatars,
 		UseShoulderCamera:  cfg.UseShoulderCamera,
 		PovHudEnabled:      cfg.PovHudEnabled,
 		PovRadarEnabled:    cfg.PovRadarEnabled,
@@ -111,6 +113,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.RecordOutputDir = settings.RecordOutputDir
 		cfg.EnableSpecShowXray = settings.EnableSpecShowXray
 		cfg.HideAllUI = settings.HideAllUI
+		cfg.HidePlayerAvatars = settings.HidePlayerAvatars
 		cfg.UseShoulderCamera = settings.UseShoulderCamera
 		cfg.PovHudEnabled = settings.PovHudEnabled
 		cfg.PovRadarEnabled = settings.PovRadarEnabled

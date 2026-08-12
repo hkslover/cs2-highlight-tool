@@ -85,6 +85,7 @@
 - `GetClipSettings` / `SaveClipSettings` 字段约定更新：`video_preset` 取值 `auto|c1|n1|a1|i1`（默认 `auto`；`auto` 表示按 FFmpeg 探测能力自动选择）
 - `GetClipSettings` / `SaveClipSettings` 字段约定更新：`launch_resolution` 取值 `16:9|4:3|4:3_1280x960`（默认 `4:3`；`4:3` 表示 `1440x1080`，`4:3_1280x960` 表示 `1280x960`；两种 4:3 录制输出均通过 FFmpeg `-aspect 16:9` 标记为 stretched playback）
 - `GetClipSettings` / `SaveClipSettings` 字段约定新增：`hide_all_ui`（默认 `false`；开启时生成插件 JSON bootstrap 写入 `cl_draw_only_deathnotices 1`，关闭时不写入该命令）
+- `GetClipSettings` / `SaveClipSettings` 字段约定新增：`hide_player_avatars`（默认 `false`；开启时生成插件 JSON bootstrap 写入 `cl_teamcounter_playercount_instead_of_avatars true`，关闭时不写入该命令）
 - `GetClipSettings` / `SaveClipSettings` 字段约定新增：`use_shoulder_camera`（默认 `false`；开启时生成插件 JSON bootstrap 在 `r_show_build_info 0` 前写入越肩视角命令，关闭时不写入该命令）
 - `GetClipSettings` / `SaveClipSettings` 字段约定更新：`sky_blackout`（默认 `true`；开启时仅写入 `r_drawskybox 0`，关闭时不写入该命令）
 - `GetClipSettings` / `SaveClipSettings` 字段约定新增：`disable_clouds`（默认 `false`；开启时仅写入 `mirv_sky clouds draw 0`，关闭时不写入该命令）
@@ -120,6 +121,7 @@
 - `config.json` 新增持久化字段：`record_quality`（录制质量，取值 `standard|high|ultra`，默认 `high`）
 - `config.json` 新增持久化字段：`ffmpeg_detected_preset`、`ffmpeg_detected_encoders[]`、`ffmpeg_detected_at`（启动阶段 FFmpeg 能力探测缓存，供 `video_preset=auto` 与编码回退使用）
 - `config.json` 新增持久化字段：`hide_all_ui`（隐藏所有 UI，默认 `false`）
+- `config.json` 新增持久化字段：`hide_player_avatars`（隐藏玩家头像，默认 `false`）
 - `config.json` 新增持久化字段：`use_shoulder_camera`（使用越肩视角，默认 `false`）
 - `config.json` 新增持久化字段：`disable_clouds`（关闭云层，默认 `false`）
 - `config.json` 新增持久化字段：`pov_radar_enabled`（启用 POV 雷达，默认 `false`）

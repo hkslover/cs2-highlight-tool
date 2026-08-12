@@ -40,6 +40,7 @@ type Config struct {
 	RecordOutputDir        string              `json:"record_output_dir"`
 	EnableSpecShowXray     bool                `json:"enable_spec_show_xray_zero"`
 	HideAllUI              bool                `json:"hide_all_ui"`
+	HidePlayerAvatars      bool                `json:"hide_player_avatars"`
 	UseShoulderCamera      bool                `json:"use_shoulder_camera"`
 	PovHudEnabled          bool                `json:"pov_hud_enabled"`
 	PovRadarEnabled        bool                `json:"pov_radar_enabled"`
@@ -101,6 +102,7 @@ func Default(dataDir string) *Config {
 		RecordOutputDir:    filepath.Join(dataDir, "outputs"),
 		EnableSpecShowXray: true,
 		HideAllUI:          false,
+		HidePlayerAvatars:  false,
 		UseShoulderCamera:  false,
 		PovHudEnabled:      true,
 		PovRadarEnabled:    false,
