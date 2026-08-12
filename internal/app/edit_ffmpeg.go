@@ -22,9 +22,11 @@ var ffmpegCommand = exec.Command
 var ffmpegCommandContext = exec.CommandContext
 
 type probedVideoInfo struct {
-	Duration float64
-	Width    int
-	Height   int
+	Duration           float64
+	Width              int
+	Height             int
+	SampleAspectRatio  string
+	DisplayAspectRatio string
 }
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
@@ -79,7 +81,7 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 		ffprobeExe,
 		"-v", "error",
 		"-select_streams", "v:0",
-		"-show_entries", "stream=duration,width,height",
+		"-show_entries", "stream=duration,width,height,sample_aspect_ratio,display_aspect_ratio",
 		"-show_entries", "format=duration",
 		"-of", "json",
 		videoPath,
@@ -93,9 +95,11 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 
 	var payload struct {
 		Streams []struct {
-			Duration json.RawMessage `json:"duration"`
-			Width    int             `json:"width"`
-			Height   int             `json:"height"`
+			Duration           json.RawMessage `json:"duration"`
+			Width              int             `json:"width"`
+			Height             int             `json:"height"`
+			SampleAspectRatio  string          `json:"sample_aspect_ratio"`
+			DisplayAspectRatio string          `json:"display_aspect_ratio"`
 		} `json:"streams"`
 		Format struct {
 			Duration json.RawMessage `json:"duration"`
@@ -121,9 +125,11 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 	}
 
 	return probedVideoInfo{
-		Duration: duration,
-		Width:    stream.Width,
-		Height:   stream.Height,
+		Duration:           duration,
+		Width:              stream.Width,
+		Height:             stream.Height,
+		SampleAspectRatio:  strings.TrimSpace(stream.SampleAspectRatio),
+		DisplayAspectRatio: strings.TrimSpace(stream.DisplayAspectRatio),
 	}, nil
 }
 

@@ -78,6 +78,24 @@ func TestBuildTransitionFilterGraph_FadeUsesAlignedOffsetAndResolution(t *testin
 	}
 }
 
+func TestBuildTransitionFilterGraph_PreservesTargetSampleAspectRatio(t *testing.T) {
+	plan, err := buildTransitionFilterGraph([]resolvedEditClip{
+		{Duration: 3, Width: 1440, Height: 1080, SampleAspectRatio: "4:3", DisplayAspectRatio: "16:9"},
+		{Duration: 2, Width: 1280, Height: 960, SampleAspectRatio: "1:1", DisplayAspectRatio: "4:3"},
+	}, map[int]EditConcatTransition{
+		0: {Type: "fade", Duration: 0.5},
+	}, 60)
+	if err != nil {
+		t.Fatalf("buildTransitionFilterGraph: %v", err)
+	}
+	if strings.Count(plan.Filter, "setsar=4/3") != 2 {
+		t.Fatalf("every input should use the first clip SAR, got: %s", plan.Filter)
+	}
+	if strings.Contains(plan.Filter, "setsar=1,") || strings.Contains(plan.Filter, "setsar=1/1,") {
+		t.Fatalf("transition graph must not force square pixels for stretched 4:3 clips, got: %s", plan.Filter)
+	}
+}
+
 func TestBuildTransitionFilterGraph_MixesFadeAndHardCut(t *testing.T) {
 	plan, err := buildTransitionFilterGraph([]resolvedEditClip{
 		{Duration: 3, Width: 1920, Height: 1080},
@@ -177,8 +195,8 @@ func TestProbeVideoStreamInfo_StreamDurationPriorityAndFormatFallback(t *testing
 	}{
 		{
 			name:    "stream duration has priority",
-			payload: `{"streams":[{"duration":"2.345","width":1920,"height":1080}],"format":{"duration":"9.000"}}`,
-			want:    probedVideoInfo{Duration: 2.345, Width: 1920, Height: 1080},
+			payload: `{"streams":[{"duration":"2.345","width":1440,"height":1080,"sample_aspect_ratio":"4:3","display_aspect_ratio":"16:9"}],"format":{"duration":"9.000"}}`,
+			want:    probedVideoInfo{Duration: 2.345, Width: 1440, Height: 1080, SampleAspectRatio: "4:3", DisplayAspectRatio: "16:9"},
 		},
 		{
 			name:    "format duration fallback",
@@ -234,7 +252,7 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 	old := ffmpegCommand
 	ffmpegCommand = fakeFFProbeCommandJSON
 	t.Cleanup(func() { ffmpegCommand = old })
-	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900}],"format":{"duration":"8.000"}}`)
+	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900,"sample_aspect_ratio":"1:1","display_aspect_ratio":"16:9"}],"format":{"duration":"8.000"}}`)
 
 	app := &App{exeDir: exeDir}
 	got, err := app.resolveEditClips([]EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
@@ -244,8 +262,40 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("resolved clips=%d want 1", len(got))
 	}
-	if got[0].Duration != 4.25 || got[0].Width != 1600 || got[0].Height != 900 {
+	if got[0].Duration != 4.25 || got[0].Width != 1600 || got[0].Height != 900 || got[0].SampleAspectRatio != "1:1" || got[0].DisplayAspectRatio != "16:9" {
 		t.Fatalf("resolved clip=%+v; probe result should override request duration", got[0])
+	}
+}
+
+func TestEditClipSampleAspectRatio(t *testing.T) {
+	tests := []struct {
+		name string
+		clip resolvedEditClip
+		want string
+	}{
+		{
+			name: "sample aspect ratio takes precedence",
+			clip: resolvedEditClip{Width: 1440, Height: 1080, SampleAspectRatio: "4:3", DisplayAspectRatio: "4:3"},
+			want: "4/3",
+		},
+		{
+			name: "display aspect ratio derives sample aspect ratio",
+			clip: resolvedEditClip{Width: 1440, Height: 1080, DisplayAspectRatio: "16:9"},
+			want: "4/3",
+		},
+		{
+			name: "invalid metadata falls back to square pixels",
+			clip: resolvedEditClip{Width: 1440, Height: 1080, SampleAspectRatio: "N/A", DisplayAspectRatio: "N/A"},
+			want: "1/1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := editClipSampleAspectRatio(tt.clip); got != tt.want {
+				t.Fatalf("editClipSampleAspectRatio()=%q want %q", got, tt.want)
+			}
+		})
 	}
 }
 
