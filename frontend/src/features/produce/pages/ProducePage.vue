@@ -182,11 +182,11 @@
                         <DeathNoticeLine :kill="item.kill" compact />
                       </div>
                       <div class="selected-tags">
-                        <n-tag v-if="item.include_killer !== false" size="small" :bordered="false" type="success">
-                          {{ t("main.clips.killer_view") }}
+                        <n-tag v-if="isPrimaryIncluded(item)" size="small" :bordered="false" type="success">
+                          {{ t("main.clips.primary_view_tag") }}
                         </n-tag>
-                        <n-tag v-if="item.include_victim" size="small" :bordered="false" type="warning">
-                          {{ t("main.clips.victim_view") }}
+                        <n-tag v-if="isOpponentIncluded(item)" size="small" :bordered="false" type="warning">
+                          {{ t("main.clips.opponent_view_tag") }}
                         </n-tag>
                       </div>
                     </div>
@@ -260,6 +260,7 @@
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import { t } from "@/shared/i18n";
 import type { DemoClipKill, DemoListEntry, FullRoundPOVSegment } from "@/shared/types";
+import { isOpponentIncluded, isPrimaryIncluded } from "@/shared/clip-views";
 import { getSelectedPlayerSteamID } from "@/features/import/composables/useDemoData";
 import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
 import PlatformClientCheckModal from "@/features/produce/components/PlatformClientCheckModal.vue";

@@ -30,6 +30,9 @@ type Metadata struct {
 	ClanNameT     string       `json:"clan_name_t"`
 	Players       []PlayerInfo `json:"players"`
 	ClipPlayers   []ClipPlayer `json:"clip_players"`
+	// DeathPlayers groups the very same kills by victim instead of by killer,
+	// so the clip page can offer "record the moments this player got killed".
+	DeathPlayers []ClipPlayer `json:"death_players"`
 	// MatchEndTick is the tick at which the CS2 post-match win panel (final
 	// scoreboard) is displayed, if the demo reaches that point. Recordings
 	// must not extend past this tick or they will capture the settlement
@@ -47,12 +50,16 @@ type PlayerInfo struct {
 	Assists     int    `json:"assists"`
 }
 
-// ClipPlayer groups kill clips by killer.
+// ClipPlayer groups kill clips by one side of the kill event: by killer for
+// Metadata.ClipPlayers, by victim for Metadata.DeathPlayers.
 type ClipPlayer struct {
-	Name       string      `json:"name"`
-	SteamID    string      `json:"steam_id"`
-	TotalKills int         `json:"total_kills"`
-	Rounds     []ClipRound `json:"rounds"`
+	Name    string `json:"name"`
+	SteamID string `json:"steam_id"`
+	// TotalKills counts the grouped clips for Metadata.ClipPlayers entries.
+	TotalKills int `json:"total_kills"`
+	// TotalDeaths counts the grouped clips for Metadata.DeathPlayers entries.
+	TotalDeaths int         `json:"total_deaths,omitempty"`
+	Rounds      []ClipRound `json:"rounds"`
 }
 
 // ClipRound groups kills inside one round.
@@ -287,28 +294,50 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 	})
 	meta.Players = playerList
 	meta.ClipPlayers = buildClipPlayers(allKills)
+	meta.DeathPlayers = buildDeathPlayers(allKills)
 	return meta, nil
 }
 
+// buildClipPlayers groups kills by the player who made them.
 func buildClipPlayers(kills []ClipKill) []ClipPlayer {
+	return groupClipKills(kills, clipSideKiller)
+}
+
+// buildDeathPlayers groups the same kills by the player who died in them.
+func buildDeathPlayers(kills []ClipKill) []ClipPlayer {
+	return groupClipKills(kills, clipSideVictim)
+}
+
+type clipSide int
+
+const (
+	clipSideKiller clipSide = iota
+	clipSideVictim
+)
+
+func groupClipKills(kills []ClipKill, side clipSide) []ClipPlayer {
 	if len(kills) == 0 {
 		return nil
 	}
 	players := make(map[string]*clipPlayerBuilder)
 	for _, kill := range kills {
-		if kill.KillerSteamID == "" {
+		steamID, name := kill.KillerSteamID, kill.KillerName
+		if side == clipSideVictim {
+			steamID, name = kill.VictimSteamID, kill.VictimName
+		}
+		if steamID == "" {
 			continue
 		}
-		player := players[kill.KillerSteamID]
+		player := players[steamID]
 		if player == nil {
 			player = &clipPlayerBuilder{
-				name:   kill.KillerName,
+				name:   name,
 				rounds: make(map[int][]ClipKill),
 			}
-			players[kill.KillerSteamID] = player
+			players[steamID] = player
 		}
-		if kill.KillerName != "" {
-			player.name = kill.KillerName
+		if name != "" {
+			player.name = name
 		}
 		player.rounds[kill.Round] = append(player.rounds[kill.Round], kill)
 	}
@@ -316,10 +345,10 @@ func buildClipPlayers(kills []ClipKill) []ClipPlayer {
 	result := make([]ClipPlayer, 0, len(players))
 	for steamID, builder := range players {
 		roundIDs := make([]int, 0, len(builder.rounds))
-		totalKills := 0
+		totalClips := 0
 		for roundID := range builder.rounds {
 			roundIDs = append(roundIDs, roundID)
-			totalKills += len(builder.rounds[roundID])
+			totalClips += len(builder.rounds[roundID])
 		}
 		sort.Ints(roundIDs)
 
@@ -338,19 +367,28 @@ func buildClipPlayers(kills []ClipKill) []ClipPlayer {
 			})
 		}
 
-		result = append(result, ClipPlayer{
-			Name:       builder.name,
-			SteamID:    steamID,
-			TotalKills: totalKills,
-			Rounds:     rounds,
-		})
+		entry := ClipPlayer{
+			Name:    builder.name,
+			SteamID: steamID,
+			Rounds:  rounds,
+		}
+		if side == clipSideVictim {
+			entry.TotalDeaths = totalClips
+		} else {
+			entry.TotalKills = totalClips
+		}
+		result = append(result, entry)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		if result[i].TotalKills == result[j].TotalKills {
+		left, right := result[i].TotalKills, result[j].TotalKills
+		if side == clipSideVictim {
+			left, right = result[i].TotalDeaths, result[j].TotalDeaths
+		}
+		if left == right {
 			return result[i].Name < result[j].Name
 		}
-		return result[i].TotalKills > result[j].TotalKills
+		return left > right
 	})
 	return result
 }

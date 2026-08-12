@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import type {
   ClipParameterOverrides,
+  ClipPrimaryView,
   DemoClipKill,
   DemoListEntry,
   DemoMaterialSelection,
@@ -13,18 +14,24 @@ import {
   fullRoundPovByDemo,
   fullRoundPlanByDemo,
   fullRoundPlanErrorByDemo,
+  clipSelectModeByDemo,
   getClipPlayers,
+  getDeathPlayers,
+  getClipSelectMode,
+  setClipSelectMode,
   getFullRoundPlayers,
   getSelectedPlayerSteamID,
   setSelectedPlayerSteamID,
   getFullRoundPlayerSteamID,
   getClipRounds,
+  getDeathRounds,
   getFullRoundPOVSelection,
   setFullRoundPOVEnabled,
   syncFullRoundPOVPlayer,
   getDemoMaterials,
   setDemoMaterials,
   syncDefaultPlayer,
+  syncDefaultDeathPlayer,
   syncDefaultFullRoundPlayer,
   fetchFullRoundPOVPlan,
   getFullRoundPOVTrackingLabel,
@@ -122,6 +129,10 @@ function removeDemoAt(index: number) {
     const nextFullRoundPlanError = { ...fullRoundPlanErrorByDemo.value };
     delete nextFullRoundPlanError[removed.key];
     fullRoundPlanErrorByDemo.value = nextFullRoundPlanError;
+
+    const nextClipSelectMode = { ...clipSelectModeByDemo.value };
+    delete nextClipSelectMode[removed.key];
+    clipSelectModeByDemo.value = nextClipSelectMode;
   }
 
   if (selectedIndex.value === index) {
@@ -157,24 +168,28 @@ function selectDemoByKey(key: string) {
   }
 }
 
+function syncDefaultPlayerForMode(entry: DemoListEntry) {
+  if (getClipSelectMode(entry) === "deaths" && (entry.meta?.death_players?.length ?? 0) > 0) {
+    syncDefaultDeathPlayer(entry);
+    return;
+  }
+  if ((entry.meta?.clip_players?.length ?? 0) > 0) {
+    syncDefaultPlayer(entry);
+    return;
+  }
+  syncDefaultFullRoundPlayer(entry);
+}
+
 function ensureClipDemoSelected(): DemoListEntry | null {
   const current = selectedEntry.value;
   if (current && ((current.meta?.clip_players?.length ?? 0) > 0 || (current.meta?.players?.length ?? 0) > 0)) {
-    if ((current.meta?.clip_players?.length ?? 0) > 0) {
-      syncDefaultPlayer(current);
-    } else {
-      syncDefaultFullRoundPlayer(current);
-    }
+    syncDefaultPlayerForMode(current);
     return current;
   }
   const fallback = clipReadyDemos.value[0] ?? null;
   if (!fallback) return null;
   selectDemoByKey(fallback.key);
-  if ((fallback.meta?.clip_players?.length ?? 0) > 0) {
-    syncDefaultPlayer(fallback);
-  } else {
-    syncDefaultFullRoundPlayer(fallback);
-  }
+  syncDefaultPlayerForMode(fallback);
   return fallback;
 }
 
@@ -183,11 +198,16 @@ function addMaterialSelection(
   kill: DemoClipKill,
   includeVictim: boolean,
   includeKiller = true,
+  primaryView: ClipPrimaryView = "killer",
 ) {
   if (!entry || !kill?.id) return;
   const current = getDemoMaterials(entry);
   const existingIndex = current.findIndex((item) => item.kill.id === kill.id);
   if (existingIndex >= 0) {
+    // The same kill event can be reached from both directions (as the killer's
+    // kill and as the victim's death). Merging the passes is right, but the
+    // primary_view already recorded stays — it is what the existing per-item
+    // window overrides were entered against.
     const next = current.slice();
     next[existingIndex] = {
       ...next[existingIndex],
@@ -205,6 +225,7 @@ function addMaterialSelection(
     include_victim: includeVictim,
     killer_spec_mode: 1,
     victim_spec_mode: 1,
+    primary_view: primaryView,
   });
   setDemoMaterials(entry, next);
 }
@@ -265,6 +286,23 @@ function updateMaterialIncludeVictim(
   setDemoMaterials(entry, next);
 }
 
+function updateMaterialIncludeKiller(
+  entry: DemoListEntry | null,
+  killID: string,
+  includeKiller: boolean,
+) {
+  if (!entry || !killID) return;
+  const current = getDemoMaterials(entry);
+  const idx = current.findIndex((item) => item.kill.id === killID);
+  if (idx < 0) return;
+  const next = current.slice();
+  next[idx] = {
+    ...next[idx],
+    include_killer: includeKiller,
+  };
+  setDemoMaterials(entry, next);
+}
+
 function removeMaterialSelection(entry: DemoListEntry | null, killID: string) {
   if (!entry || !killID) return;
   const current = getDemoMaterials(entry);
@@ -311,6 +349,7 @@ function buildBatchJobs(): GeneratePluginJSONRequest[] {
           include_victim: item.include_victim,
           killer_spec_mode: 1,
           victim_spec_mode: 1,
+          primary_view: item.primary_view ?? "killer",
           clip_overrides: item.clip_overrides,
         })),
         full_round_pov: hasPOVSegments
@@ -342,11 +381,15 @@ export function useImportDemos() {
     selectDemoByKey,
     ensureClipDemoSelected,
     getClipPlayers,
+    getDeathPlayers,
+    getClipSelectMode,
+    setClipSelectMode,
     getFullRoundPlayers,
     getSelectedPlayerSteamID,
     setSelectedPlayerSteamID,
     getFullRoundPlayerSteamID,
     getClipRounds,
+    getDeathRounds,
     getFullRoundPOVSelection,
     setFullRoundPOVEnabled,
     syncFullRoundPOVPlayer,
@@ -360,6 +403,7 @@ export function useImportDemos() {
     updateMaterialSpecModes,
     updateMaterialClipOverrides,
     updateMaterialIncludeVictim,
+    updateMaterialIncludeKiller,
     removeMaterialSelection,
     isKillSelectedInDemo,
     clearMaterialSelections,

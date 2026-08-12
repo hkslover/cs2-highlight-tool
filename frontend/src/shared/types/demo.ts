@@ -13,6 +13,8 @@ export interface DemoMetadata {
   clan_name_t: string;
   players: DemoPlayerInfo[];
   clip_players: DemoClipPlayer[];
+  /** Same kills as clip_players, grouped by victim instead of by killer. */
+  death_players?: DemoClipPlayer[];
   match_end_tick?: number;
 }
 
@@ -28,7 +30,10 @@ export interface DemoPlayerInfo {
 export interface DemoClipPlayer {
   name: string;
   steam_id: string;
+  /** Clip count for clip_players entries. */
   total_kills: number;
+  /** Clip count for death_players entries. */
+  total_deaths?: number;
   rounds: DemoClipRound[];
 }
 
@@ -68,11 +73,20 @@ export interface DemoListEntry {
 
 import type { ClipParameterOverrides } from "./clips";
 
+/**
+ * Which side of the kill event is the player the user picked on the clip page.
+ * "killer" for a kill clip, "victim" for a death clip. It decides which pass is
+ * shown as 主视角 and which as 对方视角, and which one gets the longer window —
+ * the passes themselves stay bound to their roles.
+ */
+export type ClipPrimaryView = "killer" | "victim";
+
 export interface DemoMaterialSelection {
   kill: DemoClipKill;
   include_killer?: boolean;
   include_victim: boolean;
   killer_spec_mode: number;
   victim_spec_mode: number;
+  primary_view?: ClipPrimaryView;
   clip_overrides?: ClipParameterOverrides;
 }

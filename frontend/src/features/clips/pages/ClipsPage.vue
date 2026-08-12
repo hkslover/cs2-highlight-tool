@@ -134,11 +134,11 @@
                     <div class="material-head">
                       <div class="material-tags-row">
                         <n-space align="center" size="small" class="view-tags">
-                          <n-tag v-if="item.include_killer !== false" size="small" type="success" :bordered="false">
-                            {{ t("main.clips.killer_view") }}
+                          <n-tag v-if="isPrimaryIncluded(item)" size="small" type="success" :bordered="false">
+                            {{ t("main.clips.primary_view_tag") }}
                           </n-tag>
-                          <n-tag v-if="item.include_victim" size="small" type="warning" :bordered="false">
-                            {{ t("main.clips.victim_view") }}
+                          <n-tag v-if="isOpponentIncluded(item)" size="small" type="warning" :bordered="false">
+                            {{ t("main.clips.opponent_view_tag") }}
                           </n-tag>
                         </n-space>
                         <n-tag
@@ -171,55 +171,61 @@
                     >
                       <div class="setting-row">
                         <n-checkbox
-                          :checked="item.include_victim"
-                          @update:checked="handleVictimEnabledChange(entry, item.kill.id, !!$event)"
+                          :checked="isOpponentIncluded(item)"
+                          :disabled="isSelfKill(item.kill)"
+                          @update:checked="handleOpponentEnabledChange(entry, item, !!$event)"
                         >
-                          {{ t("main.clips.victim_enabled") }}
+                          {{ t("main.clips.opponent_enabled") }}
                         </n-checkbox>
+                        <span v-if="isSelfKill(item.kill)" class="setting-hint">
+                          {{ t("main.clips.self_kill_no_opponent") }}
+                        </span>
                       </div>
-                      <div v-if="item.include_killer !== false" class="setting-row">
-                        <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
-                        <n-input-number
-                          :value="effectiveNumberValue(item, 'killer_pre_seconds')"
-                          :min="1"
-                          :max="20"
-                          :step="0.5"
-                          :precision="1"
-                          @update:value="handleKillerPreValueChange(entry, item.kill.id, $event)"
-                        />
-                      </div>
-                      <div v-if="item.include_killer !== false" class="setting-row">
-                        <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
-                        <n-input-number
-                          :value="effectiveNumberValue(item, 'killer_post_seconds')"
-                          :min="1"
-                          :max="20"
-                          :step="0.5"
-                          :precision="1"
-                          @update:value="handleKillerPostValueChange(entry, item.kill.id, $event)"
-                        />
-                      </div>
-                      <template v-if="item.include_victim">
+                      <template v-if="isPrimaryIncluded(item)">
                         <div class="setting-row">
-                          <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
+                          <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
                           <n-input-number
-                            :value="effectiveNumberValue(item, 'victim_pre_seconds')"
+                            :value="positionSeconds(item, 'primary', 'pre')"
                             :min="1"
                             :max="20"
                             :step="0.5"
                             :precision="1"
-                            @update:value="handleVictimPreValueChange(entry, item.kill.id, $event)"
+                            @update:value="handleSecondsChange(entry, item, 'primary', 'pre', $event)"
+                          />
+                        </div>
+                        <div class="setting-row">
+                          <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
+                          <n-input-number
+                            :value="positionSeconds(item, 'primary', 'post')"
+                            :min="1"
+                            :max="20"
+                            :step="0.5"
+                            :precision="1"
+                            @update:value="handleSecondsChange(entry, item, 'primary', 'post', $event)"
+                          />
+                        </div>
+                      </template>
+                      <template v-if="isOpponentIncluded(item)">
+                        <div class="setting-row">
+                          <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
+                          <n-input-number
+                            :value="positionSeconds(item, 'opponent', 'pre')"
+                            :min="1"
+                            :max="20"
+                            :step="0.5"
+                            :precision="1"
+                            @update:value="handleSecondsChange(entry, item, 'opponent', 'pre', $event)"
                           />
                         </div>
                         <div class="setting-row">
                           <span class="setting-label">{{ t("main.settings.victim_post_seconds") }}</span>
                           <n-input-number
-                            :value="effectiveNumberValue(item, 'victim_post_seconds')"
+                            :value="positionSeconds(item, 'opponent', 'post')"
                             :min="1"
                             :max="20"
                             :step="0.5"
                             :precision="1"
-                            @update:value="handleVictimPostValueChange(entry, item.kill.id, $event)"
+                            @update:value="handleSecondsChange(entry, item, 'opponent', 'post', $event)"
                           />
                         </div>
                       </template>
@@ -286,6 +292,18 @@
                   </div>
                 </n-gi>
               </n-grid>
+              <div class="mode-switch-row">
+                <span class="switch-label">{{ t("main.clips.death_mode_switch") }}</span>
+                <n-switch
+                  size="small"
+                  :value="deathModeEnabled"
+                  :disabled="fullRoundPOVEnabled"
+                  @update:value="handleDeathModeSwitch"
+                />
+                <span v-if="fullRoundPOVEnabled" class="switch-hint">
+                  {{ t("main.clips.death_mode_disabled_hint") }}
+                </span>
+              </div>
             </div>
 
             <n-scrollbar class="select-scroll" trigger="none">
@@ -351,7 +369,22 @@ import {
 } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
-import type { ClipSettings, DemoClipKill, DemoListEntry, DemoMaterialSelection, DemoPlayerInfo, FullRoundPOVSegment } from "@/shared/types";
+import type {
+  ClipSettings,
+  DemoClipKill,
+  DemoListEntry,
+  DemoMaterialSelection,
+  DemoPlayerInfo,
+  FullRoundPOVSegment,
+} from "@/shared/types";
+import {
+  isOpponentIncluded,
+  isPrimaryIncluded,
+  isSelfKill,
+  roleOfPosition,
+  type ViewPosition,
+  type WindowEdge,
+} from "@/shared/clip-views";
 import { useImportDemos } from "@/features/import/composables/useImportDemos";
 import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
@@ -363,11 +396,15 @@ const {
   ensureClipDemoSelected,
   autoAddVictimView,
   getClipPlayers,
+  getDeathPlayers,
+  getClipSelectMode,
+  setClipSelectMode,
   getFullRoundPlayers,
   getSelectedPlayerSteamID,
   setSelectedPlayerSteamID,
   getFullRoundPlayerSteamID,
   getClipRounds,
+  getDeathRounds,
   getFullRoundPOVSelection,
   setFullRoundPOVEnabled,
   syncFullRoundPOVPlayer,
@@ -380,6 +417,7 @@ const {
   addMaterialSelection,
   updateMaterialClipOverrides,
   updateMaterialIncludeVictim,
+  updateMaterialIncludeKiller,
   removeMaterialSelection,
   isKillSelectedInDemo,
 } = useImportDemos();
@@ -434,8 +472,10 @@ const activeDemoEntry = computed<DemoListEntry | null>(() => {
 
 const fullRoundPOVSelection = computed(() => getFullRoundPOVSelection(activeDemoEntry.value));
 const fullRoundPOVEnabled = computed(() => fullRoundPOVSelection.value.enabled);
+const deathModeEnabled = computed(() => getClipSelectMode(activeDemoEntry.value) === "deaths");
 const selectedPlayerSteamID = computed(() => getSelectedPlayerSteamID(activeDemoEntry.value));
 const clipPlayers = computed(() => getClipPlayers(activeDemoEntry.value));
+const deathPlayers = computed(() => getDeathPlayers(activeDemoEntry.value));
 const fullRoundPlayers = computed(() => getFullRoundPlayers(activeDemoEntry.value));
 const playerOptions = computed<SelectOption[]>(() => {
   if (fullRoundPOVEnabled.value) {
@@ -444,19 +484,40 @@ const playerOptions = computed<SelectOption[]>(() => {
       value: getFullRoundPlayerSteamID(player),
     }));
   }
+  if (deathModeEnabled.value) {
+    return deathPlayers.value.map((player) => ({
+      label: `${player.name} (${player.total_deaths ?? 0})`,
+      value: player.steam_id,
+    }));
+  }
   return clipPlayers.value.map((player) => ({
     label: `${player.name} (${player.total_kills})`,
     value: player.steam_id,
   }));
 });
 
-const currentRounds = computed(() => getClipRounds(activeDemoEntry.value, selectedPlayerSteamID.value));
-const emptyKillDescription = computed(() =>
-  fullRoundPOVEnabled.value ? t("main.clips.no_full_round_player_kills") : t("main.clips.no_round_kills"),
+const currentRounds = computed(() =>
+  deathModeEnabled.value && !fullRoundPOVEnabled.value
+    ? getDeathRounds(activeDemoEntry.value, selectedPlayerSteamID.value)
+    : getClipRounds(activeDemoEntry.value, selectedPlayerSteamID.value),
 );
+const emptyKillDescription = computed(() => {
+  if (fullRoundPOVEnabled.value) return t("main.clips.no_full_round_player_kills");
+  if (deathModeEnabled.value) {
+    return deathPlayers.value.length
+      ? t("main.clips.no_round_deaths")
+      : t("main.clips.no_death_players");
+  }
+  return t("main.clips.no_round_kills");
+});
 
 watch(
-  () => [activeDemoEntry.value?.key, selectedPlayerSteamID.value, currentRounds.value.length],
+  () => [
+    activeDemoEntry.value?.key,
+    selectedPlayerSteamID.value,
+    deathModeEnabled.value,
+    currentRounds.value.length,
+  ],
   () => {
     expandedRounds.value = currentRounds.value.map((round) => String(round.round));
   },
@@ -565,12 +626,21 @@ async function handlePlayerChange(next: string | number | null) {
 }
 
 function addKill(kill: DemoClipKill) {
-  addMaterialSelection(
-    activeDemoEntry.value,
-    kill,
-    fullRoundPOVEnabled.value ? true : autoAddVictimView.value,
-    !fullRoundPOVEnabled.value,
-  );
+  const entry = activeDemoEntry.value;
+  // A suicide has no second camera to record — both sides are the same player.
+  const autoAddOpponent = autoAddVictimView.value && !isSelfKill(kill);
+  if (fullRoundPOVEnabled.value) {
+    // The POV pass already covers the tracked player's own camera for the whole
+    // round, so picking a kill here only adds the opponent's angle.
+    addMaterialSelection(entry, kill, true, false, "killer");
+    return;
+  }
+  if (deathModeEnabled.value) {
+    // The selected player is the victim: their own camera is the victim pass.
+    addMaterialSelection(entry, kill, true, autoAddOpponent, "victim");
+    return;
+  }
+  addMaterialSelection(entry, kill, autoAddOpponent, true, "killer");
 }
 
 function toggleKillSelection(kill: DemoClipKill) {
@@ -579,6 +649,12 @@ function toggleKillSelection(kill: DemoClipKill) {
     return;
   }
   addKill(kill);
+}
+
+function handleDeathModeSwitch(value: boolean) {
+  const entry = activeDemoEntry.value;
+  if (!entry) return;
+  setClipSelectMode(entry, value ? "deaths" : "kills");
 }
 
 async function handleFullRoundPOVSwitch(value: boolean) {
@@ -656,16 +732,49 @@ function toggleMaterialSettings(entry: DemoListEntry, killID: string) {
   };
 }
 
-function handleVictimEnabledChange(entry: DemoListEntry, killID: string, checked: boolean) {
-  updateMaterialIncludeVictim(entry, killID, !!checked);
+function handleOpponentEnabledChange(entry: DemoListEntry, item: DemoMaterialSelection, checked: boolean) {
+  if (roleOfPosition(item, "opponent") === "killer") {
+    updateMaterialIncludeKiller(entry, item.kill.id, checked);
+    return;
+  }
+  updateMaterialIncludeVictim(entry, item.kill.id, checked);
 }
 
-function effectiveNumberValue(item: DemoMaterialSelection, key: ClipOverrideNumberKey): number {
-  const overrideValue = item.clip_overrides?.[key];
+/** Per-item overrides stay keyed by role, so a position resolves to its role. */
+function overrideKeyFor(
+  item: DemoMaterialSelection,
+  position: ViewPosition,
+  edge: WindowEdge,
+): ClipOverrideNumberKey {
+  return `${roleOfPosition(item, position)}_${edge}_seconds` as ClipOverrideNumberKey;
+}
+
+/** Global settings are positional: the killer_* pair is the primary window. */
+function settingsKeyFor(position: ViewPosition, edge: WindowEdge): ClipOverrideNumberKey {
+  return position === "primary"
+    ? (`killer_${edge}_seconds` as ClipOverrideNumberKey)
+    : (`victim_${edge}_seconds` as ClipOverrideNumberKey);
+}
+
+function positionSeconds(item: DemoMaterialSelection, position: ViewPosition, edge: WindowEdge): number {
+  const overrideValue = item.clip_overrides?.[overrideKeyFor(item, position, edge)];
   if (typeof overrideValue === "number" && Number.isFinite(overrideValue)) {
     return overrideValue;
   }
-  return clipSettings.value[key];
+  return clipSettings.value[settingsKeyFor(position, edge)];
+}
+
+function handleSecondsChange(
+  entry: DemoListEntry,
+  item: DemoMaterialSelection,
+  position: ViewPosition,
+  edge: WindowEdge,
+  value: number | null,
+) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return;
+  updateMaterialClipOverrides(entry, item.kill.id, {
+    [overrideKeyFor(item, position, edge)]: value,
+  });
 }
 
 function effectiveBooleanValue(item: DemoMaterialSelection, key: ClipOverrideBooleanKey): boolean {
@@ -674,35 +783,6 @@ function effectiveBooleanValue(item: DemoMaterialSelection, key: ClipOverrideBoo
     return overrideValue;
   }
   return !!clipSettings.value[key];
-}
-
-function setNumberOverride(entry: DemoListEntry, killID: string, key: ClipOverrideNumberKey, value: number) {
-  updateMaterialClipOverrides(entry, killID, {
-    [key]: value,
-  });
-}
-
-function handleNumberValueChange(entry: DemoListEntry, killID: string, key: ClipOverrideNumberKey, value: number | null) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return;
-  }
-  setNumberOverride(entry, killID, key, value);
-}
-
-function handleKillerPreValueChange(entry: DemoListEntry, killID: string, value: number | null) {
-  handleNumberValueChange(entry, killID, "killer_pre_seconds", value);
-}
-
-function handleKillerPostValueChange(entry: DemoListEntry, killID: string, value: number | null) {
-  handleNumberValueChange(entry, killID, "killer_post_seconds", value);
-}
-
-function handleVictimPreValueChange(entry: DemoListEntry, killID: string, value: number | null) {
-  handleNumberValueChange(entry, killID, "victim_pre_seconds", value);
-}
-
-function handleVictimPostValueChange(entry: DemoListEntry, killID: string, value: number | null) {
-  handleNumberValueChange(entry, killID, "victim_post_seconds", value);
 }
 
 function handleVoiceEnabledChange(entry: DemoListEntry, killID: string, checked: boolean) {
@@ -868,6 +948,23 @@ function handlePOVRoundExpanded(
 
 .select-toolbar {
   flex: 0 0 auto;
+}
+
+.mode-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.switch-hint {
+  color: #8d9890;
+  font-size: 12px;
+}
+
+.setting-hint {
+  color: #8d9890;
+  font-size: 12px;
 }
 
 .select-scroll {

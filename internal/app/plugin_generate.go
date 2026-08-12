@@ -889,10 +889,23 @@ func normalizeSelectedItems(req GeneratePluginJSONRequest, defaults ClipSettings
 	hasVoiceOverride := false
 	hasSpecShowXrayOverride := false
 	for _, item := range items {
-		killerPreSeconds := defaults.KillerPreSeconds
-		killerPostSeconds := defaults.KillerPostSeconds
-		victimPreSeconds := defaults.VictimPreSeconds
-		victimPostSeconds := defaults.VictimPostSeconds
+		// The configured windows are positional: the Killer* pair is the
+		// selected player's own view, the Victim* pair is the opponent's. In a
+		// death clip the selected player is the victim, so the two pairs swap
+		// onto the killer/victim passes.
+		killerPreDefault := defaults.KillerPreSeconds
+		killerPostDefault := defaults.KillerPostSeconds
+		victimPreDefault := defaults.VictimPreSeconds
+		victimPostDefault := defaults.VictimPostSeconds
+		if isVictimPrimaryView(item.PrimaryView) {
+			killerPreDefault, victimPreDefault = victimPreDefault, killerPreDefault
+			killerPostDefault, victimPostDefault = victimPostDefault, killerPostDefault
+		}
+
+		killerPreSeconds := killerPreDefault
+		killerPostSeconds := killerPostDefault
+		victimPreSeconds := victimPreDefault
+		victimPostSeconds := victimPostDefault
 		enableVoice := defaults.EnableVoice
 		enableSpecShowXray := defaults.EnableSpecShowXray
 		itemHasVoiceOverride := false
@@ -923,10 +936,10 @@ func normalizeSelectedItems(req GeneratePluginJSONRequest, defaults ClipSettings
 			}
 		}
 
-		killerPreSeconds = config.NormalizeClipWindowSeconds(killerPreSeconds, defaults.KillerPreSeconds)
-		killerPostSeconds = config.NormalizeClipWindowSeconds(killerPostSeconds, defaults.KillerPostSeconds)
-		victimPreSeconds = config.NormalizeClipWindowSeconds(victimPreSeconds, defaults.VictimPreSeconds)
-		victimPostSeconds = config.NormalizeClipWindowSeconds(victimPostSeconds, defaults.VictimPostSeconds)
+		killerPreSeconds = config.NormalizeClipWindowSeconds(killerPreSeconds, killerPreDefault)
+		killerPostSeconds = config.NormalizeClipWindowSeconds(killerPostSeconds, killerPostDefault)
+		victimPreSeconds = config.NormalizeClipWindowSeconds(victimPreSeconds, victimPreDefault)
+		victimPostSeconds = config.NormalizeClipWindowSeconds(victimPostSeconds, victimPostDefault)
 
 		normalized = append(normalized, clipsjson.Item{
 			Kill:                    item.Kill,
