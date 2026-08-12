@@ -44,6 +44,16 @@
                 >
                   {{ t("main.clips.produced_count", { count: producedCountForDemo(entry) }) }}
                 </n-tag>
+                <n-button
+                  v-if="canClearMaterials(entry)"
+                  size="tiny"
+                  type="error"
+                  secondary
+                  class="clear-materials-btn"
+                  @click.stop="handleClearMaterials(entry)"
+                >
+                  {{ t("main.clips.clear_selected") }}
+                </n-button>
               </n-space>
             </template>
 
@@ -460,6 +470,7 @@ const {
   updateMaterialIncludeVictim,
   updateMaterialIncludeKiller,
   removeMaterialSelection,
+  clearMaterialSelections,
   isKillSelectedInDemo,
 } = useImportDemos();
 const { historySnapshot } = useProduceHistory();
@@ -762,6 +773,25 @@ function isKillAlreadyProduced(demoPath: string, killID: string): boolean {
 
 function producedCountForDemo(entry: DemoListEntry): number {
   return producedTakeCountByDemo.value.get(entry.file_path) || 0;
+}
+
+// The clear button belongs to the demo currently being worked on, so it only
+// shows on the open entry and only while that entry actually has selections.
+function canClearMaterials(entry: DemoListEntry): boolean {
+  return entry.key === activeDemoEntry.value?.key && getMaterialSelectionCount(entry) > 0;
+}
+
+function handleClearMaterials(entry: DemoListEntry) {
+  const count = getMaterialSelectionCount(entry);
+  if (!count) return;
+  clearMaterialSelections(entry);
+  // Drop the demo's expand records too: a stale round list would leave the
+  // groups collapsed the next time materials are added back.
+  const { [entry.key]: _rounds, ...restRounds } = materialExpandedRoundsByDemo.value;
+  materialExpandedRoundsByDemo.value = restRounds;
+  const { [entry.key]: _settings, ...restSettings } = materialSettingsExpandedByDemo.value;
+  materialSettingsExpandedByDemo.value = restSettings;
+  message.success(t("main.clips.clear_selected_done", { count }));
 }
 
 function getMaterialRoundGroups(entry: DemoListEntry): Array<{ round: number; items: DemoMaterialSelection[] }> {
@@ -1092,6 +1122,11 @@ function handlePOVRoundExpanded(
 .view-tags {
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.clear-materials-btn {
+  font-size: 12px;
+  flex: 0 0 auto;
 }
 
 .expand-btn {

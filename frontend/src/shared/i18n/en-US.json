@@ -176,6 +176,8 @@
       "added": "Added",
       "already_produced": "Produced",
     "produced_count": "Produced {count}",
+    "clear_selected": "Remove selected materials",
+    "clear_selected_done": "Cancelled {count} materials",
     "full_round_pov_switch": "Full Round POV",
     "full_round_pov_tag": "Full Round POV",
     "full_round_pov_group_title": "Full Round POV",
