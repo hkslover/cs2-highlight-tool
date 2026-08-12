@@ -582,6 +582,7 @@ export function useProducePage() {
         return {
           demo_path: entry.file_path,
           tick_rate: entry.meta?.tick_rate ?? 64,
+          match_end_tick: entry.meta?.match_end_tick,
           selected_items: pendingSelectionsForDemo(entry).map((item) => ({
             kill: item.kill,
             include_killer: item.include_killer,

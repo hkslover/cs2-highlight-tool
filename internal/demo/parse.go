@@ -30,6 +30,11 @@ type Metadata struct {
 	ClanNameT     string       `json:"clan_name_t"`
 	Players       []PlayerInfo `json:"players"`
 	ClipPlayers   []ClipPlayer `json:"clip_players"`
+	// MatchEndTick is the tick at which the CS2 post-match win panel (final
+	// scoreboard) is displayed, if the demo reaches that point. Recordings
+	// must not extend past this tick or they will capture the settlement
+	// screen instead of gameplay. Zero means the demo never reached it.
+	MatchEndTick int `json:"match_end_tick,omitempty"`
 }
 
 // PlayerInfo holds per-player stats extracted from the demo.
@@ -97,6 +102,7 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 	serverName := ""
 	currentRound := 0
 	killSeq := 0
+	matchEndTick := 0
 
 	type playerStats struct {
 		Name    string
@@ -156,6 +162,15 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 
 	parser.RegisterEventHandler(func(_ events.RoundStart) {
 		currentRound = parser.GameState().TotalRoundsPlayed() + 1
+	})
+
+	parser.RegisterEventHandler(func(_ events.AnnouncementWinPanelMatch) {
+		if matchEndTick != 0 {
+			return
+		}
+		if tick := parser.GameState().IngameTick(); tick > 0 {
+			matchEndTick = tick
+		}
 	})
 
 	parser.RegisterEventHandler(func(e events.Kill) {
@@ -241,6 +256,7 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 		TickRate:      parser.TickRate(),
 		TotalRounds:   gs.TotalRoundsPlayed(),
 		OvertimeCount: gs.OvertimeCount(),
+		MatchEndTick:  matchEndTick,
 	}
 
 	if ct := gs.TeamCounterTerrorists(); ct != nil {
