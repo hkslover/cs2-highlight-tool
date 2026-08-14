@@ -622,6 +622,222 @@ func TestService_ReconnectAfterAckAcceptsDurableDemoDone(t *testing.T) {
 	})
 }
 
+func TestService_ReconnectAfterAckWithoutDemoDoneRecoversQueue(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.SetReconnectGrace(time.Second)
+	svc.SetReplayWindow(25 * time.Millisecond)
+	svc.SetDemoSwitchDelay(25 * time.Millisecond)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	firstConn := mustConnectGameClient(t, svc.Address())
+	if err := svc.StartQueue([]string{"a.dem", "b.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	first := mustReadWSMessage(t, firstConn)
+	if got := mustStringPayload(t, first.Payload); first.Name != "playdemo" || got != "a.dem" {
+		t.Fatalf("initial message = %+v, want playdemo a.dem", first)
+	}
+	mustWriteJSON(t, firstConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck && state.CurrentIndex == 0
+	})
+
+	// The plugin finishes a.dem while disconnected: its demo_done is lost with
+	// the dead connection. After reconnecting within the grace window the
+	// queue must not hang — once the resume window expires without a replayed
+	// demo_done, the service falls back to replaying the current demo.
+	_ = firstConn.Close()
+
+	secondConn := mustConnectGameClient(t, svc.Address())
+	defer secondConn.Close()
+	replayed := mustReadWSMessage(t, secondConn)
+	if got := mustStringPayload(t, replayed.Payload); replayed.Name != "playdemo" || got != "a.dem" {
+		t.Fatalf("recovery message = %+v, want replayed playdemo a.dem", replayed)
+	}
+	mustWriteJSON(t, secondConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck
+	})
+	mustWriteJSON(t, secondConn, map[string]any{
+		"name": "demo_done",
+		"payload": map[string]any{
+			"demo_path": "a.dem",
+			"reason":    "disconnect",
+			"ts_ms":     time.Now().UnixMilli(),
+		},
+	})
+
+	next := mustReadWSMessage(t, secondConn)
+	if got := mustStringPayload(t, next.Payload); next.Name != "playdemo" || got != "b.dem" {
+		t.Fatalf("next message = %+v, want playdemo b.dem", next)
+	}
+	mustWriteJSON(t, secondConn, map[string]any{"name": "status", "payload": "ok"})
+	mustWriteJSON(t, secondConn, map[string]any{
+		"name": "demo_done",
+		"payload": map[string]any{
+			"demo_path": "b.dem",
+			"reason":    "disconnect",
+			"ts_ms":     time.Now().UnixMilli(),
+		},
+	})
+	waitFor(t, 2*time.Second, func() bool {
+		state := svc.GetQueueState()
+		return !state.Running && state.Completed == 2 && state.LastError == ""
+	})
+}
+
+func TestService_DispatchNextDemoSkipsWhenAckAlreadyPending(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.started = true
+	svc.gameConn = &websocket.Conn{}
+	svc.gameConnID = 1
+	svc.queueState = QueueState{
+		Running:      true,
+		Total:        1,
+		Completed:    0,
+		CurrentIndex: 0,
+		PendingAck:   true,
+		Demos:        []string{"demo.dem"},
+	}
+	writeCalled := false
+	svc.writeJSONFn = func(_ *websocket.Conn, _ outgoingMessage, _ time.Duration) error {
+		writeCalled = true
+		return nil
+	}
+
+	svc.dispatchNextDemo()
+
+	svc.mu.Lock()
+	pending := svc.queueState.PendingAck
+	svc.mu.Unlock()
+	if writeCalled {
+		t.Fatal("dispatchNextDemo wrote playdemo while an ack was already pending")
+	}
+	if !pending {
+		t.Fatal("pending ack state should be preserved")
+	}
+}
+
+func TestService_ReconnectAfterAckDoesNotReplayWhenDemoDoneArrives(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.SetReconnectGrace(time.Second)
+	// A long resume window guarantees the durable demo_done (sent immediately
+	// after the reconnect) always lands first, even on a loaded CI machine;
+	// the assertion is that it stops the fallback replay.
+	svc.SetReplayWindow(2 * time.Second)
+	svc.SetDemoSwitchDelay(25 * time.Millisecond)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	firstConn := mustConnectGameClient(t, svc.Address())
+	if err := svc.StartQueue([]string{"a.dem", "b.dem"}); err != nil {
+		t.Fatalf("StartQueue: %v", err)
+	}
+	first := mustReadWSMessage(t, firstConn)
+	if got := mustStringPayload(t, first.Payload); first.Name != "playdemo" || got != "a.dem" {
+		t.Fatalf("initial message = %+v, want playdemo a.dem", first)
+	}
+	mustWriteJSON(t, firstConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck
+	})
+	_ = firstConn.Close()
+
+	secondConn := mustConnectGameClient(t, svc.Address())
+	defer secondConn.Close()
+	mustWriteJSON(t, secondConn, map[string]any{
+		"name": "demo_done",
+		"payload": map[string]any{
+			"demo_path": "a.dem",
+			"reason":    "plugin_replay",
+			"ts_ms":     time.Now().UnixMilli(),
+		},
+	})
+
+	// The durable demo_done arrived inside the resume window: the queue must
+	// advance straight to the next demo without replaying a.dem.
+	next := mustReadWSMessage(t, secondConn)
+	if got := mustStringPayload(t, next.Payload); next.Name != "playdemo" || got != "b.dem" {
+		t.Fatalf("message after durable demo_done = %+v, want playdemo b.dem", next)
+	}
+	mustWriteJSON(t, secondConn, map[string]any{"name": "status", "payload": "ok"})
+	waitFor(t, time.Second, func() bool {
+		state := svc.GetQueueState()
+		return state.Running && !state.PendingAck && state.CurrentDemoPath == "b.dem"
+	})
+
+	// While the queue is still recording b.dem, give any incorrect replay of
+	// a.dem ample time to surface. Heartbeats are 15s apart, so nothing
+	// legitimate should arrive in this window.
+	_ = secondConn.SetReadDeadline(time.Now().Add(400 * time.Millisecond))
+	var msg wsMessage
+	if err := secondConn.ReadJSON(&msg); err == nil {
+		t.Fatalf("unexpected message while queue continued to next demo: %+v", msg)
+	}
+}
+
+func TestService_MidDemoResumeStaleCallbackDoesNotClearNewTimer(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.started = true
+	svc.gameConn = &websocket.Conn{}
+	svc.gameConnID = 1
+	svc.queueState = QueueState{
+		Running:         true,
+		Total:           1,
+		Completed:       0,
+		CurrentIndex:    0,
+		CurrentDemoPath: "a.dem",
+		PendingAck:      false,
+		Demos:           []string{"a.dem"},
+	}
+	// Use a long window so the real timers never fire during the test.
+	svc.replayWindow = time.Hour
+	writeCalled := false
+	svc.writeJSONFn = func(_ *websocket.Conn, _ outgoingMessage, _ time.Duration) error {
+		writeCalled = true
+		return nil
+	}
+
+	svc.mu.Lock()
+	svc.startMidDemoResumeTimerLocked(1, "a.dem")
+	firstGen := svc.midDemoResumeGen
+	svc.mu.Unlock()
+
+	// A second connection supersedes the first timer.
+	svc.gameConnID = 2
+	svc.mu.Lock()
+	svc.startMidDemoResumeTimerLocked(2, "a.dem")
+	secondGen := svc.midDemoResumeGen
+	secondTimer := svc.midDemoResumeTimer
+	svc.mu.Unlock()
+
+	// The first timer's callback had already fired and was waiting for mu; it
+	// now runs late. It must neither clear the newer timer handle nor write.
+	svc.resumeAckedMidDemo(1, "a.dem", firstGen)
+
+	svc.mu.Lock()
+	timer := svc.midDemoResumeTimer
+	gen := svc.midDemoResumeGen
+	svc.mu.Unlock()
+	if timer != secondTimer {
+		t.Fatal("stale callback cleared the newer timer handle")
+	}
+	if gen != secondGen {
+		t.Fatalf("generation changed by stale callback: got %d, want %d", gen, secondGen)
+	}
+	if writeCalled {
+		t.Fatal("stale callback dispatched a playdemo write")
+	}
+}
+
 func TestService_HeartbeatPongKeepsConnectionAlive(t *testing.T) {
 	svc := New("127.0.0.1:0", nil)
 	svc.heartbeatInterval = 15 * time.Millisecond
