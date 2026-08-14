@@ -183,6 +183,12 @@ type Service struct {
 	reconnectTimer     *time.Timer
 	reconnectDeadline  time.Time
 	replayTimer        *time.Timer
+	midDemoResumeTimer *time.Timer
+	// midDemoResumeGen identifies which armed mid-demo resume timer a callback
+	// belongs to. time.Timer.Stop cannot cancel a callback that already fired
+	// and is waiting for mu, so stale callbacks must verify their generation
+	// before touching midDemoResumeTimer or dispatching.
+	midDemoResumeGen uint64
 	ackTimeout         time.Duration
 	connectWait        time.Duration
 	demoSwitchDelay    time.Duration
@@ -775,6 +781,7 @@ func (s *Service) Stop() error {
 		s.stopAckTimerLocked()
 		s.stopReconnectTimerLocked()
 		s.stopReplayTimerLocked()
+		s.stopMidDemoResumeTimerLocked()
 		s.mu.Unlock()
 		if heartbeatCancel != nil {
 			heartbeatCancel()
@@ -800,6 +807,7 @@ func (s *Service) Stop() error {
 	s.stopAckTimerLocked()
 	s.stopReconnectTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	heartbeatCancel := s.stopHeartbeatLocked(s.heartbeatConnID)
 	s.address = ""
 	s.relistenAddr = ""
@@ -888,6 +896,7 @@ func (s *Service) StartQueue(demoPaths []string) error {
 	s.gracefulExit = gracefulExitState{}
 	s.stopReconnectTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	s.queueState = QueueState{
 		Running:      true,
 		Total:        len(demos),
@@ -1164,12 +1173,23 @@ func (s *Service) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 	s.stopReconnectTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	s.startHeartbeatLocked(id, conn)
 	replayPendingAck := s.queueState.Running && s.queueState.PendingAck
 	dispatchAfterReconnect := s.queueState.Running && !s.queueState.PendingAck &&
 		(s.queueState.CurrentIndex < 0 || s.queueState.Completed > s.queueState.CurrentIndex)
+	// A queue whose current playdemo was already acked but whose demo_done may
+	// have been lost during the disconnect sits at Completed == CurrentIndex.
+	// The plugin may still deliver the durable demo_done on the new connection;
+	// arm a bounded fallback that replays the current demo only when it does
+	// not, so the queue can never hang permanently on a lost demo_done.
+	midDemoResume := s.queueState.Running && !s.queueState.PendingAck &&
+		s.queueState.CurrentIndex >= 0 && s.queueState.Completed == s.queueState.CurrentIndex
 	if replayPendingAck {
 		s.startReplayTimerLocked(id, s.queueState.CurrentDemoPath)
+	}
+	if midDemoResume {
+		s.startMidDemoResumeTimerLocked(id, s.queueState.CurrentDemoPath)
 	}
 	s.emitWSStateLocked()
 	s.mu.Unlock()
@@ -1502,6 +1522,7 @@ func (s *Service) handleDemoDone(payload demoEventPayload) {
 	s.queueState.UpdatedAtMs = nowMs()
 	s.stopAckTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	s.emitQueueStateLocked()
 	s.mu.Unlock()
 	s.recordDiagnostic("info", "queue", "demo_done", "游戏插件已完成 Demo", nil, map[string]string{"demo_path": payload.DemoPath})
@@ -1538,6 +1559,14 @@ func (s *Service) dispatchNextDemo() {
 		s.startReconnectTimerLocked()
 		s.mu.Unlock()
 		s.recordDiagnostic("warning", "queue", "dispatch_waiting_for_connection", "切换 Demo 时游戏插件未连接，等待重连", nil, nil)
+		return
+	}
+	// A playdemo for the next index may already be in flight: the reconnect
+	// dispatch and the demo_done-triggered delayed dispatch can race. When an
+	// ack is already pending, the ack/replay timers own resends for that index,
+	// so dispatching here would double-send playdemo.
+	if s.queueState.PendingAck {
+		s.mu.Unlock()
 		return
 	}
 
@@ -1639,6 +1668,92 @@ func (s *Service) stopReplayTimerLocked() {
 		s.replayTimer.Stop()
 		s.replayTimer = nil
 	}
+}
+
+// startMidDemoResumeTimerLocked arms the bounded fallback for an
+// acked-mid-demo reconnect: the plugin is given one replay window to deliver
+// the durable demo_done for the current demo before the demo is replayed.
+// Caller must hold s.mu.
+func (s *Service) startMidDemoResumeTimerLocked(connID uint64, demoPath string) {
+	s.stopMidDemoResumeTimerLocked()
+	delay := s.replayWindow
+	if delay <= 0 {
+		delay = defaultReplayWindow
+	}
+	s.midDemoResumeGen++
+	gen := s.midDemoResumeGen
+	s.midDemoResumeTimer = time.AfterFunc(delay, func() {
+		s.resumeAckedMidDemo(connID, demoPath, gen)
+	})
+}
+
+// stopMidDemoResumeTimerLocked stops the armed timer and invalidates its
+// generation so an in-flight callback of the previous generation cannot clear
+// a newer timer handle or dispatch. Caller must hold s.mu.
+func (s *Service) stopMidDemoResumeTimerLocked() {
+	if s.midDemoResumeTimer != nil {
+		s.midDemoResumeTimer.Stop()
+		s.midDemoResumeTimer = nil
+	}
+	s.midDemoResumeGen++
+}
+
+// resumeAckedMidDemo is the fallback fired when the plugin did not replay
+// demo_done after an acked-mid-demo reconnect. It replays the current demo so
+// the queue resumes instead of hanging forever. The generation guard ensures a
+// superseded timer callback can neither clobber a newer timer handle nor
+// dispatch, and the dispatch itself is claimed atomically under mu
+// (PendingAck=true) so no interleaving demo_done/reconnect can steal the
+// write between validation and sending.
+func (s *Service) resumeAckedMidDemo(connID uint64, demoPath string, gen uint64) {
+	s.mu.Lock()
+	if s.midDemoResumeGen != gen {
+		s.mu.Unlock()
+		return
+	}
+	s.midDemoResumeTimer = nil
+	if !s.queueState.Running || s.queueState.PendingAck ||
+		s.queueState.Completed != s.queueState.CurrentIndex ||
+		s.queueState.CurrentDemoPath != demoPath ||
+		s.gameConn == nil || s.gameConnID != connID {
+		s.mu.Unlock()
+		return
+	}
+	// Claim the stuck demo atomically: mark the ack pending and snapshot the
+	// write target before releasing mu, mirroring dispatchNextDemo's claim.
+	s.queueState.PendingAck = true
+	s.queueState.UpdatedAtMs = nowMs()
+	conn := s.gameConn
+	index := s.queueState.CurrentIndex
+	path := s.queueState.CurrentDemoPath
+	writeTimeout := s.writeTimeout
+	s.mu.Unlock()
+
+	s.recordDiagnostic("warning", "reconnect", "mid_demo_resume_timeout", "重连后未收到插件回放的 demo_done，重放当前 Demo", nil, map[string]string{
+		"demo_path": demoPath,
+	})
+
+	if err := s.writeOutgoing(conn, outgoingMessage{
+		Name:    "playdemo",
+		Payload: path,
+	}, writeTimeout); err != nil {
+		s.recordDiagnostic("warning", "write", "mid_demo_resume_failed", "重放当前 Demo 失败，等待连接恢复", err, map[string]string{"demo_path": demoPath})
+		// A failed write means this connection is no longer reliable. Closing
+		// it sends the normal read-loop through the single reconnect-grace
+		// path instead of creating a second queue-failure path here.
+		_ = conn.Close()
+		return
+	}
+
+	s.mu.Lock()
+	if s.queueState.Running && s.queueState.PendingAck &&
+		s.queueState.CurrentIndex == index && s.queueState.CurrentDemoPath == path &&
+		s.gameConnID == connID {
+		s.startAckTimerLocked(path)
+		s.emitQueueStateLocked()
+	}
+	s.mu.Unlock()
+	s.recordDiagnostic("info", "reconnect", "mid_demo_resumed", "已重放当前 Demo 恢复制作队列", nil, map[string]string{"demo_path": demoPath})
 }
 
 func (s *Service) resendPendingAckDemo(connID uint64, demoPath string) {
@@ -1789,6 +1904,7 @@ func (s *Service) finishQueueLocked() {
 	s.stopAckTimerLocked()
 	s.stopReconnectTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	s.queueState.Running = false
 	s.queueState.PendingAck = false
 	s.queueState.CurrentIndex = -1
@@ -1801,6 +1917,7 @@ func (s *Service) failQueueLocked(reason string) {
 	s.stopAckTimerLocked()
 	s.stopReconnectTimerLocked()
 	s.stopReplayTimerLocked()
+	s.stopMidDemoResumeTimerLocked()
 	s.queueState.Running = false
 	s.queueState.PendingAck = false
 	s.queueState.CurrentIndex = -1
