@@ -319,7 +319,7 @@
                   :player-options="playerOptions"
                   :player-steam-id="selectedPlayerSteamID"
                   :matched-count="filteredKills.length"
-                  :total-count="allDemoKills.length"
+                  :total-count="scopedKills.length"
                   :addable-count="addableKills.length"
                   :selected-count="getMaterialSelectionCount(activeDemoEntry)"
                   :max-round="maxRound"
@@ -423,11 +423,14 @@ import {
 } from "@/shared/clip-views";
 import {
   ALL_PLAYERS_VALUE,
+  collectScopedKills,
   groupDemoWeapons,
   isKillFilterActive,
   maxKillDistance,
   resolvePresetPatch,
   resolvePrimaryView,
+  sanitizeFilterForScopedKills,
+  type KillFilter,
   type KillFilterPreset,
   type KillPlayerRole,
 } from "@/shared/kill-filter";
@@ -532,6 +535,9 @@ const deathPlayers = computed(() => getDeathPlayers(activeDemoEntry.value));
 const fullRoundPlayers = computed(() => getFullRoundPlayers(activeDemoEntry.value));
 
 const allDemoKills = computed(() => getAllDemoKills(activeDemoEntry.value));
+const scopedKills = computed(() =>
+  collectScopedKills(allDemoKills.value, killFilter.value, selectedPlayerSteamID.value),
+);
 const filteredKills = computed(() =>
   fullRoundPOVEnabled.value ? [] : getFilteredKills(activeDemoEntry.value),
 );
@@ -543,8 +549,8 @@ const addableKills = computed(() =>
 const maxRound = computed(() =>
   Math.max(activeDemoEntry.value?.meta?.total_rounds ?? 0, ...allDemoKills.value.map((k) => k.round), 1),
 );
-const maxDistance = computed(() => Math.max(maxKillDistance(allDemoKills.value), 1));
-const weaponGroups = computed(() => groupDemoWeapons(allDemoKills.value));
+const maxDistance = computed(() => Math.max(maxKillDistance(scopedKills.value), 1));
+const weaponGroups = computed(() => groupDemoWeapons(scopedKills.value));
 
 const playerOptions = computed<SelectOption[]>(() => {
   if (fullRoundPOVEnabled.value) {
@@ -684,6 +690,26 @@ function handleExpandedChange(names: string | number | Array<string | number> | 
   }
 }
 
+function sanitizeFilterConditionsForContext(
+  entry: DemoListEntry | null,
+  overridePlayerSteamID?: string,
+  overrideRole?: KillPlayerRole,
+  overrideIgnorePlayer?: boolean,
+) {
+  if (!entry) return;
+  const filter = getKillFilter(entry);
+  const playerSteamID = overridePlayerSteamID ?? getSelectedPlayerSteamID(entry);
+  const role = overrideRole ?? filter.role;
+  const ignorePlayer = overrideIgnorePlayer ?? filter.ignore_player;
+
+  const tempFilter: KillFilter = { ...filter, role, ignore_player: ignorePlayer };
+  const scoped = collectScopedKills(getAllDemoKills(entry), tempFilter, playerSteamID);
+  const patch = sanitizeFilterForScopedKills(filter, scoped);
+  if (Object.keys(patch).length > 0) {
+    patchKillFilter(entry, patch);
+  }
+}
+
 async function handlePlayerChange(next: string | number | null) {
   if (next == null) {
     return;
@@ -692,6 +718,7 @@ async function handlePlayerChange(next: string | number | null) {
   const entry = activeDemoEntry.value;
   setSelectedPlayerSteamID(entry, playerSteamID);
   syncFullRoundPOVPlayer(entry, playerSteamID);
+  sanitizeFilterConditionsForContext(entry, playerSteamID);
   if (fullRoundPOVEnabled.value && playerSteamID) {
     await fetchFullRoundPOVPlan(entry, playerSteamID);
   }
@@ -725,16 +752,20 @@ function toggleKillSelection(kill: DemoClipKill) {
 
 function handleRoleChange(role: KillPlayerRole) {
   setKillFilterRole(activeDemoEntry.value, role);
+  sanitizeFilterConditionsForContext(activeDemoEntry.value, undefined, role);
 }
 
 function handleIgnorePlayerChange(ignore: boolean) {
   patchKillFilter(activeDemoEntry.value, { ignore_player: ignore });
+  if (!ignore) {
+    sanitizeFilterConditionsForContext(activeDemoEntry.value, undefined, undefined, false);
+  }
 }
 
 function handleApplyPreset(preset: KillFilterPreset) {
   // Presets name weapon families; they only become concrete weapon names once
-  // there is a demo to resolve them against.
-  patchKillFilter(activeDemoEntry.value, resolvePresetPatch(preset, allDemoKills.value));
+  // there is a candidate list to resolve them against.
+  patchKillFilter(activeDemoEntry.value, resolvePresetPatch(preset, scopedKills.value));
 }
 
 function handleSelectAllFiltered() {
