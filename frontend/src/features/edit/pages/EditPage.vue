@@ -11,8 +11,8 @@
       </div>
       <div class="edit-body">
 
-      <div class="edit-layout">
-        <section class="edit-panel source-panel">
+      <div ref="containerRef" class="edit-layout">
+        <section class="edit-panel source-panel" :style="leftPanelStyle">
           <div class="panel-head">
             <span>{{ t("main.edit.source_title") }}</span>
             <n-space :size="6" align="center">
@@ -128,7 +128,13 @@
           </div>
         </section>
 
-        <section class="edit-panel sequence-panel">
+        <div
+          class="edit-splitter"
+          :class="{ dragging: isResizing }"
+          @mousedown="startResize"
+        />
+
+        <section class="edit-panel sequence-panel" :style="rightPanelStyle">
           <div class="panel-head">
             <span>{{ t("main.edit.sequence_title") }}</span>
             <n-space :size="6" align="center">
@@ -245,7 +251,16 @@ import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/p
 import EditConcatPanel from "@/features/edit/components/EditConcatPanel.vue";
 import { useEditPage } from "@/features/edit/composables/useEditPage";
 import { useEditState } from "@/features/edit/composables/useEditState";
+import { useSplitter } from "@/shared/composables/useSplitter";
 import type { DemoClipKill, ProduceHistoryItem } from "@/shared/types";
+
+const containerRef = ref<HTMLElement | null>(null);
+const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter(containerRef, {
+  initialLeftRatio: 0.44,
+  minLeftPx: 280,
+  minRightPx: 360,
+  splitterWidthPx: 12,
+});
 
 const message = useMessage();
 const { historySnapshot } = useProduceHistory();
@@ -723,7 +738,6 @@ function formatTime(tsMs: number): string {
 
 .edit-layout {
   display: flex;
-  gap: 10px;
   height: 100%;
   min-height: 0;
 }
@@ -733,16 +747,41 @@ function formatTime(tsMs: number): string {
   border-radius: 8px;
   background: rgba(17, 19, 18, 0.45);
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
 .source-panel {
-  flex: 0 0 44%;
+  min-width: 0;
 }
 
 .sequence-panel {
-  flex: 1;
+  min-width: 0;
+}
+
+.edit-splitter {
+  position: relative;
+  flex: 0 0 12px;
+  cursor: col-resize;
+}
+
+.edit-splitter::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: #303732;
+  transform: translateX(-50%);
+  transition: background-color 0.2s ease;
+}
+
+.edit-splitter:hover::before,
+.edit-splitter.dragging::before {
+  background: #2f9462;
 }
 
 .panel-head {
@@ -855,11 +894,16 @@ function formatTime(tsMs: number): string {
 @media (max-width: 980px) {
   .edit-layout {
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .edit-splitter {
+    display: none;
   }
 
   .source-panel,
   .sequence-panel {
-    flex: 1;
+    flex: 1 1 auto !important;
   }
 
   .source-item,

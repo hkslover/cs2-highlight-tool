@@ -1,8 +1,9 @@
 <template>
   <div class="clips-page">
-    <div class="clips-layout">
+    <div ref="containerRef" class="clips-layout">
       <n-card
         class="left-card"
+        :style="leftPanelStyle"
         :bordered="true"
         content-style="height: 100%; overflow: hidden; padding: 0;"
         content-class="left-card-content"
@@ -276,8 +277,15 @@
         </div>
       </n-card>
 
+      <div
+        class="clips-splitter"
+        :class="{ dragging: isResizing }"
+        @mousedown="startResize"
+      />
+
       <n-card
         class="right-card"
+        :style="rightPanelStyle"
         :bordered="true"
         content-style="height: 100%; overflow: hidden; padding: 0;"
         content-class="right-card-content"
@@ -451,6 +459,15 @@ import { useImportDemos } from "@/features/import/composables/useImportDemos";
 import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
 import KillFilterBar from "@/features/clips/components/KillFilterBar.vue";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
+import { useSplitter } from "@/shared/composables/useSplitter";
+
+const containerRef = ref<HTMLElement | null>(null);
+const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter(containerRef, {
+  initialLeftRatio: 0.38,
+  minLeftPx: 300,
+  minRightPx: 450,
+  splitterWidthPx: 12,
+});
 
 const {
   selectedEntry,
@@ -1032,9 +1049,7 @@ function handlePOVRoundExpanded(
 }
 
 .clips-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 38fr) minmax(520px, 62fr);
-  gap: 10px;
+  display: flex;
   height: 100%;
   min-height: 0;
   min-width: 860px;
@@ -1047,9 +1062,34 @@ function handlePOVRoundExpanded(
   height: 100%;
   max-height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.clips-splitter {
+  position: relative;
+  flex: 0 0 12px;
+  cursor: col-resize;
+}
+
+.clips-splitter::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: #303732;
+  transform: translateX(-50%);
+  transition: background-color 0.2s ease;
+}
+
+.clips-splitter:hover::before,
+.clips-splitter.dragging::before {
+  background: #2f9462;
 }
 
 .left-card :deep(.left-card-content),
