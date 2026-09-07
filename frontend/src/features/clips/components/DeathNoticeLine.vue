@@ -1,25 +1,27 @@
 <template>
   <div class="death-notice" :class="{ compact }">
     <span :class="['name', sideClass(kill.killer_side)]">{{ kill.killer_name }}</span>
-    <img v-if="weaponID" :src="weaponIcon(weaponID)" class="weapon-icon" alt="weapon" />
-    <span class="weapon-name">{{ weaponLabel(kill.weapon_name) }}</span>
-    <img v-if="kill.is_headshot" :src="iconSrc('headshot')" class="suffix-icon" alt="headshot" />
-    <img v-if="kill.is_wallbang" :src="iconSrc('penetrate')" class="suffix-icon" alt="penetrate" />
+    <img
+      v-if="kill.weapon_asset_id"
+      :src="weaponIconSrc(kill.weapon_asset_id)"
+      class="weapon-icon"
+      :alt="kill.weapon_name || 'weapon'"
+    />
+    <span v-else class="weapon-name">{{ kill.weapon_name }}</span>
+    <img v-if="kill.is_headshot" :src="deathNoticeIconSrc('headshot')" class="suffix-icon" alt="headshot" />
+    <img v-if="kill.is_wallbang" :src="deathNoticeIconSrc('penetrate')" class="suffix-icon" alt="penetrate" />
     <span :class="['name', sideClass(kill.victim_side)]">{{ kill.victim_name }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import type { DemoClipKill } from "@/shared/types";
 import {
   deathNoticeIconSrc,
-  resolveWeaponID,
   weaponIconSrc,
-  weaponLabel,
 } from "@/shared/weapon-icons";
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     kill: DemoClipKill;
     compact?: boolean;
@@ -28,16 +30,6 @@ const props = withDefaults(
     compact: false,
   },
 );
-
-const weaponID = computed(() => resolveWeaponID(props.kill.weapon_name));
-
-function weaponIcon(id: string): string {
-  return weaponIconSrc(id);
-}
-
-function iconSrc(name: string): string {
-  return deathNoticeIconSrc(name);
-}
 
 function sideClass(side: string): string {
   const normalized = (side || "").toLowerCase();

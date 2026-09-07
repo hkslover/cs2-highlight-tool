@@ -197,3 +197,34 @@ func TestSortKillsChronologically(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveWeaponAssetID(t *testing.T) {
+	cases := []struct {
+		weapon common.EquipmentType
+		want   string
+	}{
+		{common.EqAK47, "ak47"},
+		{common.EqM4A1, "m4a1_silencer"},
+		{common.EqM4A4, "m4a1"},
+		{common.EqAWP, "awp"},
+		{common.EqSSG08, "ssg08"},
+		{common.EqDeagle, "deagle"},
+		{common.EqUSP, "usp_silencer"},
+		{common.EqGlock, "glock"},
+		{common.EqKnife, "knife"},
+		{common.EqHE, "hegrenade"},
+		{common.EqFlash, "flashbang"},
+		{common.EqSmoke, "smokegrenade"},
+		{common.EqMolotov, "molotov"},
+		{common.EqZeus, "taser"},
+		{common.EqUnknown, ""},
+		{common.EqWorld, ""},
+	}
+
+	for _, tc := range cases {
+		if got := ResolveWeaponAssetID(tc.weapon); got != tc.want {
+			t.Errorf("ResolveWeaponAssetID(%v) = %q, want %q", tc.weapon, got, tc.want)
+		}
+	}
+}
+

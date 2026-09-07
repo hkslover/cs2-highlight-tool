@@ -952,6 +952,7 @@ export namespace demo {
 	    victim_entity_id: number;
 	    victim_side: string;
 	    weapon_name: string;
+	    weapon_asset_id: string;
 	    is_headshot: boolean;
 	    is_wallbang: boolean;
 	    weapon_class: string;
@@ -998,6 +999,7 @@ export namespace demo {
 	        this.victim_entity_id = source["victim_entity_id"];
 	        this.victim_side = source["victim_side"];
 	        this.weapon_name = source["weapon_name"];
+	        this.weapon_asset_id = source["weapon_asset_id"];
 	        this.is_headshot = source["is_headshot"];
 	        this.is_wallbang = source["is_wallbang"];
 	        this.weapon_class = source["weapon_class"];

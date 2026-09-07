@@ -389,6 +389,7 @@ export interface DemoWeaponEntry {
   name: string;
   weaponClass: DemoWeaponClass;
   count: number;
+  assetId?: string;
 }
 
 export interface DemoWeaponGroup {
@@ -409,12 +410,16 @@ export function groupDemoWeapons(kills: DemoClipKill[]): DemoWeaponGroup[] {
     const existing = byName.get(name);
     if (existing) {
       existing.count++;
+      if (!existing.assetId && kill.weapon_asset_id) {
+        existing.assetId = kill.weapon_asset_id;
+      }
       continue;
     }
     byName.set(name, {
       name,
       weaponClass: (kill.weapon_class ?? "other") as DemoWeaponClass,
       count: 1,
+      assetId: kill.weapon_asset_id || undefined,
     });
   }
 
