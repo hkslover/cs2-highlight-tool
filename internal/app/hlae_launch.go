@@ -1,16 +1,62 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cs2-highlight-tool-v2/internal/config"
 )
 
 var launchHLAECommand = exec.Command
+
+// A successful launcher Start followed by failed PID detection is still an
+// owned launch. Keep its handle until it exits; never equate unknown PID to
+// proof that no game process exists.
+type pendingHLAELaunch struct {
+	process *os.Process
+	done    <-chan struct{}
+}
+
+type hlaeLaunchError struct {
+	err     error
+	pending *pendingHLAELaunch
+}
+
+func (e *hlaeLaunchError) Error() string { return e.err.Error() }
+func (e *hlaeLaunchError) Unwrap() error { return e.err }
+
+func (p *pendingHLAELaunch) stop() error {
+	select {
+	case <-p.done:
+	default:
+		if err := p.process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("关闭 HLAE 启动器失败: %w", err)
+		}
+		select {
+		case <-p.done:
+		case <-time.After(3 * time.Second):
+			return fmt.Errorf("等待 HLAE 启动器退出超时")
+		}
+	}
+	// Detection failed, so no CS2 PID can safely be claimed as ours. Do not
+	// kill unrelated games. Keep the backups until enumeration succeeds and
+	// all CS2 processes are gone, including any child started before Kill.
+	pids, err := listCS2PIDsFn()
+	if err != nil {
+		return fmt.Errorf("无法确认 CS2 已退出，已保留环境备份: %w", err)
+	}
+	for _, pid := range pids {
+		if pid > 0 {
+			return fmt.Errorf("仍有 CS2 进程，无法确认启动归属；请关闭 CS2 后重试，环境备份已保留")
+		}
+	}
+	return nil
+}
 
 type launchJobContext struct {
 	job      GeneratePluginJSONRequest
@@ -79,10 +125,18 @@ func (a *App) launchHLAEGame() (int, error) {
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("启动 HLAE 失败: %w", err)
 	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
 
 	pid, err := waitForNewCS2PID(snapshotPIDSet(beforePIDs), cs2ProcessDetectTimeout, cs2ProcessDetectPollInterval)
 	if err != nil {
-		return 0, fmt.Errorf("启动 HLAE 后未识别到新的 cs2.exe 进程: %w", err)
+		return 0, &hlaeLaunchError{
+			err:     fmt.Errorf("启动 HLAE 后未识别到新的 cs2.exe 进程: %w", err),
+			pending: &pendingHLAELaunch{process: cmd.Process, done: done},
+		}
 	}
 	return pid, nil
 }

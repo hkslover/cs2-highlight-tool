@@ -54,6 +54,12 @@ const (
 // and one encode; request clip durations are retained for UI compatibility but
 // are not trusted for transition timing.
 func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return "", fileErr
+	}
+	defer releaseFiles()
+
 	transitionByIndex, err := normalizeEditTransitions(len(request.Clips), request.Transitions)
 	if err != nil {
 		return "", err

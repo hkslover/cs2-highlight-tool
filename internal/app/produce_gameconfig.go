@@ -473,9 +473,30 @@ func restorePluginDLLBackup(backupPath string, targetPath string) error {
 	return nil
 }
 
-func (a *App) forceRestoreGameInfoForProduce() error {
+// beginProduceEnvironmentPrep starts a new produce-environment generation.
+// Every launch path that is about to prepare gameinfo / plugin DLL / POV
+// files must call this first and pass the returned epoch to
+// startProduceSessionWorker and to the error-path restores. Session restore
+// deferrals are only allowed to touch an environment whose epoch they own, so
+// a late-running old session can never restore over a newer session's files.
+func (a *App) beginProduceEnvironmentPrep() uint64 {
 	a.produceStateMu.Lock()
 	defer a.produceStateMu.Unlock()
+	a.produceEnvEpoch++
+	a.produceState.envEpoch = a.produceEnvEpoch
+	return a.produceEnvEpoch
+}
+
+func (a *App) forceRestoreGameInfoForProduce() error {
+	return a.forceRestoreGameInfoForEpoch(0)
+}
+
+func (a *App) forceRestoreGameInfoForEpoch(epoch uint64) error {
+	a.produceStateMu.Lock()
+	defer a.produceStateMu.Unlock()
+	if epoch != 0 && a.produceState.envEpoch != epoch {
+		return nil
+	}
 	state := a.produceState.gameInfo
 	if !state.modified || strings.TrimSpace(state.backupPath) == "" {
 		return nil
@@ -496,8 +517,15 @@ func (a *App) forceRestoreGameInfoForProduce() error {
 }
 
 func (a *App) forceRestorePluginDLLForProduce() error {
+	return a.forceRestorePluginDLLForEpoch(0)
+}
+
+func (a *App) forceRestorePluginDLLForEpoch(epoch uint64) error {
 	a.produceStateMu.Lock()
 	defer a.produceStateMu.Unlock()
+	if epoch != 0 && a.produceState.envEpoch != epoch {
+		return nil
+	}
 	state := a.produceState.pluginDLL
 	if !state.modified {
 		return nil
@@ -541,8 +569,15 @@ func (a *App) forceRestorePluginDLLForProduce() error {
 // forceRestorePovForProduce deletes csgo/pov.vpk only when we installed it
 // ourselves in this session. Per D3, a pre-existing user file is never touched.
 func (a *App) forceRestorePovForProduce() error {
+	return a.forceRestorePovForEpoch(0)
+}
+
+func (a *App) forceRestorePovForEpoch(epoch uint64) error {
 	a.produceStateMu.Lock()
 	defer a.produceStateMu.Unlock()
+	if epoch != 0 && a.produceState.envEpoch != epoch {
+		return nil
+	}
 	state := a.produceState.pov
 	if !state.vpkInstalled || strings.TrimSpace(state.vpkPath) == "" {
 		a.produceState.pov = povSessionState{}
@@ -555,15 +590,28 @@ func (a *App) forceRestorePovForProduce() error {
 	return nil
 }
 
+// forceRestoreProduceEnvironmentForProduce restores the environment prepared
+// by the current produce-environment generation regardless of its epoch. It
+// is used by App.Shutdown and by direct callers that are guaranteed to own
+// the current environment.
 func (a *App) forceRestoreProduceEnvironmentForProduce() error {
+	return a.forceRestoreProduceEnvironmentForEpoch(0)
+}
+
+// forceRestoreProduceEnvironmentForEpoch restores the produce environment only
+// when it is still owned by the given epoch (epoch 0 disables the ownership
+// check for legacy/test callers). This is the entry point used by session-end
+// deferrals: a session whose environment has been superseded by a newer
+// session must not touch the newer session's gameinfo / plugin DLL / POV.
+func (a *App) forceRestoreProduceEnvironmentForEpoch(epoch uint64) error {
 	var restoreErr error
-	if err := a.forceRestorePluginDLLForProduce(); err != nil {
+	if err := a.forceRestorePluginDLLForEpoch(epoch); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复插件 DLL 失败: %w", err))
 	}
-	if err := a.forceRestorePovForProduce(); err != nil {
+	if err := a.forceRestorePovForEpoch(epoch); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 POV vpk 失败: %w", err))
 	}
-	if err := a.forceRestoreGameInfoForProduce(); err != nil {
+	if err := a.forceRestoreGameInfoForEpoch(epoch); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 gameinfo 失败: %w", err))
 	}
 	return restoreErr

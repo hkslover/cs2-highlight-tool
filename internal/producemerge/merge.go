@@ -4,6 +4,7 @@ package producemerge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,19 +15,40 @@ import (
 	"cs2-highlight-tool-v2/internal/procutil"
 )
 
-// FFmpegCommand is the function used to create ffmpeg exec.Cmd instances.
-// It is a package-level variable so tests can substitute a fake.
-var FFmpegCommand = exec.Command
-
 // FFmpegCommandContext is the function used to create context-aware ffmpeg
 // exec.Cmd instances. It is a package-level variable so tests can substitute
 // a fake.
 var FFmpegCommandContext = exec.CommandContext
 
+// MergeTimeout bounds how long a single ffmpeg mux may run before it is
+// killed and reported as a timeout. It is a package-level variable so tests
+// can shorten it.
+var MergeTimeout = 10 * time.Minute
+
 // MergeTakeVideoAudio combines a recorded video file and a WAV audio file using
 // ffmpeg, writing the result to a new uniquely-named mp4 alongside the source
 // video. Returns the path to the merged output file.
+//
+// It is a thin wrapper around MergeTakeVideoAudioContext using a background
+// context; callers that have a session context (so cancellation propagates to
+// the ffmpeg process) should use MergeTakeVideoAudioContext directly.
 func MergeTakeVideoAudio(ffmpegExe string, videoPath string, audioPath string) (string, error) {
+	return MergeTakeVideoAudioContext(context.Background(), ffmpegExe, videoPath, audioPath)
+}
+
+// MergeTakeVideoAudioContext combines a recorded video file and a WAV audio
+// file using ffmpeg, writing the result to a new uniquely-named mp4 alongside
+// the source video. Returns the path to the merged output file.
+//
+// The mux is bounded by MergeTimeout on top of ctx: a session cancellation
+// kills ffmpeg immediately, and a hung ffmpeg (file lock, antivirus, network
+// drive) is killed after MergeTimeout. On every exit path other than a
+// successful rename, the partially written "<final>.mux.tmp.mp4" file is
+// removed so no orphaned temporary mux file is left behind. If that removal
+// itself fails (e.g. antivirus or a network drive still holds the file), the
+// failure is joined into the returned error instead of being silently
+// swallowed.
+func MergeTakeVideoAudioContext(ctx context.Context, ffmpegExe string, videoPath string, audioPath string) (finalVideoPath string, retErr error) {
 	if strings.TrimSpace(videoPath) == "" {
 		return "", fmt.Errorf("视频文件路径为空")
 	}
@@ -46,15 +68,32 @@ func MergeTakeVideoAudio(ffmpegExe string, videoPath string, audioPath string) (
 	if _, err := os.Stat(exe); err != nil {
 		return "", fmt.Errorf("ffmpeg 不存在: %s", exe)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("合成任务已取消: %w", err)
+	}
 
 	finalVideoPath, err := NextMergedVideoPath(filepath.Dir(videoPath), time.Now())
 	if err != nil {
 		return "", fmt.Errorf("生成最终视频名失败: %w", err)
 	}
 
+	muxCtx, cancel := context.WithTimeout(ctx, MergeTimeout)
+	defer cancel()
+
 	tmpOutput := finalVideoPath + ".mux.tmp.mp4"
 	_ = os.Remove(tmpOutput)
-	cmd := FFmpegCommand(
+	renamed := false
+	defer func() {
+		if renamed {
+			return
+		}
+		if rmErr := os.Remove(tmpOutput); rmErr != nil && !os.IsNotExist(rmErr) {
+			retErr = errors.Join(retErr, fmt.Errorf("清理临时合成文件失败: %w", rmErr))
+		}
+	}()
+
+	cmd := FFmpegCommandContext(
+		muxCtx,
 		exe,
 		"-y",
 		"-i", videoPath,
@@ -71,12 +110,19 @@ func MergeTakeVideoAudio(ffmpegExe string, videoPath string, audioPath string) (
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("ffmpeg 合成失败: %w: %s", err, strings.TrimSpace(string(out)))
+		switch {
+		case ctx.Err() != nil:
+			return "", fmt.Errorf("合成任务已取消: %w", ctx.Err())
+		case muxCtx.Err() == context.DeadlineExceeded:
+			return "", fmt.Errorf("ffmpeg 合成超时（超过 %s）: %w", MergeTimeout, muxCtx.Err())
+		default:
+			return "", fmt.Errorf("ffmpeg 合成失败: %w: %s", err, strings.TrimSpace(string(out)))
+		}
 	}
 	if err := os.Rename(tmpOutput, finalVideoPath); err != nil {
-		_ = os.Remove(tmpOutput)
 		return "", fmt.Errorf("写入合成后视频失败: %w", err)
 	}
+	renamed = true
 	return finalVideoPath, nil
 }
 
@@ -138,7 +184,7 @@ func WaitForTakeFilesReady(
 			if videoSize > 0 && audioSize > 0 && videoSize == lastVideoSize && audioSize == lastAudioSize {
 				stableCount++
 				if stableCount >= 2 {
-					if err := probeTakeFilesReadable(ffmpegExe, videoPath, audioPath); err == nil {
+					if err := probeTakeFilesReadable(ctx, ffmpegExe, videoPath, audioPath); err == nil {
 						return nil
 					} else {
 						lastProbeErr = err.Error()
@@ -172,7 +218,7 @@ func WaitForTakeFilesReady(
 
 // probeTakeFilesReadable uses ffmpeg to verify that both the video and audio
 // files can be opened and decoded. Returns an error if probing fails.
-func probeTakeFilesReadable(ffmpegExe string, videoPath string, audioPath string) error {
+func probeTakeFilesReadable(ctx context.Context, ffmpegExe string, videoPath string, audioPath string) error {
 	exe := strings.TrimSpace(ffmpegExe)
 	if exe == "" {
 		return fmt.Errorf("ffmpeg 路径为空")
@@ -180,7 +226,7 @@ func probeTakeFilesReadable(ffmpegExe string, videoPath string, audioPath string
 	if _, err := os.Stat(exe); err != nil {
 		return fmt.Errorf("ffmpeg 不存在: %s", exe)
 	}
-	probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := FFmpegCommandContext(
 		probeCtx,
@@ -196,6 +242,9 @@ func probeTakeFilesReadable(ffmpegExe string, videoPath string, audioPath string
 	)
 	procutil.ConfigureNoWindowProcess(cmd)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return fmt.Errorf("ffmpeg probe 已取消: %w", ctx.Err())
+	}
 	if probeCtx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("ffmpeg probe 超时")
 	}

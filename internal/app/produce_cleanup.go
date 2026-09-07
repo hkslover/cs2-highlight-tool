@@ -98,6 +98,32 @@ func (a *App) logProduceCleanupError(path string, err error) {
 	wailsruntime.LogWarning(a.ctx, fmt.Sprintf("cleanup temp file failed: path=%s err=%v", path, err))
 }
 
+// cleanupMuxTmpFilesForSession removes orphaned ".mux.tmp.mp4" files from the
+// session's batch demo directories. It runs on every session exit path
+// (including cancellation and replacement), because a killed or timed-out
+// ffmpeg may have left a partial mux output that the natural-completion
+// cleanup never saw. Best effort: failures are logged, not returned.
+func (a *App) cleanupMuxTmpFilesForSession(state *produceSessionRuntime) {
+	if state == nil || strings.TrimSpace(state.batchDir) == "" {
+		return
+	}
+	seen := make(map[string]struct{}, len(state.demoSubDirs))
+	for demoPath, subDir := range state.demoSubDirs {
+		normalizedSubDir := strings.TrimSpace(subDir)
+		if normalizedSubDir == "" {
+			normalizedSubDir = plugingen.SanitizeDemoSubDirName(demoPath)
+		}
+		demoDir := filepath.Join(state.batchDir, normalizedSubDir)
+		if _, dup := seen[demoDir]; dup {
+			continue
+		}
+		seen[demoDir] = struct{}{}
+		if err := removeMuxTmpFiles(demoDir); err != nil {
+			a.logProduceCleanupError(demoDir, err)
+		}
+	}
+}
+
 func removeFileIfExists(path string) error {
 	target := strings.TrimSpace(path)
 	if target == "" {
@@ -185,6 +211,8 @@ func (a *App) requestCloseCS2Process(state *produceSessionRuntime) {
 
 	if state.cs2PID <= 0 {
 		state.closeDone = true
+		state.closeErr = nil
+		state.processExitVerified = true
 		return
 	}
 
@@ -206,6 +234,10 @@ func (a *App) advanceCloseCS2Process(state *produceSessionRuntime, now time.Time
 	}
 	if a.produceW != nil && a.produceW.GracefulExitStatus().Completed {
 		state.closeDone = true
+		state.closeErr = nil
+		// The plugin has queued quit, but only a PID check can establish that
+		// the process has actually exited before environment restoration.
+		state.processExitVerified = false
 		return
 	}
 	if now.Before(state.gracefulExitAt) {
@@ -219,16 +251,45 @@ func (a *App) advanceCloseCS2Process(state *produceSessionRuntime, now time.Time
 }
 
 func (a *App) closeCS2ProcessByPID(state *produceSessionRuntime) {
-	if state == nil || state.closeDone {
+	if state == nil || (state.processExitVerified && state.closeErr == nil) {
 		return
 	}
 	defer func() { state.closeDone = true }()
+	state.closeErr = nil
+	state.processExitVerified = false
 	if state.cs2PID <= 0 {
+		state.processExitVerified = true
 		return
 	}
-	if err := closeCS2ProcessByPIDFn(state.cs2PID); err != nil && a.ctx != nil {
-		wailsruntime.LogError(a.ctx, fmt.Sprintf("close cs2 process failed (pid=%d): %v", state.cs2PID, err))
+	if err := closeCS2ProcessByPIDFn(state.cs2PID); err != nil {
+		state.closeErr = err
+		if a.ctx != nil {
+			wailsruntime.LogError(a.ctx, fmt.Sprintf("close cs2 process failed (pid=%d): %v", state.cs2PID, err))
+		}
+		return
 	}
+	state.processExitVerified = true
+}
+
+func (a *App) forceCloseCS2ProcessForTeardown(state *produceSessionRuntime) error {
+	if state == nil {
+		return nil
+	}
+	if state.pendingLaunch != nil {
+		if err := state.pendingLaunch.stop(); err != nil {
+			return err
+		}
+		state.pendingLaunch = nil
+	}
+	state.closeRequested = true
+	state.gracefulExit = false
+	// closeDone can also mean that the plugin acknowledged and queued quit.
+	// Clear it until the PID closer verifies the process is actually gone.
+	if !state.processExitVerified || state.closeErr != nil {
+		state.closeDone = false
+	}
+	a.closeCS2ProcessByPID(state)
+	return state.closeErr
 }
 
 // ---- file utility functions moved from produce_session.go ----

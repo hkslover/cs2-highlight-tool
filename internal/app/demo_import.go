@@ -12,6 +12,12 @@ import (
 )
 
 func (a *App) prepareRawDemoFiles(paths []string) ([]string, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer releaseFiles()
+
 	if len(paths) == 0 {
 		return nil, nil
 	}

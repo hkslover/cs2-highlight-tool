@@ -12,3 +12,8 @@ export interface DebugPluginDLLOverrideState {
   active: boolean;
   path: string;
 }
+
+export interface WorkActivity {
+  produce_busy: boolean;
+  storage_busy: boolean;
+}

@@ -27,6 +27,12 @@ func (a *App) GetOutputsStorageStats() (*OutputsStorageStats, error) {
 }
 
 func (a *App) ClearOutputsDirectory() (*OutputsStorageStats, error) {
+	releaseClear, err := a.beginManagedDirectoryClear()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseClear()
+
 	outputDir := a.fixedRecordOutputDir()
 	if err := clearManagedDirectory(outputDir, "输出目录"); err != nil {
 		return nil, err
@@ -44,6 +50,12 @@ func (a *App) GetDemoStorageStats() (*DemoStorageStats, error) {
 }
 
 func (a *App) ClearDemoDirectory() (*DemoStorageStats, error) {
+	releaseClear, err := a.beginManagedDirectoryClear()
+	if err != nil {
+		return nil, err
+	}
+	defer releaseClear()
+
 	demoDir := a.demoStorageDir()
 	if err := clearManagedDirectory(demoDir, "Dem 目录"); err != nil {
 		return nil, err

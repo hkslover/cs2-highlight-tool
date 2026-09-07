@@ -92,6 +92,7 @@ func TestRunStartupChecks_SourceReadyWhenUnifiedReleaseAvailable(t *testing.T) {
 
 	exeDir := t.TempDir()
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	tasksCalled := 0
@@ -141,6 +142,7 @@ func TestRunStartupChecks_SourceFailedWhenUnifiedReleaseUnavailable(t *testing.T
 
 	exeDir := t.TempDir()
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	tasksCalled := 0
@@ -199,6 +201,7 @@ func TestRunStartupChecks_CS2ReadyWhenAutoDetectAvailable(t *testing.T) {
 	})
 
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	state := svc.RunStartupChecks()
@@ -292,6 +295,7 @@ func TestRunStartupChecks_DefersComponentTasksWhenSelfUpdateAvailable(t *testing
 	})
 
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	_ = svc.RunStartupChecks()
@@ -321,6 +325,7 @@ func TestReinstallStartupComponent_ValidateGuard(t *testing.T) {
 	})
 	exeDir := t.TempDir()
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	if _, err := svc.ReinstallStartupComponent("unknown"); err == nil {
@@ -337,6 +342,7 @@ func TestRefreshCanEnterMain_AllowsWarningStatus(t *testing.T) {
 	})
 	exeDir := t.TempDir()
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	svc.mu.Lock()
@@ -382,6 +388,7 @@ func TestRunStartupChecks_DoesNotDependOnLegacySourceManual(t *testing.T) {
 	}
 
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 	svc.runTasksFn = func(source DownloadSource) {
 		markAllReadyForTest(svc)
@@ -448,6 +455,7 @@ func TestRunStartupChecks_DoesNotBlockOnFFmpegDetectWhenSelfUpdateFails(t *testi
 	}
 
 	svc := New(exeDir, "1.0.0")
+	defer svc.stopFFmpegCapabilityDetection()
 	svc.Startup(nil)
 
 	oldCmdFactory := ffmpegDetectCommandContext

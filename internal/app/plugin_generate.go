@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,8 +15,6 @@ import (
 	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/plugingen"
 	"cs2-highlight-tool-v2/internal/producews"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type GeneratePluginJSONRequest struct {
@@ -138,8 +137,18 @@ func (a *App) GetProduceHistorySnapshot() ProduceHistorySnapshot {
 }
 
 func (a *App) GeneratePluginJSONBatch(req GeneratePluginJSONBatchRequest) (*GeneratePluginJSONBatchResult, error) {
+	// Serialize with the launch pipeline: both reset the shared take-file
+	// state during setup.
+	a.produceLaunchMu.Lock()
+	defer a.produceLaunchMu.Unlock()
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
+	}
+	if err := a.produceBusyError(); err != nil {
+		return nil, err
+	}
+	if err := a.stopProduceSessionWorker(); err != nil {
+		return nil, err
 	}
 	jobs, err := normalizeGeneratePluginBatchJobs(req.Jobs)
 	if err != nil {
@@ -187,8 +196,24 @@ func (a *App) GeneratePluginJSONBatch(req GeneratePluginJSONBatchRequest) (*Gene
 }
 
 func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRequest) (*GeneratePluginJSONBatchResult, error) {
+	// Hold the launch mutex for the entire pipeline (take-file reset, queue
+	// check, old-session stop, environment preparation, HLAE launch, queue
+	// start and runtime install). This is the session reservation: two
+	// concurrent requests (e.g. a fast double-click) are serialized instead of
+	// interleaving stop/prepare/restore steps against each other's
+	// environment.
+	a.produceLaunchMu.Lock()
+	defer a.produceLaunchMu.Unlock()
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
+	}
+	if err := a.produceBusyError(); err != nil {
+		return &GeneratePluginJSONBatchResult{Results: []GeneratePluginJSONBatchItemResult{}, LaunchError: err.Error()}, nil
+	}
+	// Retry only an already-finished session's failed teardown, before any
+	// JSON writes, history filtering or shared take-state reset.
+	if err := a.stopProduceSessionWorker(); err != nil {
+		return &GeneratePluginJSONBatchResult{Results: []GeneratePluginJSONBatchItemResult{}, LaunchError: err.Error()}, nil
 	}
 	jobs, err := normalizeGeneratePluginBatchJobs(req.Jobs)
 	if err != nil {
@@ -335,7 +360,6 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		FailureCount:   failureCount,
 		BatchTimestamp: batchTimestamp,
 	}
-	a.resetProduceTakeFiles(result.Results)
 
 	launchDemoPath := ""
 	if len(successfulDemos) > 0 {
@@ -357,18 +381,24 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		return result, nil
 	}
 
+	a.resetProduceTakeFiles(result.Results)
+	envEpoch := a.beginProduceEnvironmentPrep()
+
 	if err := a.prepareGameInfoForProduce(); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(0, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
+		}
 		return result, nil
 	}
 	if err := a.preparePluginDLLForProduce(); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
-		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(0, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
 		}
 		return result, nil
 	}
@@ -376,8 +406,8 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
-		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(0, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
 		}
 		return result, nil
 	}
@@ -387,8 +417,13 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
-		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		var launchErr *hlaeLaunchError
+		var pending *pendingHLAELaunch
+		if errors.As(err, &launchErr) {
+			pending = launchErr.pending
+		}
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(0, envEpoch, pending); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
 		}
 		return result, nil
 	}
@@ -396,11 +431,8 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		result.LaunchStarted = false
 		result.LaunchError = "制作 websocket 服务未初始化"
 		result.LaunchedDemoPath = launchDemoPath
-		if closeErr := closeCS2ProcessByPIDFn(cs2PID); closeErr != nil && a.ctx != nil {
-			wailsruntime.LogError(a.ctx, fmt.Sprintf("close cs2 failed after launch error (pid=%d): %v", cs2PID, closeErr))
-		}
-		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(cs2PID, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
 		}
 		return result, nil
 	}
@@ -408,14 +440,8 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
-		if closeErr := closeCS2ProcessByPIDFn(cs2PID); closeErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 关闭 cs2 失败: %v", result.LaunchError, closeErr)
-			if a.ctx != nil {
-				wailsruntime.LogError(a.ctx, fmt.Sprintf("close cs2 failed after queue start error (pid=%d): %v", cs2PID, closeErr))
-			}
-		}
-		if restoreErr := a.forceRestoreProduceEnvironmentForProduce(); restoreErr != nil {
-			result.LaunchError = fmt.Sprintf("%s; 恢复制作环境失败: %v", result.LaunchError, restoreErr)
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(cs2PID, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
 		}
 		return result, nil
 	}
@@ -430,6 +456,7 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		result.Results,
 		cs2PID,
 		keepIntermediateFiles,
+		envEpoch,
 	)
 
 	result.LaunchStarted = true
@@ -454,6 +481,15 @@ func normalizeGeneratePluginBatchJobs(input []GeneratePluginJSONRequest) ([]Gene
 }
 
 func (a *App) GeneratePluginJSON(req GeneratePluginJSONRequest) (*GeneratePluginJSONResult, error) {
+	a.produceLaunchMu.Lock()
+	defer a.produceLaunchMu.Unlock()
+	if err := a.produceBusyError(); err != nil {
+		return nil, err
+	}
+	if err := a.stopProduceSessionWorker(); err != nil {
+		return nil, err
+	}
+
 	result, _, err := a.generatePluginJSONInternal(req, generatePluginJSONInternalOptions{
 		WriteJSON: true,
 	})
