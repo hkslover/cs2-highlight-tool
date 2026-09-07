@@ -21,6 +21,7 @@ import type {
 import { useImportDemos } from "@/features/import/composables/useImportDemos";
 import { useProducePageState } from "@/features/produce/composables/useProducePageState";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
+import { useWorkActivity } from "@/shared/state/useWorkActivity";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import { usePlatformClientCheck } from "@/features/produce/composables/usePlatformClientCheck";
 import { EventsOn } from "../../../../wailsjs/runtime/runtime";
@@ -76,6 +77,7 @@ export function useProducePage() {
   const { historySnapshot } = useProduceHistory();
   const { debugEnabled, keepProduceIntermediates } = useDebugSettings();
 
+  const { produceBusy, refreshWorkActivity } = useWorkActivity();
   const platformCheck = usePlatformClientCheck();
   const showPlatformCheckModal = ref(false);
 
@@ -600,21 +602,38 @@ export function useProducePage() {
   }
 
   async function generateAndLaunch() {
+    // Reserve the launch interaction before the asynchronous platform check.
+    // Otherwise two fast clicks can both pass the check and submit duplicate
+    // launch requests before doGenerateAndLaunch flips this flag.
+    if (generatingAndLaunching.value || produceBusy.value) return;
     const jobs = buildPendingBatchJobs();
     if (!jobs.length) return;
 
-    const allClosed = await platformCheck.checkAll();
-    if (!allClosed) {
-      showPlatformCheckModal.value = true;
-      return;
+    generatingAndLaunching.value = true;
+    try {
+      const allClosed = await platformCheck.checkAll();
+      if (!allClosed) {
+        showPlatformCheckModal.value = true;
+        return;
+      }
+      await doGenerateAndLaunch();
+    } finally {
+      await refreshWorkActivity();
+      generatingAndLaunching.value = false;
     }
-    await doGenerateAndLaunch();
   }
 
   async function onPlatformCheckConfirmed() {
+    if (generatingAndLaunching.value || produceBusy.value) return;
     showPlatformCheckModal.value = false;
     platformCheck.reset();
-    await doGenerateAndLaunch();
+    generatingAndLaunching.value = true;
+    try {
+      await doGenerateAndLaunch();
+    } finally {
+      await refreshWorkActivity();
+      generatingAndLaunching.value = false;
+    }
   }
 
   function onPlatformCheckCancelled() {
@@ -626,10 +645,10 @@ export function useProducePage() {
     try {
       const jobs = buildPendingBatchJobs();
       if (!jobs.length) return;
-      generatingAndLaunching.value = true;
       launchViewEnabled.value = true;
       errorMessage.value = "";
 
+      const previousKillSnapshot = killSnapshotByDemo.value;
       captureCurrentKillSnapshot();
       const request: GeneratePluginJSONBatchRequest = {
         jobs,
@@ -638,18 +657,26 @@ export function useProducePage() {
         },
       };
       const result = await callBackend<GeneratePluginJSONBatchResult>("GeneratePluginJSONBatchAndLaunchHLAE", request);
+      // A backend busy response is intentionally side-effect free and may be
+      // returned for a duplicate/stale request. Preserve the active session's
+      // take rows instead of replacing them with the busy response's empty
+      // result list.
+      if (!result.launch_started && result.launch_error && result.results.length === 0 && batchResult.value?.launch_started) {
+        killSnapshotByDemo.value = previousKillSnapshot;
+        errorMessage.value = result.launch_error;
+        return;
+      }
       batchResult.value = result;
       if (!result.launch_started && result.launch_error) {
         errorMessage.value = result.launch_error;
       }
     } catch (err: unknown) {
       errorMessage.value = err instanceof Error ? err.message : String(err);
-    } finally {
-      generatingAndLaunching.value = false;
     }
   }
 
   async function generateConfigOnly() {
+    if (produceBusy.value) return;
     try {
       const jobs = buildPendingBatchJobs();
       if (!jobs.length) return;
@@ -812,6 +839,7 @@ export function useProducePage() {
   return {
     // State refs
     errorMessage,
+    produceBusy,
     generatingAndLaunching,
     generatingConfigOnlyLoading,
     exportProduceLogsLoading,

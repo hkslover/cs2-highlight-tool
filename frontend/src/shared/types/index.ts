@@ -10,6 +10,7 @@ export type {
 } from "./startup";
 
 export type {
+  WorkActivity,
   DebugPluginDLLOverrideState,
   GameInfoHealth,
   GameInfoHealthStatus,

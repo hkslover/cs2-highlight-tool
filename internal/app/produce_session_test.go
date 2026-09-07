@@ -619,10 +619,10 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_PluginPrepareFailureRollsBackGameI
 }
 
 func TestMergeTakeVideoAudio_SuccessKeepsSourceFiles(t *testing.T) {
-	old := producemerge.FFmpegCommand
-	producemerge.FFmpegCommand = fakeFFmpegCommandSuccess
+	old := producemerge.FFmpegCommandContext
+	producemerge.FFmpegCommandContext = fakeFFmpegCommandSuccessContext
 	t.Cleanup(func() {
-		producemerge.FFmpegCommand = old
+		producemerge.FFmpegCommandContext = old
 	})
 
 	dir := t.TempDir()
@@ -673,10 +673,10 @@ func TestMergeTakeVideoAudio_SuccessKeepsSourceFiles(t *testing.T) {
 }
 
 func TestMergeTakeVideoAudio_FailureKeepsSourceFiles(t *testing.T) {
-	old := producemerge.FFmpegCommand
-	producemerge.FFmpegCommand = fakeFFmpegCommandFail
+	old := producemerge.FFmpegCommandContext
+	producemerge.FFmpegCommandContext = fakeFFmpegCommandFailContext
 	t.Cleanup(func() {
-		producemerge.FFmpegCommand = old
+		producemerge.FFmpegCommandContext = old
 	})
 
 	dir := t.TempDir()
@@ -1265,6 +1265,721 @@ func TestCanStopProduceSession_RequiresQueueStoppedCloseDoneAndDrained(t *testin
 	}
 }
 
+// TestMergeWorker_CancelledSessionStopsBlockedMergeAndDecrementsPending is
+// the regression test for S1: a hung ffmpeg mux must not block the merge
+// worker forever. Cancelling the session context kills ffmpeg, the worker
+// exits, pendingTaskCnt returns to zero (so canStopProduceSession can
+// succeed), and no ".mux.tmp.mp4" is left behind.
+func TestMergeWorker_CancelledSessionStopsBlockedMergeAndDecrementsPending(t *testing.T) {
+	oldCtx := producemerge.FFmpegCommandContext
+	producemerge.FFmpegCommandContext = fakeFFmpegCommandBlockingContext
+	t.Cleanup(func() { producemerge.FFmpegCommandContext = oldCtx })
+
+	dir := t.TempDir()
+	ffmpegExe := filepath.Join(dir, "ffmpeg.exe")
+	if err := os.WriteFile(ffmpegExe, []byte("stub"), 0755); err != nil {
+		t.Fatalf("write ffmpeg stub: %v", err)
+	}
+	plan := ProduceTakePlan{DemoPath: "demoA.dem", TakeIndex: 1, TakeName: "take0001", View: "killer"}
+	videoPath := filepath.Join(dir, "take0001.mp4")
+	audioDir := filepath.Join(dir, "take0001")
+	audioPath := filepath.Join(audioDir, "audio.wav")
+	if err := os.WriteFile(videoPath, []byte("video"), 0644); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+	if err := os.MkdirAll(audioDir, 0755); err != nil {
+		t.Fatalf("mkdir audio dir: %v", err)
+	}
+	if err := os.WriteFile(audioPath, []byte("audio"), 0644); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+
+	app := &App{
+		produceState: produceSessionState{
+			takeFiles: make(map[string]ProduceTakeFile),
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	state := &produceSessionRuntime{
+		batchDir:         dir,
+		ffmpegExe:        ffmpegExe,
+		plansByTake:      map[string]ProduceTakePlan{takePlanKey(plan.DemoPath, plan.TakeIndex): plan},
+		taskCh:           make(chan mergeTask, 1),
+		fileReadyTimeout: 2 * time.Second,
+		stableInterval:   20 * time.Millisecond,
+	}
+	state.taskCh <- mergeTask{plan: plan, videoPath: videoPath, audioPath: audioPath}
+	state.pendingTaskCnt.Add(1)
+
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		app.mergeWorker(ctx, state)
+	}()
+
+	// Wait until the merge is blocked inside the (fake, hung) ffmpeg mux.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		status := ""
+		for _, item := range app.GetProduceTakeFiles().Items {
+			if item.TakeIndex == plan.TakeIndex {
+				status = item.Status
+			}
+		}
+		if status == "processing" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("merge never reached processing status, last=%q", status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+
+	select {
+	case <-workerDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("merge worker did not stop after session cancellation")
+	}
+	if got := state.pendingTaskCnt.Load(); got != 0 {
+		t.Fatalf("pendingTaskCnt=%d want 0 after worker exit", got)
+	}
+
+	finalStatus := ""
+	for _, item := range app.GetProduceTakeFiles().Items {
+		if item.TakeIndex == plan.TakeIndex {
+			finalStatus = item.Status
+		}
+	}
+	if finalStatus != "failed" {
+		t.Fatalf("take status=%q want failed after cancellation", finalStatus)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".mux.tmp.mp4") {
+			t.Fatalf("orphan tmp mux file left behind: %s", entry.Name())
+		}
+	}
+}
+
+// TestForceRestoreProduceEnvironmentForEpoch_OldEpochDoesNotTouchNewerEnv is
+// the regression test for the S1 cross-session hazard: a late-running old
+// session must not restore/delete the environment (gameinfo / plugin DLL /
+// backups) that a newer session has taken over, while the owning session can
+// still restore normally.
+func TestForceRestoreProduceEnvironmentForEpoch_OldEpochDoesNotTouchNewerEnv(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	app := &App{exeDir: env.exeDir}
+
+	epoch1 := app.beginProduceEnvironmentPrep()
+	if err := app.prepareGameInfoForProduce(); err != nil {
+		t.Fatalf("prepareGameInfoForProduce: %v", err)
+	}
+	if err := app.preparePluginDLLForProduce(); err != nil {
+		t.Fatalf("preparePluginDLLForProduce: %v", err)
+	}
+	if epoch1 != 1 {
+		t.Fatalf("first env epoch=%d want 1", epoch1)
+	}
+
+	// Sanity: the first session's environment is in place.
+	gameInfoBytes, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read gameinfo: %v", err)
+	}
+	if !strings.Contains(string(gameInfoBytes), "Game\tcsgo/plugin") {
+		t.Fatalf("expected injected gameinfo, got:\n%s", string(gameInfoBytes))
+	}
+	pluginBytes, err := os.ReadFile(env.targetDLLPath)
+	if err != nil {
+		t.Fatalf("read target dll: %v", err)
+	}
+	if string(pluginBytes) != "plugin-new" {
+		t.Fatalf("unexpected target dll content: %q", string(pluginBytes))
+	}
+
+	// A newer session takes over the environment (its prep epoch is bumped).
+	epoch2 := app.beginProduceEnvironmentPrep()
+	if epoch2 != 2 {
+		t.Fatalf("second env epoch=%d want 2", epoch2)
+	}
+
+	// The old session's late restore must be a complete no-op.
+	if err := app.forceRestoreProduceEnvironmentForEpoch(epoch1); err != nil {
+		t.Fatalf("old session restore returned error: %v", err)
+	}
+	gameInfoBytes, err = os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read gameinfo after old restore: %v", err)
+	}
+	if !strings.Contains(string(gameInfoBytes), "Game\tcsgo/plugin") {
+		t.Fatalf("old session restore must not touch the newer session's gameinfo")
+	}
+	if _, err := os.Stat(env.targetDLLPath); err != nil {
+		t.Fatalf("old session restore must not touch the newer session's dll: %v", err)
+	}
+	if _, err := os.Stat(env.gameInfoPath + produceGameInfoBackupSuffix); err != nil {
+		t.Fatalf("old session restore must not delete the newer session's gameinfo backup: %v", err)
+	}
+	if _, err := os.Stat(env.targetDLLPath + producePluginDLLBackupSuffix); err != nil {
+		t.Fatalf("old session restore must not delete the newer session's dll backup: %v", err)
+	}
+
+	// The owning session can still restore normally.
+	if err := app.forceRestoreProduceEnvironmentForEpoch(epoch2); err != nil {
+		t.Fatalf("owner restore failed: %v", err)
+	}
+	restoredGameInfo, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read restored gameinfo: %v", err)
+	}
+	if string(restoredGameInfo) != env.originalGameInfo {
+		t.Fatalf("gameinfo not restored by owner, got:\n%s", string(restoredGameInfo))
+	}
+	if _, err := os.Stat(env.targetDLLPath); !os.IsNotExist(err) {
+		t.Fatalf("target dll should be removed on owner restore, stat err=%v", err)
+	}
+}
+
+// TestProduceEnvironment_ReusableAfterFullRestore exercises the recovery
+// chain the launch pipeline relies on: after a session is fully stopped and
+// its environment restored, the next session's real prepare must work again
+// and the ORIGINAL environment must still be restorable.
+func TestProduceEnvironment_ReusableAfterFullRestore(t *testing.T) {
+	env := setupProducePluginTestEnvironment(t)
+	app := &App{exeDir: env.exeDir}
+
+	for i := 0; i < 2; i++ {
+		epoch := app.beginProduceEnvironmentPrep()
+		if err := app.prepareGameInfoForProduce(); err != nil {
+			t.Fatalf("cycle %d prepareGameInfoForProduce: %v", i, err)
+		}
+		if err := app.preparePluginDLLForProduce(); err != nil {
+			t.Fatalf("cycle %d preparePluginDLLForProduce: %v", i, err)
+		}
+		if err := app.forceRestoreProduceEnvironmentForEpoch(epoch); err != nil {
+			t.Fatalf("cycle %d restore: %v", i, err)
+		}
+	}
+
+	restoredGameInfo, err := os.ReadFile(env.gameInfoPath)
+	if err != nil {
+		t.Fatalf("read restored gameinfo: %v", err)
+	}
+	if string(restoredGameInfo) != env.originalGameInfo {
+		t.Fatalf("gameinfo not restored to original after two cycles, got:\n%s", string(restoredGameInfo))
+	}
+	if _, err := os.Stat(env.targetDLLPath); !os.IsNotExist(err) {
+		t.Fatalf("target dll should be absent after two cycles, stat err=%v", err)
+	}
+	if _, err := os.Stat(env.gameInfoPath + produceGameInfoBackupSuffix); !os.IsNotExist(err) {
+		t.Fatalf("gameinfo backup should be gone after two cycles, stat err=%v", err)
+	}
+	if _, err := os.Stat(env.targetDLLPath + producePluginDLLBackupSuffix); !os.IsNotExist(err) {
+		t.Fatalf("dll backup should be gone after two cycles, stat err=%v", err)
+	}
+}
+
+// TestStopProduceRuntime_ReportsErrorWhenSessionDoesNotExit is the P1
+// regression test: a session that cannot fully exit within the stop wait must
+// be reported as an error instead of being silently abandoned (which would
+// leave its environment state in the global produce state while a new session
+// overwrites the backups).
+func TestStopProduceRuntime_ReportsErrorWhenSessionDoesNotExit(t *testing.T) {
+	oldWait := produceSessionStopWait
+	produceSessionStopWait = 60 * time.Millisecond
+	t.Cleanup(func() { produceSessionStopWait = oldWait })
+
+	// A runtime whose done never closes simulates a session stuck on a hung
+	// ffmpeg that cannot be torn down in time.
+	stuck := &produceSessionRuntime{
+		cancel: func() {},
+		done:   make(chan struct{}),
+	}
+	start := time.Now()
+	err := stopProduceRuntime(stuck)
+	if err == nil {
+		t.Fatal("expected timeout error for stuck session")
+	}
+	if !strings.Contains(err.Error(), "未完全退出") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Fatalf("stop returned before the wait window elapsed: %v", elapsed)
+	}
+}
+
+// TestStopProduceSessionWorker_KeepsRuntimeOnTimeoutAndRetryStillFails is the
+// P1 regression test: a stop timeout must keep the runtime pointer so the
+// next stop (or launch retry) waits on the same still-alive session again
+// instead of seeing nil and preparing a new environment while the old session
+// still holds its environment state and backups.
+func TestStopProduceSessionWorker_KeepsRuntimeOnTimeoutAndRetryStillFails(t *testing.T) {
+	oldWait := produceSessionStopWait
+	produceSessionStopWait = 60 * time.Millisecond
+	t.Cleanup(func() { produceSessionStopWait = oldWait })
+
+	app := &App{}
+	stuck := &produceSessionRuntime{cancel: func() {}, done: make(chan struct{})}
+	app.produceStateMu.Lock()
+	app.produceState.runtime = stuck
+	app.produceStateMu.Unlock()
+
+	if err := app.stopProduceSessionWorker(); err == nil {
+		t.Fatal("expected timeout error for stuck session")
+	}
+	app.produceStateMu.Lock()
+	kept := app.produceState.runtime == stuck
+	app.produceStateMu.Unlock()
+	if !kept {
+		t.Fatal("runtime pointer must be kept on stop timeout so a retry waits on the same session")
+	}
+
+	// An immediate retry must still be rejected: the old session is alive and
+	// still owns its environment state and backups.
+	if err := app.stopProduceSessionWorker(); err == nil {
+		t.Fatal("immediate retry must fail again while the old session is still alive")
+	}
+}
+
+// TestStopProduceSessionWorker_RetrySucceedsAfterSessionExits verifies the
+// recovery path: once the stuck session finally finishes its teardown, the
+// next stop succeeds and clears the runtime pointer, letting the launch
+// proceed safely.
+func TestStopProduceSessionWorker_RetrySucceedsAfterSessionExits(t *testing.T) {
+	oldWait := produceSessionStopWait
+	produceSessionStopWait = 60 * time.Millisecond
+	t.Cleanup(func() { produceSessionStopWait = oldWait })
+
+	app := &App{}
+	done := make(chan struct{})
+	stuck := &produceSessionRuntime{cancel: func() {}, done: done}
+	app.produceStateMu.Lock()
+	app.produceState.runtime = stuck
+	app.produceStateMu.Unlock()
+
+	if err := app.stopProduceSessionWorker(); err == nil {
+		t.Fatal("expected first stop to time out")
+	}
+	// Simulate the old session finally finishing its teardown.
+	close(done)
+	if err := app.stopProduceSessionWorker(); err != nil {
+		t.Fatalf("retry should succeed after the session exits: %v", err)
+	}
+	app.produceStateMu.Lock()
+	cleared := app.produceState.runtime == nil
+	app.produceStateMu.Unlock()
+	if !cleared {
+		t.Fatal("runtime should be cleared after a successful stop")
+	}
+}
+
+// TestRunProduceSessionWorker_CancelledSessionSweepsMuxTmpFiles is the P2
+// regression test: a session cancelled mid-merge must still sweep orphaned
+// ".mux.tmp.mp4" files left by the killed ffmpeg during its teardown.
+func TestRunProduceSessionWorker_CancelledSessionSweepsMuxTmpFiles(t *testing.T) {
+	batchDir := t.TempDir()
+	demoDir := filepath.Join(batchDir, "demo_a")
+	if err := os.MkdirAll(demoDir, 0755); err != nil {
+		t.Fatalf("mkdir demo dir: %v", err)
+	}
+	tmpMux := filepath.Join(demoDir, "120000_01.mux.tmp.mp4")
+	if err := os.WriteFile(tmpMux, []byte("partial"), 0644); err != nil {
+		t.Fatalf("write tmp mux: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app := &App{}
+	state := &produceSessionRuntime{
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		batchDir:      batchDir,
+		demoSubDirs:   map[string]string{"demoA.dem": "demo_a"},
+		taskCh:        make(chan mergeTask, 1),
+		pollInterval:  time.Millisecond,
+		seenCompleted: make(map[string]struct{}),
+		plansByTake:   make(map[string]ProduceTakePlan),
+	}
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		app.runProduceSessionWorker(ctx, state)
+	}()
+	cancel()
+
+	select {
+	case <-state.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session did not stop after cancel")
+	}
+	select {
+	case <-runnerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session runner did not exit")
+	}
+	if _, err := os.Stat(tmpMux); !os.IsNotExist(err) {
+		t.Fatalf("tmp mux file should be swept on cancel, stat err=%v", err)
+	}
+}
+
+func TestRunProduceSessionWorker_CancelClosesOwnedCS2BeforeRestore(t *testing.T) {
+	oldCloseFn := closeCS2ProcessByPIDFn
+	closeCalls := 0
+	closeCS2ProcessByPIDFn = func(pid int) error {
+		closeCalls++
+		if pid != 9527 {
+			t.Fatalf("close pid=%d want 9527", pid)
+		}
+		return nil
+	}
+	t.Cleanup(func() { closeCS2ProcessByPIDFn = oldCloseFn })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	state := &produceSessionRuntime{
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		cs2PID:        9527,
+		taskCh:        make(chan mergeTask, 1),
+		pollInterval:  time.Millisecond,
+		seenCompleted: make(map[string]struct{}),
+		demoSubDirs:   make(map[string]string),
+		plansByTake:   make(map[string]ProduceTakePlan),
+	}
+	app := &App{}
+	go app.runProduceSessionWorker(ctx, state)
+	cancel()
+
+	select {
+	case <-state.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session did not stop after cancel")
+	}
+	if closeCalls != 1 {
+		t.Fatalf("owned CS2 close calls=%d want 1", closeCalls)
+	}
+	if !state.processExitVerified || state.closeErr != nil || state.teardownErr != nil {
+		t.Fatalf("unexpected teardown state: %+v", state)
+	}
+}
+
+func TestForceCloseCS2ProcessForTeardown_VerifiesGracefulExitPID(t *testing.T) {
+	oldCloseFn := closeCS2ProcessByPIDFn
+	closeCalls := 0
+	closeCS2ProcessByPIDFn = func(pid int) error {
+		closeCalls++
+		return nil
+	}
+	t.Cleanup(func() { closeCS2ProcessByPIDFn = oldCloseFn })
+
+	app := &App{}
+	state := &produceSessionRuntime{
+		cs2PID:       9527,
+		closeDone:    true,
+		gracefulExit: true,
+	}
+	if err := app.forceCloseCS2ProcessForTeardown(state); err != nil {
+		t.Fatalf("forceCloseCS2ProcessForTeardown: %v", err)
+	}
+	if closeCalls != 1 || !state.processExitVerified || !state.closeDone {
+		t.Fatalf("graceful exit PID was not verified: calls=%d state=%+v", closeCalls, state)
+	}
+}
+
+func TestStopProduceSessionWorker_RetainsRuntimeUntilRestoreRetrySucceeds(t *testing.T) {
+	dir := t.TempDir()
+	backupPath := filepath.Join(dir, "server.dll"+producePluginDLLBackupSuffix)
+	targetPath := filepath.Join(dir, "server.dll")
+
+	app := &App{}
+	epoch := app.beginProduceEnvironmentPrep()
+	app.produceStateMu.Lock()
+	app.produceState.pluginDLL = pluginDLLSessionState{
+		targetPath: targetPath,
+		backupPath: backupPath,
+		modified:   true,
+	}
+	app.produceStateMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	state := &produceSessionRuntime{
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		envEpoch:      epoch,
+		taskCh:        make(chan mergeTask, 1),
+		pollInterval:  time.Millisecond,
+		seenCompleted: make(map[string]struct{}),
+		demoSubDirs:   make(map[string]string),
+		plansByTake:   make(map[string]ProduceTakePlan),
+	}
+	app.produceStateMu.Lock()
+	app.produceState.runtime = state
+	app.produceStateMu.Unlock()
+	go app.runProduceSessionWorker(ctx, state)
+	cancel()
+
+	select {
+	case <-state.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session did not finish teardown")
+	}
+	if state.teardownErr == nil || !strings.Contains(state.teardownErr.Error(), "备份不存在") {
+		t.Fatalf("expected restore failure, got %v", state.teardownErr)
+	}
+	if err := app.stopProduceSessionWorker(); err == nil {
+		t.Fatal("stop must report a persistent environment restore failure")
+	}
+	app.produceStateMu.Lock()
+	retained := app.produceState.runtime == state
+	app.produceStateMu.Unlock()
+	if !retained {
+		t.Fatal("runtime must remain retained while environment restore is incomplete")
+	}
+
+	if err := os.WriteFile(backupPath, []byte(producePluginDLLMissingMarker), 0644); err != nil {
+		t.Fatalf("write recovery marker: %v", err)
+	}
+	if err := app.stopProduceSessionWorker(); err != nil {
+		t.Fatalf("stop retry should recover after backup becomes available: %v", err)
+	}
+	app.produceStateMu.Lock()
+	cleared := app.produceState.runtime == nil
+	pluginCleared := !app.produceState.pluginDLL.modified
+	app.produceStateMu.Unlock()
+	if !cleared || !pluginCleared {
+		t.Fatalf("successful restore retry did not release session: runtimeCleared=%v pluginCleared=%v", cleared, pluginCleared)
+	}
+}
+
+func TestRollbackProduceLaunchEnvironment_DoesNotRestoreWhileCS2CloseFails(t *testing.T) {
+	oldCloseFn := closeCS2ProcessByPIDFn
+	closeCalls := 0
+	closeCS2ProcessByPIDFn = func(pid int) error {
+		closeCalls++
+		if closeCalls == 1 {
+			return fmt.Errorf("simulated process lock")
+		}
+		return nil
+	}
+	t.Cleanup(func() { closeCS2ProcessByPIDFn = oldCloseFn })
+
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "server.dll")
+	backupPath := targetPath + producePluginDLLBackupSuffix
+	if err := os.WriteFile(targetPath, []byte("injected"), 0644); err != nil {
+		t.Fatalf("write injected dll: %v", err)
+	}
+	if err := os.WriteFile(backupPath, []byte(producePluginDLLMissingMarker), 0644); err != nil {
+		t.Fatalf("write backup marker: %v", err)
+	}
+
+	app := &App{}
+	epoch := app.beginProduceEnvironmentPrep()
+	app.produceStateMu.Lock()
+	app.produceState.pluginDLL = pluginDLLSessionState{
+		targetPath: targetPath,
+		backupPath: backupPath,
+		modified:   true,
+	}
+	app.produceStateMu.Unlock()
+
+	err := app.rollbackProduceLaunchEnvironment(9527, epoch)
+	if err == nil || !strings.Contains(err.Error(), "关闭 CS2") {
+		t.Fatalf("expected close failure, got %v", err)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Fatalf("DLL must remain installed while CS2 may be alive: %v", err)
+	}
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("backup must be retained after close failure: %v", err)
+	}
+	app.produceStateMu.Lock()
+	retained := app.produceState.runtime != nil
+	app.produceStateMu.Unlock()
+	if !retained {
+		t.Fatal("failed launch teardown must be retained for retry")
+	}
+
+	if err := app.stopProduceSessionWorker(); err != nil {
+		t.Fatalf("teardown retry: %v", err)
+	}
+	if closeCalls != 2 {
+		t.Fatalf("close calls=%d want 2", closeCalls)
+	}
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("DLL should be restored only after CS2 close succeeds, stat err=%v", err)
+	}
+	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
+		t.Fatalf("backup should be removed after successful retry, stat err=%v", err)
+	}
+}
+
+// TestGeneratePluginJSONBatchAndLaunchHLAE_AbortsWhenOldSessionStuck is the
+// P1 regression test for the launch pipeline: when the old session cannot be
+// fully stopped (workers drained and environment restored), the launch must
+// be aborted instead of preparing a new environment over the old session's
+// state and backups.
+func TestGeneratePluginJSONBatchAndLaunchHLAE_RejectsActiveOldSession(t *testing.T) {
+	exeDir := t.TempDir()
+	cs2Root := t.TempDir()
+	cs2Exe := filepath.Join(cs2Root, "game", "bin", "win64", "cs2.exe")
+	if err := os.MkdirAll(filepath.Dir(cs2Exe), 0755); err != nil {
+		t.Fatalf("mkdir cs2 exe dir: %v", err)
+	}
+	if err := os.WriteFile(cs2Exe, []byte("exe"), 0644); err != nil {
+		t.Fatalf("write cs2 exe: %v", err)
+	}
+	cfg := config.Default(exeDir)
+	cfg.CS2Dir = cs2Root
+	cfg.CS2Exe = cs2Exe
+	if err := config.Save(filepath.Join(exeDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	demoPath := writeProduceDemoFile(t)
+	app := &App{exeDir: exeDir}
+	stuck := &produceSessionRuntime{cancel: func() {}, done: make(chan struct{})}
+	app.produceStateMu.Lock()
+	app.produceState.runtime = stuck
+	app.produceStateMu.Unlock()
+
+	result, err := app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{
+		Jobs: []GeneratePluginJSONRequest{
+			{
+				DemoPath: demoPath,
+				TickRate: 64,
+				SelectedItems: []SelectedClipItem{{
+					Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+					IncludeVictim: false,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GeneratePluginJSONBatchAndLaunchHLAE: %v", err)
+	}
+	if result.LaunchStarted {
+		t.Fatalf("launch must be aborted when the old session is stuck: %+v", result)
+	}
+	if !strings.Contains(result.LaunchError, "仍在合成或收尾") {
+		t.Fatalf("unexpected launch error: %q", result.LaunchError)
+	}
+}
+
+// TestGeneratePluginJSONBatchAndLaunchHLAE_QueueRunningFailsBeforeResettingTakeFiles
+// is the P2 regression test: a second launch request that arrives while a
+// queue is already running (the realistic fast double-click: the first request
+// succeeded and released the launch mutex) must fail at the early queue guard
+// BEFORE generating JSON or resetting take files, leaving the running
+// session's UI state untouched.
+func TestGeneratePluginJSONBatchAndLaunchHLAE_QueueRunningFailsBeforeResettingTakeFiles(t *testing.T) {
+	exeDir := t.TempDir()
+	cs2Root := t.TempDir()
+	cs2Exe := filepath.Join(cs2Root, "game", "bin", "win64", "cs2.exe")
+	if err := os.MkdirAll(filepath.Dir(cs2Exe), 0755); err != nil {
+		t.Fatalf("mkdir cs2 exe dir: %v", err)
+	}
+	if err := os.WriteFile(cs2Exe, []byte("exe"), 0644); err != nil {
+		t.Fatalf("write cs2 exe: %v", err)
+	}
+	cfg := config.Default(exeDir)
+	cfg.CS2Dir = cs2Root
+	cfg.CS2Exe = cs2Exe
+	if err := config.Save(filepath.Join(exeDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	demoPath := writeProduceDemoFile(t)
+	produceW := producews.NewDefault(nil)
+	if err := produceW.Start(); err != nil {
+		t.Fatalf("start produce ws: %v", err)
+	}
+	defer produceW.Stop()
+	u := url.URL{Scheme: "ws", Host: produceW.Address(), Path: "/", RawQuery: "process=game"}
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		t.Fatalf("dial game ws: %v", err)
+	}
+	defer conn.Close()
+	if err := produceW.StartQueue([]string{demoPath}); err != nil {
+		t.Fatalf("start queue: %v", err)
+	}
+	if !produceW.GetQueueState().Running {
+		t.Fatal("queue should be running")
+	}
+
+	app := &App{exeDir: exeDir, produceW: produceW}
+	app.produceStateMu.Lock()
+	app.produceState.takeFiles = map[string]ProduceTakeFile{
+		"marker#1": {DemoPath: "marker", TakeIndex: 1, Status: "processing"},
+	}
+	app.produceState.takeFileOrder = []string{"marker#1"}
+	app.produceStateMu.Unlock()
+
+	result, err := app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{
+		Jobs: []GeneratePluginJSONRequest{
+			{
+				DemoPath: demoPath,
+				TickRate: 64,
+				SelectedItems: []SelectedClipItem{{
+					Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+					IncludeVictim: false,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GeneratePluginJSONBatchAndLaunchHLAE: %v", err)
+	}
+	if result.LaunchStarted {
+		t.Fatalf("launch must be refused while a queue is running: %+v", result)
+	}
+	if !strings.Contains(result.LaunchError, "已有制作队列") {
+		t.Fatalf("unexpected launch error: %q", result.LaunchError)
+	}
+	if result.Results == nil {
+		t.Fatal("busy response must preserve the results array contract")
+	}
+
+	app.produceStateMu.Lock()
+	_, exists := app.produceState.takeFiles["marker#1"]
+	order := len(app.produceState.takeFileOrder)
+	app.produceStateMu.Unlock()
+	if !exists || order != 1 {
+		t.Fatalf("second launch request must not reset the running session's take files (exists=%v order=%d)", exists, order)
+	}
+}
+
+// TestGeneratePluginJSONBatchAndLaunchHLAE_SerializedByLaunchMutex verifies
+// the P1 serialization guard: concurrent launch requests are serialized by
+// the launch mutex instead of interleaving stop/prepare/restore steps.
+func TestGeneratePluginJSONBatchAndLaunchHLAE_SerializedByLaunchMutex(t *testing.T) {
+	app := &App{}
+	app.produceLaunchMu.Lock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{})
+	}()
+	select {
+	case <-done:
+		t.Fatal("launch should block while the launch mutex is held")
+	case <-time.After(100 * time.Millisecond):
+	}
+	app.produceLaunchMu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("launch did not proceed after mutex release")
+	}
+}
+
 func TestAddProduceHistoryEntry_UsesRuntimeKillSnapshot(t *testing.T) {
 	app := &App{
 		produceState: produceSessionState{
@@ -1601,6 +2316,17 @@ func fakeFFmpegCommandFailContext(_ context.Context, command string, args ...str
 	return fakeFFmpegCommandFail(command, args...)
 }
 
+// fakeFFmpegCommandBlockingContext simulates a hung ffmpeg: the helper writes
+// the (partial) output file and then sleeps until the context kills it. Probe
+// invocations (output "-") still exit immediately so WaitForTakeFilesReady
+// can pass.
+func fakeFFmpegCommandBlockingContext(ctx context.Context, command string, args ...string) *exec.Cmd {
+	all := append([]string{"-test.run=TestHelperProcessFFmpeg", "--", command}, args...)
+	cmd := exec.CommandContext(ctx, os.Args[0], all...)
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS_FFMPEG=1", "FFMPEG_HELPER_MODE=block")
+	return cmd
+}
+
 func TestHelperProcessFFmpeg(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS_FFMPEG") != "1" {
 		return
@@ -1615,6 +2341,13 @@ func TestHelperProcessFFmpeg(t *testing.T) {
 	}
 	outputPath := os.Args[len(os.Args)-1]
 	if outputPath == "-" {
+		os.Exit(0)
+	}
+	if mode == "block" {
+		// Write a partial output so tests can verify cleanup, then hang
+		// until the context kills this helper process.
+		_ = os.WriteFile(outputPath, []byte("partial"), 0644)
+		time.Sleep(5 * time.Minute)
 		os.Exit(0)
 	}
 	if err := os.WriteFile(outputPath, []byte("muxed"), 0644); err != nil {

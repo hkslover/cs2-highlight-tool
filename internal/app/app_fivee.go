@@ -53,6 +53,12 @@ func (a *App) saveFiveEPlayerName(playerName string) error {
 }
 
 func (a *App) ImportFiveEMatch(matchID string) ([]string, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer releaseFiles()
+
 	downloadMatchID, err := fivee.ExtractMatchID(matchID)
 	if err != nil {
 		return nil, err

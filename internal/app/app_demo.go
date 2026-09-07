@@ -20,6 +20,12 @@ func (a *App) PickDemoFiles() ([]string, error) {
 }
 
 func (a *App) ParseDemoFile(path string) (*demo.Metadata, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer releaseFiles()
+
 	if path == "" {
 		return nil, nil
 	}

@@ -26,7 +26,7 @@
         <n-button size="small" :loading="opening" @click="emitOpen">
           {{ openLabel }}
         </n-button>
-        <n-button size="small" type="error" :loading="clearing" @click="emitClear">
+        <n-button size="small" type="error" :loading="clearing" :disabled="clearDisabled" @click="emitClear">
           {{ clearLabel }}
         </n-button>
       </div>
@@ -49,6 +49,7 @@ defineProps<{
   loading: boolean;
   opening: boolean;
   clearing: boolean;
+  clearDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{

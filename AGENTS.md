@@ -183,3 +183,10 @@
 - Claude 记忆实践：`https://code.claude.com/docs/en/memory`
 - GitHub Copilot 仓库/路径级指令：`https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions`
 - AGENTS.md 开放格式：`https://agents.md/index`
+
+
+## 制作与目录清理生命周期
+- `GetWorkActivity` 返回 `produce_busy`、`storage_busy`：制作忙碌覆盖启动、录制、合成和收尾；目录清理还需避让导入、解析、剪辑合成、导出，以及失败后保留的制作环境。
+- 活跃制作会话禁止再次生成或启动；只有已结束的会话允许重试失败的收尾，且重试成功前不得重置片段状态或生成 JSON。
+- 前端制作按钮和设置页清理按钮以 `GetWorkActivity` 为来源；未加载或查询失败时禁用相关动作。后端仍须原子检查并保留文件使用权，不能仅依赖前端禁用。
+- HLAE 已启动但 CS2 PID 未知时，必须保留启动器句柄和回滚状态；确认启动器退出且 CS2 进程枚举为空后才能恢复环境。枚举失败或仍有 CS2 时保留备份供重试，不关闭无法确认归属的游戏进程。

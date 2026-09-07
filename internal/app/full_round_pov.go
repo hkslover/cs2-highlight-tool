@@ -13,6 +13,12 @@ import (
 const fullRoundPOVEndPaddingSeconds = 1.0
 
 func (a *App) PreviewFullRoundPOV(demoPath, playerSteamID string) (*demo.FullRoundPOVPlan, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer releaseFiles()
+
 	steamID, err := strconv.ParseUint(playerSteamID, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("无效的 SteamID: %w", err)

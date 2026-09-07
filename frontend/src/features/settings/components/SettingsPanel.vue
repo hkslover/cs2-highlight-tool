@@ -149,6 +149,7 @@
       :loading="outputsLoading"
       :opening="openingOutputsDir"
       :clearing="clearingOutputs"
+      :clear-disabled="storageBusy"
       @refresh="loadOutputsStats"
       @open="openOutputsDirectory"
       @clear="confirmClearOutputs"
@@ -168,6 +169,7 @@
       :loading="demoLoading"
       :opening="openingDemoDir"
       :clearing="clearingDemo"
+      :clear-disabled="storageBusy"
       @refresh="loadDemoStats"
       @open="openDemoDirectory"
       @clear="confirmClearDemo"
@@ -219,6 +221,7 @@ import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
 import povRadarDemoImage from "@/assets/images/pov-radar-demo.png";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type { ClipSettings, DebugPluginDLLOverrideState, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
+import { useWorkActivity } from "@/shared/state/useWorkActivity";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
 
 const props = withDefaults(
@@ -229,6 +232,8 @@ const props = withDefaults(
     active: true,
   },
 );
+
+const { storageBusy } = useWorkActivity();
 
 const AUTO_SAVE_DELAY_MS = 500;
 const saving = ref(false);
@@ -641,7 +646,7 @@ function confirmClearDemo() {
 }
 
 async function clearOutputsDirectory() {
-  if (clearingOutputs.value) {
+  if (clearingOutputs.value || storageBusy.value) {
     return;
   }
   clearingOutputs.value = true;
@@ -659,7 +664,7 @@ async function clearOutputsDirectory() {
 }
 
 async function clearDemoDirectory() {
-  if (clearingDemo.value) {
+  if (clearingDemo.value || storageBusy.value) {
     return;
   }
   clearingDemo.value = true;

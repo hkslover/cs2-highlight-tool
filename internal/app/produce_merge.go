@@ -93,8 +93,13 @@ func (a *App) mergeWorker(ctx context.Context, state *produceSessionRuntime) {
 			if !ok {
 				return
 			}
-			a.handleMergeTask(ctx, state, task)
-			state.pendingTaskCnt.Add(-1)
+			func() {
+				// Decrement inside defer so no error path (including a panic
+				// or a hung ffmpeg that gets cancelled) can leave
+				// pendingTaskCnt non-zero and block session shutdown.
+				defer state.pendingTaskCnt.Add(-1)
+				a.handleMergeTask(ctx, state, task)
+			}()
 		}
 	}
 }
@@ -122,7 +127,10 @@ func (a *App) handleMergeTask(ctx context.Context, state *produceSessionRuntime,
 		file.UpdatedAtMs = nowMs()
 	})
 
-	finalVideoPath, err := producemerge.MergeTakeVideoAudio(state.ffmpegExe, task.videoPath, task.audioPath)
+	// Merge under the session ctx: session cancellation kills the ffmpeg
+	// process immediately (instead of blocking the worker forever), and
+	// producemerge additionally bounds the mux with its own timeout.
+	finalVideoPath, err := producemerge.MergeTakeVideoAudioContext(ctx, state.ffmpegExe, task.videoPath, task.audioPath)
 	if err != nil {
 		a.updateTakeFileEntry(task.plan, func(file *ProduceTakeFile) {
 			file.Status = "failed"

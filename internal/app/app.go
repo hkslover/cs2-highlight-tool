@@ -34,6 +34,21 @@ type App struct {
 	produceStateMu sync.Mutex
 	produceState   produceSessionState
 
+	// produceLaunchMu serializes the produce launch pipeline (take-file reset,
+	// queue check, old-session stop, environment preparation, runtime install)
+	// so two concurrent GeneratePluginJSONBatch / AndLaunchHLAE requests can
+	// never interleave and corrupt each other's environment or take state.
+	produceLaunchMu sync.Mutex
+
+	managedFilesMu       sync.Mutex
+	managedFileUsers     int
+	managedFilesClearing bool
+
+	// produceEnvEpoch is the monotonically increasing produce-environment
+	// generation counter (see beginProduceEnvironmentPrep). Guarded by
+	// produceStateMu.
+	produceEnvEpoch uint64
+
 	debugPluginDLLMu       sync.Mutex
 	debugPluginDLLOverride string
 }
@@ -179,8 +194,18 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) Shutdown(ctx context.Context) {
-	a.stopProduceSessionWorker()
-	if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil {
+	// Serialize shutdown with the launch pipeline so environment preparation,
+	// runtime installation, and teardown cannot interleave while the app exits.
+	a.produceLaunchMu.Lock()
+	defer a.produceLaunchMu.Unlock()
+
+	// Never restore game files while an owned CS2 process may still be alive.
+	// A failed stop retains the runtime and its backups for next-start recovery.
+	if err := a.stopProduceSessionWorker(); err != nil {
+		if ctx != nil {
+			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", err))
+		}
+	} else if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("restore produce environment failed: %v", err))
 	}
 	if err := a.produceW.Stop(); err != nil {

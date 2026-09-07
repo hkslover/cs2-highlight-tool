@@ -202,7 +202,7 @@
             v-if="debugEnabled"
             type="default"
             :loading="generatingConfigOnlyLoading"
-            :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running"
+            :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
             @click="generateConfigOnly"
           >
             {{ t("main.produce.generate_all_json") }}
@@ -240,7 +240,7 @@
         <n-button
           type="warning"
           :loading="generatingAndLaunching"
-          :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running"
+          :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
           @click="generateAndLaunch"
         >
           {{ t("main.produce.start_produce") }}
@@ -270,6 +270,7 @@ import { ref } from "vue";
 const { debugEnabled } = useDebugSettings();
 
 const {
+  produceBusy,
   generatingAndLaunching,
   generatingConfigOnlyLoading,
   exportProduceLogsLoading,

@@ -108,6 +108,12 @@ func (a *App) OpenProducedClipInFolder(videoPath string) error {
 }
 
 func (a *App) ExportProduceHistoryVideos() (*ExportProduceHistoryResult, error) {
+	releaseFiles, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer releaseFiles()
+
 	result := &ExportProduceHistoryResult{}
 
 	selected, err := openDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
