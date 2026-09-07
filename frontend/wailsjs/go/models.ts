@@ -56,6 +56,7 @@ export namespace app {
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
+	    hide_player_avatars: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
@@ -85,6 +86,7 @@ export namespace app {
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
+	        this.hide_player_avatars = source["hide_player_avatars"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
@@ -343,6 +345,7 @@ export namespace app {
 	    include_victim: boolean;
 	    killer_spec_mode: number;
 	    victim_spec_mode: number;
+	    primary_view?: string;
 	    clip_overrides?: ClipItemOverrides;
 	
 	    static createFrom(source: any = {}) {
@@ -356,6 +359,7 @@ export namespace app {
 	        this.include_victim = source["include_victim"];
 	        this.killer_spec_mode = source["killer_spec_mode"];
 	        this.victim_spec_mode = source["victim_spec_mode"];
+	        this.primary_view = source["primary_view"];
 	        this.clip_overrides = this.convertValues(source["clip_overrides"], ClipItemOverrides);
 	    }
 	
@@ -380,6 +384,7 @@ export namespace app {
 	export class GeneratePluginJSONRequest {
 	    demo_path: string;
 	    tick_rate: number;
+	    match_end_tick?: number;
 	    selected_items?: SelectedClipItem[];
 	    full_round_pov?: FullRoundPOVItem;
 	    extra_commands?: string[];
@@ -394,6 +399,7 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.demo_path = source["demo_path"];
 	        this.tick_rate = source["tick_rate"];
+	        this.match_end_tick = source["match_end_tick"];
 	        this.selected_items = this.convertValues(source["selected_items"], SelectedClipItem);
 	        this.full_round_pov = this.convertValues(source["full_round_pov"], FullRoundPOVItem);
 	        this.extra_commands = source["extra_commands"];
@@ -758,6 +764,20 @@ export namespace app {
 	}
 	
 	
+	export class WorkActivity {
+	    produce_busy: boolean;
+	    storage_busy: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkActivity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.produce_busy = source["produce_busy"];
+	        this.storage_busy = source["storage_busy"];
+	    }
+	}
 	export class WorkspaceState {
 	    initialized: boolean;
 	    data_dir: string;
@@ -838,6 +858,7 @@ export namespace config {
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
+	    hide_player_avatars: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
@@ -880,6 +901,7 @@ export namespace config {
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
+	        this.hide_player_avatars = source["hide_player_avatars"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
@@ -932,6 +954,28 @@ export namespace demo {
 	    weapon_name: string;
 	    is_headshot: boolean;
 	    is_wallbang: boolean;
+	    weapon_class: string;
+	    penetrated_objects: number;
+	    distance: number;
+	    hit_group: number;
+	    is_noscope: boolean;
+	    is_through_smoke: boolean;
+	    is_attacker_blind: boolean;
+	    is_assisted_flash: boolean;
+	    is_team_kill: boolean;
+	    has_assist: boolean;
+	    assister_name?: string;
+	    assister_steam_id?: string;
+	    killer_health: number;
+	    killer_armor: number;
+	    killer_airborne: boolean;
+	    killer_ducking: boolean;
+	    killer_scoped: boolean;
+	    victim_blinded: boolean;
+	    is_opening_kill: boolean;
+	    killer_round_kills: number;
+	    is_clutch_kill: boolean;
+	    bomb_planted: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClipKill(source);
@@ -956,6 +1000,28 @@ export namespace demo {
 	        this.weapon_name = source["weapon_name"];
 	        this.is_headshot = source["is_headshot"];
 	        this.is_wallbang = source["is_wallbang"];
+	        this.weapon_class = source["weapon_class"];
+	        this.penetrated_objects = source["penetrated_objects"];
+	        this.distance = source["distance"];
+	        this.hit_group = source["hit_group"];
+	        this.is_noscope = source["is_noscope"];
+	        this.is_through_smoke = source["is_through_smoke"];
+	        this.is_attacker_blind = source["is_attacker_blind"];
+	        this.is_assisted_flash = source["is_assisted_flash"];
+	        this.is_team_kill = source["is_team_kill"];
+	        this.has_assist = source["has_assist"];
+	        this.assister_name = source["assister_name"];
+	        this.assister_steam_id = source["assister_steam_id"];
+	        this.killer_health = source["killer_health"];
+	        this.killer_armor = source["killer_armor"];
+	        this.killer_airborne = source["killer_airborne"];
+	        this.killer_ducking = source["killer_ducking"];
+	        this.killer_scoped = source["killer_scoped"];
+	        this.victim_blinded = source["victim_blinded"];
+	        this.is_opening_kill = source["is_opening_kill"];
+	        this.killer_round_kills = source["killer_round_kills"];
+	        this.is_clutch_kill = source["is_clutch_kill"];
+	        this.bomb_planted = source["bomb_planted"];
 	    }
 	}
 	export class ClipRound {
@@ -994,6 +1060,7 @@ export namespace demo {
 	    name: string;
 	    steam_id: string;
 	    total_kills: number;
+	    total_deaths?: number;
 	    rounds: ClipRound[];
 	
 	    static createFrom(source: any = {}) {
@@ -1005,6 +1072,7 @@ export namespace demo {
 	        this.name = source["name"];
 	        this.steam_id = source["steam_id"];
 	        this.total_kills = source["total_kills"];
+	        this.total_deaths = source["total_deaths"];
 	        this.rounds = this.convertValues(source["rounds"], ClipRound);
 	    }
 	
@@ -1130,7 +1198,10 @@ export namespace demo {
 	    clan_name_ct: string;
 	    clan_name_t: string;
 	    players: PlayerInfo[];
+	    kills: ClipKill[];
 	    clip_players: ClipPlayer[];
+	    death_players: ClipPlayer[];
+	    match_end_tick?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Metadata(source);
@@ -1151,7 +1222,10 @@ export namespace demo {
 	        this.clan_name_ct = source["clan_name_ct"];
 	        this.clan_name_t = source["clan_name_t"];
 	        this.players = this.convertValues(source["players"], PlayerInfo);
+	        this.kills = this.convertValues(source["kills"], ClipKill);
 	        this.clip_players = this.convertValues(source["clip_players"], ClipPlayer);
+	        this.death_players = this.convertValues(source["death_players"], ClipPlayer);
+	        this.match_end_tick = source["match_end_tick"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

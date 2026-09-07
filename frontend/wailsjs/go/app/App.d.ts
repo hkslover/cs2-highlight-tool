@@ -65,6 +65,8 @@ export function GetProduceWSState():Promise<producews.WSState>;
 
 export function GetStartupState():Promise<envsetup.StartupState>;
 
+export function GetWorkActivity():Promise<app.WorkActivity>;
+
 export function GetWorkspaceState():Promise<app.WorkspaceState>;
 
 export function ImportFiveEMatch(arg1:string):Promise<Array<string>>;
