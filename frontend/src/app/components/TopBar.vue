@@ -337,7 +337,7 @@ function onHistoryExported() {
 }
 
 .locale-select {
-  width: 100px;
+  width: 74px;
 }
 
 .health-btn,
@@ -518,30 +518,30 @@ function onHistoryExported() {
 
 .donate-btn {
   align-items: center;
-  background: transparent;
-  border: 1px solid rgba(255, 105, 135, 0.22);
+  background: rgba(245, 166, 35, 0.08);
+  border: 1px solid rgba(245, 166, 35, 0.28);
   border-radius: 20px;
-  color: rgba(255, 105, 135, 0.6);
+  color: #dfaa60;
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
-  gap: 4px;
+  gap: 5px;
   height: 24px;
-  letter-spacing: 0.04em;
-  padding: 0 10px 0 7px;
-  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s;
+  letter-spacing: 0.03em;
+  padding: 0 10px 0 8px;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .donate-btn:hover {
-  background: rgba(255, 105, 135, 0.1);
-  border-color: rgba(255, 105, 135, 0.5);
-  box-shadow: 0 0 12px rgba(255, 105, 135, 0.18);
-  color: rgba(255, 120, 148, 0.95);
+  background: rgba(245, 166, 35, 0.16);
+  border-color: rgba(245, 166, 35, 0.6);
+  box-shadow: 0 0 12px rgba(245, 166, 35, 0.25);
+  color: #f7cb8b;
 }
 
 .donate-btn:active {
-  background: rgba(255, 105, 135, 0.16);
+  background: rgba(245, 166, 35, 0.22);
 }
 
 @keyframes heartbeat {
@@ -552,6 +552,7 @@ function onHistoryExported() {
 
 .donate-heart {
   animation: heartbeat 2.8s ease-in-out infinite;
+  color: #f5a623;
   flex-shrink: 0;
 }
 
@@ -562,10 +563,10 @@ function onHistoryExported() {
 /* ── Donate modal card ───────────────────────────────────── */
 
 .donate-card {
-  background: #111714;
-  border: 1px solid rgba(255, 105, 135, 0.22);
+  background: #141816;
+  border: 1px solid rgba(245, 166, 35, 0.3);
   border-radius: 18px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.04);
   overflow: hidden;
   position: relative;
   width: 296px;
@@ -597,14 +598,14 @@ function onHistoryExported() {
 
 .donate-card-header {
   align-items: center;
-  border-bottom: 1px solid rgba(255, 105, 135, 0.12);
+  border-bottom: 1px solid rgba(245, 166, 35, 0.16);
   display: flex;
   gap: 7px;
   padding: 16px 48px 14px 20px;
 }
 
 .donate-card-heart {
-  color: #ff6987;
+  color: #f5a623;
   flex-shrink: 0;
 }
 

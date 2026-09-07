@@ -159,16 +159,29 @@
                         >
                           {{ t("main.clips.already_produced") }}
                         </n-tag>
-                        <n-button
-                          text
-                          size="small"
-                          class="expand-btn"
-                          @click.stop="toggleMaterialSettings(entry, item.kill.id)"
-                          @dblclick.stop
-                        >
-                          {{ isMaterialSettingsExpanded(entry, item.kill.id) ? t("main.clips.collapse") : t("main.clips.expand") }}
-                          {{ isMaterialSettingsExpanded(entry, item.kill.id) ? "▾" : "▸" }}
-                        </n-button>
+                        <div class="material-actions">
+                          <n-button
+                            text
+                            size="small"
+                            class="expand-btn"
+                            @click.stop="toggleMaterialSettings(entry, item.kill.id)"
+                            @dblclick.stop
+                          >
+                            {{ isMaterialSettingsExpanded(entry, item.kill.id) ? t("main.clips.collapse") : t("main.clips.expand") }}
+                            {{ isMaterialSettingsExpanded(entry, item.kill.id) ? "▾" : "▸" }}
+                          </n-button>
+                          <button
+                            type="button"
+                            class="material-delete-btn"
+                            :title="t('main.clips.remove_material')"
+                            @click.stop="removeMaterialSelection(entry, item.kill.id)"
+                            @dblclick.stop
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <div class="material-meta">
                         <DeathNoticeLine :kill="item.kill" compact />
@@ -357,7 +370,7 @@
                       :key="kill.id"
                       class="kill-row"
                       :class="{ selected: isKillSelectedInDemo(activeDemoEntry, kill.id) }"
-                      @dblclick="toggleKillSelection(kill)"
+                      @click="toggleKillSelection(kill)"
                     >
                       <div class="kill-line">
                         <DeathNoticeLine :kill="kill" />
@@ -742,7 +755,17 @@ function addKill(kill: DemoClipKill) {
   addMaterialSelection(entry, kill, autoAddOpponent, true, "killer");
 }
 
+let lastClickTime = 0;
+let lastClickKillId = "";
+
 function toggleKillSelection(kill: DemoClipKill) {
+  const now = Date.now();
+  if (kill.id === lastClickKillId && now - lastClickTime < 250) {
+    return;
+  }
+  lastClickTime = now;
+  lastClickKillId = kill.id;
+
   if (isKillSelectedInDemo(activeDemoEntry.value, kill.id)) {
     removeMaterialSelection(activeDemoEntry.value, kill.id);
     return;
@@ -1125,10 +1148,16 @@ function handlePOVRoundExpanded(
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
-  border: 1px solid #2f3631;
+  padding: 8px 10px;
+  border: 1px solid #28312b;
   border-radius: 8px;
-  cursor: pointer;
+  background: #151816;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.material-row:hover {
+  border-color: #38453d;
+  background: #181d1a;
 }
 
 .material-head {
@@ -1160,17 +1189,44 @@ function handlePOVRoundExpanded(
   flex: 0 0 auto;
 }
 
-.expand-btn {
+.material-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.expand-btn {
   flex: 0 0 auto;
   font-size: 12px;
 }
 
+.material-delete-btn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #7d8881;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.material-delete-btn:hover {
+  background: rgba(224, 83, 83, 0.16);
+  color: #f28b8b;
+}
+
 .material-settings {
-  border: 1px solid #3a423d;
+  border: 1px solid #323b35;
   border-radius: 8px;
-  padding: 8px;
-  background: rgba(47, 54, 49, 0.25);
+  padding: 10px;
+  background: rgba(26, 32, 28, 0.5);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1193,16 +1249,26 @@ function handlePOVRoundExpanded(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #2f3631;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #28312b;
   border-radius: 8px;
+  background: #151816;
   cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.kill-row:hover {
+  border-color: rgba(47, 181, 114, 0.45);
+  background: #1a201c;
+  transform: translateX(2px);
 }
 
 .kill-row.selected {
-  border-color: #2f9462;
-  background: rgba(47, 148, 98, 0.15);
+  border-color: #2fb572;
+  background: linear-gradient(90deg, rgba(47, 181, 114, 0.14) 0%, rgba(20, 24, 21, 0.6) 100%);
+  box-shadow: 0 0 10px rgba(47, 181, 114, 0.12), inset 0 0 0 1px rgba(47, 181, 114, 0.2);
 }
 
 .full-round-pov-section {
