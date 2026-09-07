@@ -62,6 +62,79 @@ func classifyWeapon(t common.EquipmentType) string {
 	return WeaponClassOther
 }
 
+// weaponAssetMapping maps an EquipmentType to the corresponding SVG icon asset
+// filename under frontend/public/cs2/weapon (without the .svg extension).
+// When an equipment type has no SVG asset or is unknown, it maps to an empty string,
+// signalling the UI to display the weapon's text name instead of an icon.
+var weaponAssetMapping = map[common.EquipmentType]string{
+	// Pistols
+	common.EqP2000:        "p2000",
+	common.EqGlock:        "glock",
+	common.EqP250:         "p250",
+	common.EqDeagle:       "deagle",
+	common.EqFiveSeven:    "fiveseven",
+	common.EqDualBerettas: "elite",
+	common.EqTec9:         "tec9",
+	common.EqCZ:           "cz75a",
+	common.EqUSP:          "usp_silencer",
+	common.EqRevolver:     "revolver",
+
+	// SMGs
+	common.EqMP7:   "mp7",
+	common.EqMP9:   "mp9",
+	common.EqBizon: "bizon",
+	common.EqMac10: "mac10",
+	common.EqUMP:   "ump45",
+	common.EqP90:   "p90",
+	common.EqMP5:   "mp5sd",
+
+	// Shotguns & Machine Guns
+	common.EqSawedOff: "sawedoff",
+	common.EqNova:     "nova",
+	common.EqSwag7:    "mag7",
+	common.EqXM1014:   "xm1014",
+	common.EqM249:     "m249",
+	common.EqNegev:    "negev",
+
+	// Rifles
+	common.EqGalil:  "galilar",
+	common.EqFamas:  "famas",
+	common.EqAK47:   "ak47",
+	common.EqM4A4:   "m4a1",          // CS2 SVG asset for M4A4 is m4a1.svg
+	common.EqM4A1:   "m4a1_silencer", // CS2 SVG asset for M4A1-S is m4a1_silencer.svg
+	common.EqSSG08:  "ssg08",
+	common.EqSG556:  "sg556",
+	common.EqAUG:    "aug",
+	common.EqAWP:    "awp",
+	common.EqScar20: "scar20",
+	common.EqG3SG1:  "g3sg1",
+
+	// Grenades & Equipment
+	common.EqZeus:       "taser",
+	common.EqKnife:      "knife",
+	common.EqDecoy:      "decoy",
+	common.EqMolotov:    "molotov",
+	common.EqIncendiary: "incgrenade",
+	common.EqFlash:      "flashbang",
+	common.EqSmoke:      "smokegrenade",
+	common.EqHE:         "hegrenade",
+	common.EqBomb:       "c4",
+
+	// Special Melee / Equipment
+	common.EqFists:    "fists",
+	common.EqAxe:      "axe",
+	common.EqHammer:   "hammer",
+	common.EqWrench:   "spanner",
+	common.EqSnowball: "snowball",
+	common.EqShield:   "shield",
+}
+
+// ResolveWeaponAssetID returns the exact SVG filename (without extension) for the
+// given equipment type, or an empty string if no SVG asset exists.
+func ResolveWeaponAssetID(t common.EquipmentType) string {
+	return weaponAssetMapping[t]
+}
+
 // alivePlayer is a minimal snapshot of one player's liveness, taken at the tick a
 // kill lands so the clutch check can stay a pure, testable function.
 type alivePlayer struct {

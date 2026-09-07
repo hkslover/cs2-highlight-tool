@@ -65,6 +65,7 @@ export interface DemoClipKill {
   victim_entity_id: number;
   victim_side: string;
   weapon_name: string;
+  weapon_asset_id?: string;
   is_headshot: boolean;
   is_wallbang: boolean;
 

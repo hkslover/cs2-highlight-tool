@@ -91,6 +91,7 @@ type ClipKill struct {
 	VictimEntityID int    `json:"victim_entity_id"`
 	VictimSide     string `json:"victim_side"`
 	WeaponName     string `json:"weapon_name"`
+	WeaponAssetID  string `json:"weapon_asset_id"`
 	IsHeadshot     bool   `json:"is_headshot"`
 	IsWallbang     bool   `json:"is_wallbang"`
 
@@ -304,9 +305,11 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 		killSeq++
 		weaponName := "unknown"
 		weaponClass := WeaponClassOther
+		weaponAssetID := ""
 		if e.Weapon != nil {
 			weaponName = e.Weapon.String()
 			weaponClass = classifyWeapon(e.Weapon.Type)
+			weaponAssetID = ResolveWeaponAssetID(e.Weapon.Type)
 		}
 
 		hitGroup := 0
@@ -359,6 +362,7 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 			VictimEntityID: e.Victim.EntityID,
 			VictimSide:     teamToSide(e.Victim.Team),
 			WeaponName:     weaponName,
+			WeaponAssetID:  weaponAssetID,
 			IsHeadshot:     e.IsHeadshot,
 			IsWallbang:     e.PenetratedObjects > 0,
 

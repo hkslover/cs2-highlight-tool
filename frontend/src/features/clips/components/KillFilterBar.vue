@@ -65,10 +65,16 @@
                   type="button"
                   class="weapon-chip"
                   :class="{ active: filter.weapons.includes(weapon.name) }"
-                  :title="`${weaponLabel(weapon.name)} · ${weapon.count}`"
+                  :title="`${weaponLabel(weapon.name, weapon.assetId)} · ${weapon.count}`"
                   @click="toggleWeapon(weapon.name)"
                 >
-                  <img class="weapon-img" :src="weaponIconSrc(resolveWeaponID(weapon.name))" :alt="weapon.name" />
+                  <img
+                    v-if="weapon.assetId"
+                    class="weapon-img"
+                    :src="weaponIconSrc(weapon.assetId)"
+                    :alt="weapon.name"
+                  />
+                  <span v-else class="weapon-fallback-text">{{ weapon.name }}</span>
                   <span class="weapon-count">{{ weapon.count }}</span>
                 </button>
               </div>
@@ -180,7 +186,7 @@ import {
 } from "naive-ui";
 import { t } from "@/shared/i18n";
 import type { DemoHitGroup } from "@/shared/types";
-import { resolveWeaponID, weaponIconSrc, weaponLabel } from "@/shared/weapon-icons";
+import { weaponIconSrc, weaponLabel } from "@/shared/weapon-icons";
 import {
   ADVANCED_TRAITS,
   ALL_PLAYERS_VALUE,
@@ -489,6 +495,22 @@ function onDistanceChange(value: number | [number, number]) {
 }
 
 .weapon-chip.active .weapon-img {
+  opacity: 1;
+}
+
+.weapon-fallback-text {
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+  opacity: 0.85;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weapon-chip.active .weapon-fallback-text {
+  color: #63e2b7;
   opacity: 1;
 }
 
