@@ -118,6 +118,10 @@ export function GetStartupState() {
   return window['go']['app']['App']['GetStartupState']();
 }
 
+export function GetWorkActivity() {
+  return window['go']['app']['App']['GetWorkActivity']();
+}
+
 export function GetWorkspaceState() {
   return window['go']['app']['App']['GetWorkspaceState']();
 }

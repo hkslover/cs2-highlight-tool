@@ -1,63 +1,54 @@
-# AGENTS.md（internal）
+# AGENTS.md（后端）
 
-本文件作用域：`internal/**`。  
-与根级 `AGENTS.md` 同时生效；如冲突，以本文件（更具体作用域）为准。
+作用域：`internal/**`。与根级 `AGENTS.md` 同时生效；本文件补充后端实现约束。跨层字段、事件、下载策略和制作生命周期统一见根文件，修改时须同时检查前端消费者。
 
-## envsetup 状态机约束
-- Must：保持以下组件 ID 不变：`hlae` `plugin` `ffmpeg` `cs2`。
-- Must：保持以下状态值语义一致：`pending` `checking` `downloading` `installing` `ready` `warning` `failed` `needs_action`。
-- Must：保持以下阶段值语义一致：`detecting_source` `waiting_source` `running_tasks` `ready`。
-- Must：`StartupState` 字段语义保持稳定，新增字段需保证前端兼容并更新规则文档。
-- Must：统一 Release 快照获取完成后先检查软件自身更新；若 `SelfUpdate.Available=true` 且状态为 `needs_action`，不得启动组件检查/下载/安装任务，组件步骤应保持未启动语义。
-- Must：软件更新检查失败保持非致命语义，可继续组件环境检查；只有确认发现新版本时才阻断组件流程。
-- Must：`StartupState.ads[]` 仅承载 `placement=main_steps_top_banner` 的有效 Sponsored Card 广告数据（`click_url/sponsor/title/rich_html/image_url/image_alt`），广告解析失败不得阻塞启动主流程。
-- Must：HLAE 的 `LocalVersion` 必须来自安装目录 `changelog.xml` 的首个 `<version>`；不得以配置文件持久化版本号作为真值来源。
-- Must：插件 DLL 的 `LocalVersion` 必须来自安装目录 `changelog.xml` 的首个 `<version>`；不得以配置文件持久化版本号作为真值来源。
-- Must Not：在未同步前端映射与测试前，重命名状态枚举、阶段枚举或组件 ID。
+## 分层与定位
 
-## 并发与锁
-- Must：涉及 `Service.state`、`Service.logs`、`Service.config` 的读写遵循现有锁策略（`mu` / `configMu`）。
-- Must：避免锁内执行可能阻塞的外部调用（I/O、网络、runtime 事件发射）。
-- Must：遵循既有模式，状态更新后通过 `emitState()` 通知前端。
-- Must Not：引入新的锁顺序反转，避免死锁风险。
+- `app/` 承担 Wails 边界和跨模块编排，公开请求/响应在此定义；不要让低层包依赖 UI。
+- 启动状态模型与通知入口：`envsetup/state.go`、`envsetup/events.go`；检查/动作/状态逻辑按 `service_*.go` 分工。
+- 配置默认值、归一化和兼容处理集中在 `config/config.go`；应用层设置映射在 `app/clip_settings.go`。
+- Demo 事实与整局 POV 解析在 `demo/`，片段归一化与生成编排在 `app/plugin_generate.go`，插件命令构建在 `clipsjson/`。
+- 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
+- Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
 
-## Debug 注入约束
-- Must：debug 插件 DLL override 只允许作为 `internal/app.App` 的会话级状态，不写入 `config.json`。
-- Must：录制前注入 CS2 `game/csgo/plugin/bin/server.dll` 时，debug override 只覆盖源 DLL 选择；目标目录、备份、恢复逻辑继续复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
-- Must Not：让 debug override 参与启动阶段插件版本检测；插件本地版本真值仍来自安装目录 `changelog.xml`。
+## 工作目录与启动状态机
 
-## Clip 设置与插件动作约束
-- Must：`pov_radar_enabled` 通过 `GetClipSettings` / `SaveClipSettings` 持久化，默认值为 `false`。
-- Must：仅当 `pov_radar_enabled=true` 时，插件 JSON bootstrap 才写入 `csdm_radar_pov 1`；关闭时不得写入该命令或重置命令。
-- Must Not：将 `pov_radar_enabled` 与现有 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动。
-- Must：`hide_player_avatars` 通过 `GetClipSettings` / `SaveClipSettings` 持久化，默认值为 `false`；仅当启用时插件 JSON bootstrap 才写入 `cl_teamcounter_playercount_instead_of_avatars true`。
+- 初始化遵循 `app/app_workspace.go`、`appdata/validate.go`、`appdata/registry_windows.go`。保留 service 未初始化时的防御逻辑，不把 `workspace_init` 当作组件检查失败。
+- `StartupState` 的 mode、phase、状态值和组件 ID 遵循根文件；新增字段须保持前端兼容，不得只改后端枚举。
+- 统一 Release 快照后先检查自身更新。确认发现更新并进入 `needs_action` 时，组件保持未启动语义；自更新检查失败可继续组件检查。
+- 广告解析失败不得阻断启动，只向前端暴露有效的 Sponsored Card。
+- HLAE/插件版本读安装目录的 `changelog.xml`，不得改为配置版本号。
+- 下载顺序遵循根文件；统一源请求失败可回退本地已安装组件并使用 warning，但不得伪造远端版本成功。不得恢复 `executeWithSourceFallback` / `orderedRetrySources` 旧流程或 gh-proxy 终极兜底。
 
-## 日志字段规范
-- Must：启动链路日志后端统一使用 `internal/logging`（`log/slog` 适配层），业务侧通过统一 logger API 记录结构化字段。
-- Must：`slog.HandlerOptions.ReplaceAttr` 脱敏规则必须启用，避免敏感字段进入内存 ring buffer 与 `log` 事件流。
-- Must：确保关键字段可追踪：`component` `stage` `action` `source` `attempt` `error` `elapsed_ms`。
-- Must：导出日志路径继续遵守脱敏规则（URL 参数、认证信息、home path 前缀）。
-- Must Not：在日志中输出明文 token、密钥、认证头或用户真实 home 目录。
+## 并发、进程与收尾
 
-## 统一更新源约束
-- Must：启动阶段优先请求统一 Release API 快照，再由各组件消费快照。
-- Must：每次启动都需实时进行 GeoIP 检测并获取 `country_code`；统一更新源固定为 `github`；不得依赖 `config.json` 持久化地区结果。
-- Must：组件下载回退顺序固定为：`country_code=CN` 时 `url -> mirror_url`，非 CN 时仅 `github_url`，GeoIP 检测失败或 `country_code` 为空时默认 `url -> mirror_url`；失败后直接报错。
-- Must：统一源请求失败时允许回退到本地已安装组件（warning 语义），但不得伪造远端版本成功状态。
-- Must Not：恢复多源自动回退（`executeWithSourceFallback` / `orderedRetrySources`）旧流程，或恢复 gh-proxy 终极兜底尝试。
+- `Service.state`、`Service.logs`、`Service.config` 遵循现有 `mu/configMu` 锁策略；应用 service 的访问遵循 `serviceMu`。
+- 避免锁内执行阻塞 I/O、网络或 runtime 事件发射，不引入锁顺序反转。启动状态更新后通过 `emitState()` 通知前端；制作事件复用现有队列。
+- `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。
+- 制作生命周期遵循根文件“制作、剪辑与清理”：活跃会话禁止重复生成，失败收尾保留重试所需状态；未确认进程退出、环境恢复前不得提前释放备份和占用。
+- HLAE 启动成功但 CS2 PID 未知时，保留启动器句柄并核对进程枚举；不能因 PID 为空直接恢复环境，也不能关闭归属不明的游戏进程。
+- 涉及会话退出、取消和 FFmpeg 合并时，检查等待、探测及子进程是否遵循现有取消/超时机制，避免收尾后旧任务继续写文件。
 
-## 后端变更必测
-- Required：执行 `go test ./...`
-- Required（触及 envsetup/release）：重点确认以下包通过：
-- `go test ./internal/envsetup ./internal/release`
-- Required（修改状态字段/事件契约）：补充或更新对应测试，至少覆盖：
-- 状态迁移正确性
-- 回退流程与持久化行为
-- 日志字段完整性与脱敏行为
+## 设置、生成与游戏环境
 
+- 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；关闭命令开关时不生成命令或重置命令。
+- `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动；`sky_blackout` 不得联动关闭云层。
+- `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。
+- debug DLL override 只作为 `App` 会话状态，不写入配置，也不参与启动插件版本检测。
+- debug override 仅改变注入源 DLL，目标、备份和恢复复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
+- 修改生成计划时核对 take 命名、稳定 source ID、历史去重键与前端选择状态，不能仅验证 JSON 能序列化。
 
-## 制作与目录清理生命周期
-- `GetWorkActivity` 返回 `produce_busy`、`storage_busy`：制作忙碌覆盖启动、录制、合成和收尾；目录清理还需避让导入、解析、剪辑合成、导出，以及失败后保留的制作环境。
-- 活跃制作会话禁止再次生成或启动；只有已结束的会话允许重试失败的收尾，且重试成功前不得重置片段状态或生成 JSON。
-- 前端制作按钮和设置页清理按钮以 `GetWorkActivity` 为来源；未加载或查询失败时禁用相关动作。后端仍须原子检查并保留文件使用权，不能仅依赖前端禁用。
-- HLAE 已启动但 CS2 PID 未知时，必须保留启动器句柄和回滚状态；确认启动器退出且 CS2 进程枚举为空后才能恢复环境。枚举失败或仍有 CS2 时保留备份供重试，不关闭无法确认归属的游戏进程。
+## 日志与诊断
+
+- 启动链路统一使用 `internal/logging` 的 `log/slog` 适配层，通过统一 logger API 记录结构化字段。
+- 保留 `slog.HandlerOptions.ReplaceAttr` 脱敏，敏感信息不得进入内存 ring buffer 或 `log` 事件流。
+- 关键字段保持可追踪：`component/stage/action/source/attempt/error/elapsed_ms`。
+- 导出和错误路径同样脱敏 URL 参数、认证信息及 home path；禁止记录明文 token、密钥、认证头或真实 home 目录。
+- 制作诊断应保留 WS、队列、take 和退出阶段信息；正常有序断开不能误记为故障。导出内容范围见根文件。
+
+## 验证与维护
+
+- 后端代码改动执行 `go test ./...`；envsetup/release 改动确认这两个包通过，可用 `go test ./internal/envsetup ./internal/release` 定位失败。
+- 状态、回退或日志契约变更，按涉及范围补充状态迁移、持久化/回退、字段与脱敏测试。
+- 制作生命周期变更应覆盖重复启动、文件清理互斥、失败收尾重试、进程归属与取消传播等实际受影响路径。
+- 跨层契约变更还须执行前端构建并更新根文件与前端规则；仅文档改动按根文件的文档检查执行。
