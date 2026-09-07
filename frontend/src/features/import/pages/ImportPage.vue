@@ -48,10 +48,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, ref } from "vue";
 import ImportDemoList from "@/features/import/components/ImportDemoList.vue";
 import ImportDetailPanel from "@/features/import/components/ImportDetailPanel.vue";
 import { useImportDemos } from "@/features/import/composables/useImportDemos";
+import { useSplitter } from "@/shared/composables/useSplitter";
 
 const {
   demoList,
@@ -71,73 +72,19 @@ const {
 } = useImportDemos();
 
 const upperRef = ref<HTMLElement | null>(null);
-const isResizing = ref(false);
-const actionPanelRatio = ref(0.7);
-const splitterWidthPX = 12;
-
-const listPanelStyle = computed(() => ({
-  flexBasis: `calc(${(1 - actionPanelRatio.value) * 100}% - ${(1 - actionPanelRatio.value) * splitterWidthPX}px)`,
-}));
-
-const actionPanelStyle = computed(() => ({
-  flexBasis: `calc(${actionPanelRatio.value * 100}% - ${actionPanelRatio.value * splitterWidthPX}px)`,
-}));
+const {
+  isResizing,
+  leftPanelStyle: listPanelStyle,
+  rightPanelStyle: actionPanelStyle,
+  startResize,
+} = useSplitter(upperRef, {
+  initialLeftRatio: 0.3,
+  minLeftPx: 260,
+  minRightPx: 260,
+  splitterWidthPx: 12,
+});
 
 const detailExpanded = computed(() => !detailCollapsed.value && !!selectedEntry.value);
-
-function clampActionRatio(next: number): number {
-  const containerWidth = upperRef.value?.clientWidth ?? 0;
-  const availableWidth = containerWidth - splitterWidthPX;
-  if (containerWidth <= 0) return Math.max(0.3, Math.min(0.7, next));
-  if (availableWidth <= 0) return 0.5;
-  const minPanelWidth = 260;
-  const minRatio = Math.max(0.2, minPanelWidth / availableWidth);
-  const maxRatio = Math.min(0.8, 1 - minPanelWidth / availableWidth);
-  if (minRatio > maxRatio) return 0.5;
-  return Math.max(minRatio, Math.min(maxRatio, next));
-}
-
-function updateResize(clientX: number) {
-  const rect = upperRef.value?.getBoundingClientRect();
-  if (!rect) return;
-  const splitterHalf = splitterWidthPX / 2;
-  const minX = rect.left + splitterHalf;
-  const maxX = rect.right - splitterHalf;
-  const clampedX = Math.max(minX, Math.min(clientX, maxX));
-  const availableWidth = rect.width - splitterWidthPX;
-  if (availableWidth <= 0) return;
-  const rightWidth = rect.right - clampedX - splitterHalf;
-  const nextRatio = rightWidth / availableWidth;
-  actionPanelRatio.value = clampActionRatio(nextRatio);
-}
-
-function stopResize() {
-  if (!isResizing.value) return;
-  isResizing.value = false;
-  window.removeEventListener("mousemove", handleResizeMove);
-  window.removeEventListener("mouseup", stopResize);
-  document.body.style.userSelect = "";
-  document.body.style.cursor = "";
-}
-
-function handleResizeMove(event: MouseEvent) {
-  updateResize(event.clientX);
-}
-
-function startResize(event: MouseEvent) {
-  if (event.button !== 0) return;
-  event.preventDefault();
-  isResizing.value = true;
-  document.body.style.userSelect = "none";
-  document.body.style.cursor = "col-resize";
-  updateResize(event.clientX);
-  window.addEventListener("mousemove", handleResizeMove);
-  window.addEventListener("mouseup", stopResize);
-}
-
-onBeforeUnmount(() => {
-  stopResize();
-});
 </script>
 
 <style scoped>

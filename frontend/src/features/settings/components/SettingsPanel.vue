@@ -1,5 +1,7 @@
 <template>
   <n-space vertical :size="14">
+    <n-alert v-if="errorMessage" type="error" :bordered="false" closable @close="errorMessage = ''">{{ errorMessage }}</n-alert>
+    <n-alert v-if="successMessage" type="success" :bordered="false" closable @close="successMessage = ''">{{ successMessage }}</n-alert>
     <n-card size="small" :bordered="true" class="section-card">
       <template #header>
         <span class="section-title">{{ t("main.settings.clip_title") }}</span>
@@ -207,9 +209,6 @@
         </div>
       </n-space>
     </n-card>
-
-    <n-alert v-if="errorMessage" type="error" :bordered="false">{{ errorMessage }}</n-alert>
-    <n-alert v-if="successMessage" type="success" :bordered="false">{{ successMessage }}</n-alert>
   </n-space>
 </template>
 
@@ -252,6 +251,14 @@ const hasPendingSave = ref(false);
 const settingSearchQuery = ref("");
 const settingPage = ref(1);
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let successTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearSuccessTimer() {
+  if (successTimer != null) {
+    clearTimeout(successTimer);
+    successTimer = null;
+  }
+}
 const SETTING_PAGE_SIZE = 8;
 const dialog = useDialog();
 const message = useMessage();
@@ -485,6 +492,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearAutoSaveTimer();
+  clearSuccessTimer();
 });
 
 async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
@@ -772,8 +780,15 @@ async function saveSettings() {
     const saved = await callBackend<ClipSettings>("SaveClipSettings", settings);
     await applySettingsFromBackend(saved);
     window.dispatchEvent(new CustomEvent(CLIP_SETTINGS_SAVED_EVENT));
+    clearSuccessTimer();
     successMessage.value = t("main.settings.saved");
+    successTimer = setTimeout(() => {
+      successMessage.value = "";
+      successTimer = null;
+    }, 3000);
   } catch (err: unknown) {
+    clearSuccessTimer();
+    successMessage.value = "";
     errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
     saving.value = false;

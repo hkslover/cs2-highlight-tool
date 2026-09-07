@@ -65,6 +65,7 @@ export function useProducePage() {
   const router = useRouter();
   const message = useMessage();
   const {
+    demoList,
     clipReadyDemos,
     ensureClipDemoSelected,
     getMaterialSelections,
@@ -183,6 +184,17 @@ export function useProducePage() {
       return type === "produce_clip" && !!String(item.video_path || "").trim();
     }),
   );
+
+  const emptyStage = computed<"no_demos" | "no_selections" | "all_completed">(() => {
+    if (!demoList.value.length) {
+      return "no_demos";
+    }
+    const hasHistoryItems = (historySnapshot.value.items || []).length > 0;
+    if (hasHistoryItems) {
+      return "all_completed";
+    }
+    return "no_selections";
+  });
 
   const plannedRowsByDemo = computed(() => {
     const byDemo = new Map<string, ProduceTakeRow[]>();
@@ -832,6 +844,14 @@ export function useProducePage() {
     window.dispatchEvent(new CustomEvent(OPEN_PRODUCE_HISTORY_EVENT));
   }
 
+  function goToImport() {
+    void router.push("/import");
+  }
+
+  function goToClips() {
+    void router.push("/clips");
+  }
+
   function goToEdit() {
     void router.push("/edit");
   }
@@ -857,6 +877,7 @@ export function useProducePage() {
     displayDemos,
     hasPendingMaterials,
     hasEditableClips,
+    emptyStage,
     getFullRoundPOVSelection,
     getFullRoundPOVTrackingLabel,
     fullRoundPlanByDemo,
@@ -868,7 +889,7 @@ export function useProducePage() {
     runtimeStateType,
     runtimeStateMessage,
     canExportProduceLogs,
-    // Functions
+    // Methods
     buildTakeRow,
     plannedRowsForDemo,
     plannedRoundGroupsForDemo,
@@ -900,5 +921,7 @@ export function useProducePage() {
     exportProduceLogs,
     openHistoryDrawer,
     goToEdit,
+    goToImport,
+    goToClips,
   };
 }

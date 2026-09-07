@@ -13,20 +13,43 @@
 
       <n-space vertical :size="10">
         <div v-if="!displayDemos.length" class="produce-empty">
-          <n-empty :description="t('main.produce.no_selection_or_done')" />
-          <n-space>
-            <n-button type="primary" secondary @click="openHistoryDrawer">
-              {{ t("main.produce.open_history_drawer") }}
-            </n-button>
-            <n-button
-              v-if="hasEditableClips"
-              type="success"
-              secondary
-              @click="goToEdit"
-            >
-              {{ t("main.produce.goto_edit") }}
-            </n-button>
-          </n-space>
+          <template v-if="emptyStage === 'no_demos'">
+            <n-empty :description="t('main.produce.empty_no_demos')" />
+            <n-space>
+              <n-button type="primary" secondary @click="goToImport">
+                {{ t("main.produce.goto_import") }}
+              </n-button>
+            </n-space>
+          </template>
+
+          <template v-else-if="emptyStage === 'no_selections'">
+            <n-empty :description="t('main.produce.empty_no_selections')" />
+            <n-space>
+              <n-button type="primary" secondary @click="goToClips">
+                {{ t("main.produce.goto_clips") }}
+              </n-button>
+            </n-space>
+          </template>
+
+          <template v-else>
+            <n-empty :description="t('main.produce.empty_all_completed')" />
+            <n-space>
+              <n-button type="primary" secondary @click="openHistoryDrawer">
+                {{ t("main.produce.open_history_drawer") }}
+              </n-button>
+              <n-button
+                v-if="hasEditableClips"
+                type="success"
+                secondary
+                @click="goToEdit"
+              >
+                {{ t("main.produce.goto_edit") }}
+              </n-button>
+              <n-button quaternary @click="goToClips">
+                {{ t("main.produce.goto_clips") }}
+              </n-button>
+            </n-space>
+          </template>
         </div>
 
         <n-collapse v-else v-model:expanded-names="expandedNames">
@@ -307,6 +330,9 @@ const {
   onPlatformCheckCancelled,
   openHistoryDrawer,
   goToEdit,
+  goToImport,
+  goToClips,
+  emptyStage,
   errorMessage,
   exportProduceLogs,
   getFullRoundPOVSelection,
