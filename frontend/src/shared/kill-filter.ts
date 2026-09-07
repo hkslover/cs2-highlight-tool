@@ -249,6 +249,55 @@ function matchesPlayer(kill: DemoClipKill, filter: KillFilter, playerSteamID: st
   }
 }
 
+/**
+ * All kills in scope for the active player and role, before any facet conditions
+ * (weapons, traits, distance, rounds) are applied.
+ *
+ * This forms the candidate pool for facet summaries: the weapons the player
+ * actually used (or suffered), the maximum distance they recorded, and the
+ * denominator of the match counter.
+ */
+export function collectScopedKills(
+  kills: DemoClipKill[],
+  filter: KillFilter,
+  playerSteamID: string,
+): DemoClipKill[] {
+  if (filter.ignore_player || !playerSteamID) {
+    return kills;
+  }
+  return kills.filter((kill) => matchesPlayer(kill, filter, playerSteamID));
+}
+
+/**
+ * Prunes filter conditions that become impossible or invalid when moving to a
+ * new scoped candidate list (e.g. switching to a player who never used the
+ * currently selected weapons, or whose kills were all shorter than the current
+ * min distance threshold).
+ */
+export function sanitizeFilterForScopedKills(
+  filter: KillFilter,
+  scopedKills: DemoClipKill[],
+): Partial<KillFilter> {
+  const patch: Partial<KillFilter> = {};
+  if (filter.weapons.length > 0) {
+    const availableWeapons = new Set<string>();
+    for (const k of scopedKills) {
+      if (k.weapon_name) availableWeapons.add(k.weapon_name);
+    }
+    const retained = filter.weapons.filter((w) => availableWeapons.has(w));
+    if (retained.length !== filter.weapons.length) {
+      patch.weapons = retained;
+    }
+  }
+  if (filter.distance) {
+    const maxDist = maxKillDistance(scopedKills);
+    if (filter.distance[0] > maxDist) {
+      patch.distance = null;
+    }
+  }
+  return patch;
+}
+
 /** Tests one kill against the filter. An empty group means "no constraint". */
 export function matchKill(kill: DemoClipKill, filter: KillFilter, playerSteamID: string): boolean {
   if (!matchesPlayer(kill, filter, playerSteamID)) return false;
