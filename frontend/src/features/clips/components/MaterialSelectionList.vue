@@ -326,9 +326,13 @@ function handleXrayEnabledChange(killID: string, checked: boolean): void {
   flex-wrap: wrap;
 }
 
-.material-meta,
-.view-tags {
+.material-meta {
   width: 100%;
+  min-width: 0;
+}
+
+.view-tags {
+  flex: 0 1 auto;
   min-width: 0;
 }
 
