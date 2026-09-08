@@ -1,4 +1,5 @@
 import { computed, ref } from "vue";
+import { backend } from "@/shared/backend";
 import type { GameInfoHealth } from "@/shared/types";
 
 const defaultHealth: GameInfoHealth = {
@@ -14,13 +15,6 @@ const loading = ref(false);
 const repairing = ref(false);
 const lastError = ref("");
 
-async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-  const api = window.go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return (await fn(...args)) as T;
-}
-
 export function useGameInfoHealth() {
   const needsRepair = computed(() => health.value.status === "needs_repair" || health.value.needs_repair);
   const isHealthy = computed(() => health.value.status === "ok" && !health.value.needs_repair);
@@ -30,7 +24,7 @@ export function useGameInfoHealth() {
     loading.value = true;
     lastError.value = "";
     try {
-      const next = await callBackend<GameInfoHealth>("GetGameInfoHealth");
+      const next = await backend.GetGameInfoHealth();
       health.value = next || { ...defaultHealth };
       return health.value;
     } catch (error) {
@@ -51,7 +45,7 @@ export function useGameInfoHealth() {
     repairing.value = true;
     lastError.value = "";
     try {
-      const next = await callBackend<GameInfoHealth>("RepairGameInfo");
+      const next = await backend.RepairGameInfo();
       health.value = next || { ...defaultHealth };
       return health.value;
     } catch (error) {

@@ -1,6 +1,7 @@
 import { computed } from "vue";
 import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
+import { backend } from "@/shared/backend";
 import type {
   ComponentStatus,
   ProgressMessage,
@@ -72,46 +73,37 @@ export function useStartupWizard(props: {
     return [selfUpdateTask, ...componentTasks];
   });
 
-  async function callBackend(method: string, ...args: unknown[]) {
-    const api = (window as any).go?.app?.App as
-      | Record<string, (...args: unknown[]) => Promise<unknown>>
-      | undefined;
-    const fn = api?.[method];
-    if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-    return fn(...args);
-  }
-
   function retry(componentID: string) {
-    callBackend("RetryStartupComponent", componentID);
+    void backend.RetryStartupComponent(componentID);
   }
 
   function reinstall(componentID: string) {
-    callBackend("ReinstallStartupComponent", componentID);
+    void backend.ReinstallStartupComponent(componentID);
   }
 
   function openManual(componentID: string) {
-    callBackend("OpenManualDownload", componentID);
+    void backend.OpenManualDownload(componentID);
   }
 
   function cancelDownload(componentID: string) {
-    callBackend("CancelStartupDownload", componentID);
+    void backend.CancelStartupDownload(componentID);
   }
 
   function importManual(componentID: string) {
-    callBackend("ImportManualDownload", componentID);
+    void backend.ImportManualDownload(componentID);
   }
 
   function pickCS2Path() {
-    callBackend("PickCS2Path");
+    void backend.PickCS2Path();
   }
 
   function openSelfUpdateDownload() {
-    callBackend("OpenManualDownload", "self_update");
+    void backend.OpenManualDownload("self_update");
   }
 
   async function doEnterMain() {
     try {
-      await callBackend("EnterMainApp");
+      await backend.EnterMainApp();
     } catch (err) {
       message.error(t("startup.toast.enter_main_failed", { error: String(err) }));
     }
@@ -136,7 +128,7 @@ export function useStartupWizard(props: {
 
   async function exportLogs() {
     try {
-      const path = (await callBackend("ExportStartupLogs")) as string;
+      const path = await backend.ExportStartupLogs();
       if (path && path.trim()) {
         message.success(t("startup.toast.logs_exported", { path }));
       }
@@ -148,7 +140,7 @@ export function useStartupWizard(props: {
   async function confirmReset() {
     let dataDir = "";
     try {
-      const ws = (await callBackend("GetWorkspaceState")) as WorkspaceState | undefined;
+      const ws: WorkspaceState = await backend.GetWorkspaceState();
       dataDir = (ws?.data_dir ?? "").trim();
     } catch {
       dataDir = "";
@@ -162,7 +154,7 @@ export function useStartupWizard(props: {
       positiveButtonProps: { type: "error" },
       onPositiveClick: async () => {
         try {
-          await callBackend("ResetWorkspace");
+          await backend.ResetWorkspace();
           message.success(t("workspace.reset.success"));
         } catch (err) {
           message.error(t("workspace.reset.failure", { error: String(err) }));

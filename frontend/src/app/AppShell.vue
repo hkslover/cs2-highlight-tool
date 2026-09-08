@@ -33,7 +33,9 @@ import WorkspaceInitModal from "@/features/workspace-init/components/WorkspaceIn
 import ChangelogModal from "@/features/changelog/components/ChangelogModal.vue";
 import { useChangelog } from "@/features/changelog/composables/useChangelog";
 import { useI18n } from "@/shared/i18n";
+import { backend } from "@/shared/backend";
 import type { ProgressMessage, StartupState } from "@/shared/types";
+import { useSettingsStore } from "@/domains/settings/settings-state";
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -111,6 +113,7 @@ const state = reactive<StartupState>({
 });
 
 const progressMap = reactive<Record<string, ProgressMessage>>({});
+const settingsStore = useSettingsStore();
 
 const { pending: pendingChangelog, checkPending, ack: ackChangelog } = useChangelog();
 
@@ -136,8 +139,17 @@ function statusForProgressKey(key: string): string {
 }
 
 function applyState(next: StartupState) {
+  const previousMode = state.mode;
   const wasRunning = state.running;
   Object.assign(state, next);
+
+  if (next.mode === "workspace_init" && previousMode !== "workspace_init") {
+    settingsStore.resetForWorkspace();
+  } else if (previousMode === "workspace_init" && next.mode !== "workspace_init") {
+    // Keep an always-open settings drawer in sync with the newly selected
+    // workspace. init() remains deduplicated for the startup event sequence.
+    void settingsStore.init();
+  }
 
   if (!wasRunning && state.running) {
     for (const key of Object.keys(progressMap)) {
@@ -150,15 +162,6 @@ function applyState(next: StartupState) {
       delete progressMap[key];
     }
   }
-}
-
-async function callBackend(method: string, ...args: unknown[]) {
-  const api = window.go?.app?.App as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) {
-    throw new Error(`Wails API not loaded: ${method}`);
-  }
-  return fn(...args);
 }
 
 onMounted(async () => {
@@ -178,13 +181,13 @@ onMounted(async () => {
   });
 
   try {
-    const initial = (await callBackend("GetStartupState")) as StartupState;
+    const initial = await backend.GetStartupState();
     applyState(initial);
     // Skip RunStartupChecks while user is still initializing the workspace directory.
     // SetWorkspaceDir on the backend will trigger startup checks itself; we just react
     // to the resulting startup_state_changed events.
     if (state.mode !== "workspace_init") {
-      await callBackend("RunStartupChecks");
+      await backend.RunStartupChecks();
     }
   } catch {
     // startup errors are surfaced through backend state/log events

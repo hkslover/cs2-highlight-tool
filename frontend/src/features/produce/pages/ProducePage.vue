@@ -284,8 +284,7 @@ import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import { t } from "@/shared/i18n";
 import type { DemoClipKill, DemoListEntry, FullRoundPOVSegment } from "@/shared/types";
 import { isOpponentIncluded, isPrimaryIncluded } from "@/shared/clip-views";
-import { getSelectedPlayerSteamID } from "@/features/import/composables/useDemoData";
-import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
+import DeathNoticeLine from "@/shared/ui/DeathNoticeLine.vue";
 import PlatformClientCheckModal from "@/features/produce/components/PlatformClientCheckModal.vue";
 import { useProducePage } from "@/features/produce/composables/useProducePage";
 import { ref } from "vue";
@@ -363,7 +362,7 @@ function handleFullRoundPOVExpanded(
 }
 
 function povSegmentTitle(entry: DemoListEntry | null, segment: FullRoundPOVSegment): string {
-  const playerSteamID = getSelectedPlayerSteamID(entry);
+  const playerSteamID = getFullRoundPOVSelection(entry).player_steam_id;
   const kills = getPOVRoundKillCount(entry, playerSteamID, segment.round);
   const died = String(segment.end_reason || "").toLowerCase() === "target_death";
   const key = died ? "main.clips.full_round_pov_round_title_died" : "main.clips.full_round_pov_round_title_survived";
@@ -380,7 +379,7 @@ function getPOVRoundKillCount(entry: DemoListEntry | null, playerSteamID: string
 
 function povRoundKills(entry: DemoListEntry | null, roundNum: number): DemoClipKill[] {
   if (!entry?.meta?.clip_players) return [];
-  const playerSteamID = getSelectedPlayerSteamID(entry);
+  const playerSteamID = getFullRoundPOVSelection(entry).player_steam_id;
   const player = entry.meta.clip_players.find((p) => p.steam_id === playerSteamID);
   if (!player) return [];
   const round = player.rounds.find((r) => r.round === roundNum);

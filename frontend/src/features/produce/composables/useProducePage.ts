@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
@@ -6,143 +6,81 @@ import type {
   DemoClipKill,
   DemoListEntry,
   DemoMaterialSelection,
-  GeneratePluginJSONBatchRequest,
-  GeneratePluginJSONBatchResult,
   GeneratePluginJSONRequest,
-  ProduceQueueState,
   ProduceTakeFile,
-  ProduceTakeFileSnapshot,
-  ProduceTakePlan,
   ProduceTakeStatus,
-  ProduceTakeStatusSnapshot,
-  ProduceWSState,
 } from "@/shared/types";
 
-import { useImportDemos } from "@/features/import/composables/useImportDemos";
+import {
+  clipReadyDemos,
+  demoList,
+  ensureClipDemoSelected,
+} from "@/domains/demo";
+import {
+  fullRoundPlanByDemo,
+  fullRoundPlanErrorByDemo,
+  getFullRoundPOVSelection,
+  getFullRoundPOVTrackingLabel,
+  getMaterialSelections,
+} from "@/domains/clip-selection";
 import { useProducePageState } from "@/features/produce/composables/useProducePageState";
-import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
+import { useProduceHistory } from "@/features/produce/composables/useProduceHistory";
 import { useWorkActivity } from "@/shared/state/useWorkActivity";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
-import { usePlatformClientCheck } from "@/features/produce/composables/usePlatformClientCheck";
-import { EventsOn } from "../../../../wailsjs/runtime/runtime";
+import { useProduceLaunch } from "@/features/produce/composables/useProduceLaunch";
+import { useProduceRequests } from "@/features/produce/composables/useProduceRequests";
+import { useProduceStateSync } from "@/features/produce/composables/useProduceStateSync";
+import { buildProduceJobs } from "@/domains/production/jobs";
+import {
+  buildPlannedRoundGroupsByDemo,
+  buildPlannedRowsByDemo,
+  buildSelectedRoundGroups,
+  buildTakeRow,
+  compareTakeRows,
+  pendingSelectionsByDemo as selectPendingSelectionsByDemo,
+  producedKillIDsByDemo as selectProducedKillIDsByDemo,
+  resolveTakeState as resolveProduceTakeState,
+  splitKillsByRound,
+  takeFileKey,
+  takeStatusKey,
+  type ProduceRowState,
+  type ProduceTakeRoundGroup,
+  type ProduceTakeRow,
+  type SelectedRoundGroup,
+} from "@/domains/production/selectors";
 import { OPEN_PRODUCE_HISTORY_EVENT } from "@/shared/events";
-
-export type ProduceRowState = "pending" | "recorded" | "waiting_files" | "recording" | "processing" | "completed" | "failed";
-
-export interface ProduceTakeRow {
-  key: string;
-  demo_path: string;
-  take_index: number;
-  take_name: string;
-  view: string;
-  spec_mode: number;
-  kill_ids: string[];
-  kills: DemoClipKill[];
-  round?: number;
-  player_name?: string;
-  player_steam_id?: string;
-}
-
-export interface ProduceTakeRoundRow {
-  key: string;
-  row: ProduceTakeRow;
-  kills: DemoClipKill[];
-}
-
-export interface ProduceTakeRoundGroup {
-  name: string;
-  round: number;
-  kill_count: number;
-  rows: ProduceTakeRoundRow[];
-}
-
-export interface SelectedRoundGroup {
-  round: number;
-  items: DemoMaterialSelection[];
-}
 
 export function useProducePage() {
   const router = useRouter();
   const message = useMessage();
-  const {
-    demoList,
-    clipReadyDemos,
-    ensureClipDemoSelected,
-    getMaterialSelections,
-    getFullRoundPOVSelection,
-    getFullRoundPOVTrackingLabel,
-    fullRoundPlanByDemo,
-    fullRoundPlanErrorByDemo,
-  } = useImportDemos();
   const { batchResult, launchViewEnabled, errorMessage, killSnapshotByDemo, resetProducePageState } = useProducePageState();
   const { historySnapshot } = useProduceHistory();
   const { debugEnabled, keepProduceIntermediates } = useDebugSettings();
 
   const { produceBusy, refreshWorkActivity } = useWorkActivity();
-  const platformCheck = usePlatformClientCheck();
-  const showPlatformCheckModal = ref(false);
-
-  const generatingAndLaunching = ref(false);
-  const generatingConfigOnlyLoading = ref(false);
   const exportProduceLogsLoading = ref(false);
   const expandedNames = ref<string[]>([]);
   const plannedRoundExpandedByDemo = ref<Record<string, string[]>>({});
-  const wsState = ref<ProduceWSState>({
-    address: "",
-    connected: false,
-    updated_at_ms: 0,
-  });
-  const queueState = ref<ProduceQueueState>({
-    running: false,
-    total: 0,
-    completed: 0,
-    current_index: -1,
-    pending_ack: false,
-    updated_at_ms: 0,
-  });
-  const takeSnapshot = ref<ProduceTakeStatusSnapshot>({
-    items: [],
-    total_takes: 0,
-    started_takes: 0,
-    completed_takes: 0,
-    updated_at_ms: 0,
-  });
-  const takeFiles = ref<ProduceTakeFileSnapshot>({
-    items: [],
-    updated_at_ms: 0,
-  });
-  const offEventHandlers: Array<() => void> = [];
+  const {
+    wsState,
+    queueState,
+    takeSnapshot,
+    takeFiles,
+    initialize: initializeProductionState,
+  } = useProduceStateSync();
+
+  const requests = useProduceRequests();
 
   const producedKillIDsByDemo = computed(() => {
-    const byDemo = new Map<string, Set<string>>();
-    for (const item of historySnapshot.value.items || []) {
-      const demoPath = item.demo_path || "";
-      if (!demoPath) continue;
-      if (!byDemo.has(demoPath)) {
-        byDemo.set(demoPath, new Set<string>());
-      }
-      const set = byDemo.get(demoPath)!;
-      for (const killID of item.kill_ids || []) {
-        if (killID) {
-          set.add(killID);
-        }
-      }
-    }
-    return byDemo;
+    return selectProducedKillIDsByDemo(historySnapshot.value.items || []);
   });
 
   const pendingSelectionsByDemo = computed(() => {
-    const byDemo = new Map<string, DemoMaterialSelection[]>();
-    for (const entry of clipReadyDemos.value) {
-      const produced = producedKillIDsByDemo.value.get(entry.file_path);
-      const pending = getMaterialSelections(entry).filter((item) => {
-        const killID = item.kill?.id || "";
-        if (!killID) return false;
-        return !produced?.has(killID);
-      });
-      byDemo.set(entry.file_path, pending);
-    }
-    return byDemo;
+    return selectPendingSelectionsByDemo(
+      clipReadyDemos.value,
+      getMaterialSelections,
+      producedKillIDsByDemo.value,
+    );
   });
 
   const selectedKillsByDemo = computed(() => {
@@ -189,111 +127,26 @@ export function useProducePage() {
     if (!demoList.value.length) {
       return "no_demos";
     }
-    const hasHistoryItems = (historySnapshot.value.items || []).length > 0;
-    if (hasHistoryItems) {
+    const hasProducedHistory = (historySnapshot.value.items || []).some(
+      (item) => (item.history_type || "produce_clip") === "produce_clip",
+    );
+    if (hasProducedHistory) {
       return "all_completed";
     }
     return "no_selections";
   });
 
   const plannedRowsByDemo = computed(() => {
-    const byDemo = new Map<string, ProduceTakeRow[]>();
-    if (!launchViewEnabled.value) {
-      return byDemo;
-    }
-    const result = batchResult.value;
-    if (!result?.results?.length) {
-      return byDemo;
-    }
-    for (const item of result.results) {
-      const demoPath = item.demo_path;
-      const snapshotKills = killSnapshotByDemo.value[demoPath] || [];
-      const killMap = new Map<string, DemoClipKill>(
-        snapshotKills
-          .filter((kill) => !!kill?.id)
-          .map((kill) => [kill.id, kill]),
-      );
-      if (killMap.size === 0) {
-        const live = selectedKillsByDemo.value.get(demoPath);
-        if (live) {
-          for (const [id, kill] of live.entries()) {
-            killMap.set(id, kill);
-          }
-        }
-      }
-      const plans = item.take_plans || [];
-      const rows: ProduceTakeRow[] = [];
-      for (const plan of plans) {
-        rows.push(buildTakeRow(plan, demoPath, killMap));
-      }
-      if (rows.length) {
-        byDemo.set(demoPath, rows);
-      }
-    }
-    return byDemo;
+    return buildPlannedRowsByDemo(
+      launchViewEnabled.value,
+      batchResult.value,
+      killSnapshotByDemo.value,
+      selectedKillsByDemo.value,
+    );
   });
 
   const plannedRoundGroupsByDemo = computed(() => {
-    const byDemo = new Map<string, ProduceTakeRoundGroup[]>();
-    for (const [demoPath, rows] of plannedRowsByDemo.value.entries()) {
-      if (!rows.length) continue;
-      const groupMap = new Map<string, ProduceTakeRoundGroup>();
-      for (const row of rows) {
-        if (String(row.view).toLowerCase() === "full_round_pov") {
-          const groupName = "pov-group";
-          if (!groupMap.has(groupName)) {
-            groupMap.set(groupName, {
-              name: groupName,
-              round: 0,
-              kill_count: 0,
-              rows: [],
-            });
-          }
-          const group = groupMap.get(groupName)!;
-          group.rows.push({
-            key: `${row.key}#${groupName}`,
-            row,
-            kills: [],
-          });
-          continue;
-        }
-        const groupedKills = splitKillsByRound(row.kills);
-        if (!groupedKills.length) {
-          groupedKills.push({ round: Number(row.round || 0), kills: [] });
-        }
-        for (const grouped of groupedKills) {
-          const groupName = grouped.round > 0 ? `round-${grouped.round}` : "round-unknown";
-          if (!groupMap.has(groupName)) {
-            groupMap.set(groupName, {
-              name: groupName,
-              round: grouped.round,
-              kill_count: 0,
-              rows: [],
-            });
-          }
-          const group = groupMap.get(groupName)!;
-          group.rows.push({
-            key: `${row.key}#${groupName}`,
-            row,
-            kills: grouped.kills,
-          });
-          group.kill_count += grouped.kills.length;
-        }
-      }
-      const sortedGroups = Array.from(groupMap.values())
-        .map((group) => ({
-          ...group,
-          rows: group.rows.slice().sort((a, b) => compareTakeRows(a.row, b.row)),
-        }))
-        .sort((a, b) => {
-          if (a.round <= 0 && b.round <= 0) return 0;
-          if (a.round <= 0) return 1;
-          if (b.round <= 0) return -1;
-          return a.round - b.round;
-        });
-      byDemo.set(demoPath, sortedGroups);
-    }
-    return byDemo;
+    return buildPlannedRoundGroupsByDemo(plannedRowsByDemo.value);
   });
 
   const takeStatusByKey = computed(() => {
@@ -367,97 +220,21 @@ export function useProducePage() {
 
   onMounted(async () => {
     ensureClipDemoSelected();
+    let initialized = false;
     try {
-      await ensureProduceHistoryInitialized();
+      await initializeProductionState();
+      initialized = true;
     } catch {
-      // ignore and continue
+      // The app-level store keeps retryable subscriptions. A later app-shell
+      // retry or route entry can call initializeProductionState again.
     }
-    let queueRunning = false;
-    try {
-      queueState.value = await callBackend<ProduceQueueState>("GetProduceQueueState");
-      queueRunning = !!queueState.value.running;
-    } catch {
-      // ignore and wait for events
-    }
-    if (!queueRunning) {
+    await refreshWorkActivity();
+    // A non-running queue is not enough to declare the session idle: merge,
+    // cleanup, and environment restoration remain covered by produceBusy.
+    if (initialized && !queueState.value.running && !produceBusy.value) {
       resetProducePageState();
     }
-    try {
-      wsState.value = await callBackend<ProduceWSState>("GetProduceWSState");
-    } catch {
-      // ignore and wait for events
-    }
-    try {
-      takeSnapshot.value = await callBackend<ProduceTakeStatusSnapshot>("GetProduceTakeSnapshot");
-    } catch {
-      // ignore and wait for events
-    }
-    try {
-      takeFiles.value = await callBackend<ProduceTakeFileSnapshot>("GetProduceTakeFiles");
-    } catch {
-      // ignore and wait for events
-    }
-
-    offEventHandlers.push(
-      EventsOn("produce_ws_state_changed", (next: ProduceWSState) => {
-        wsState.value = next;
-      }),
-    );
-    offEventHandlers.push(
-      EventsOn("produce_queue_state_changed", (next: ProduceQueueState) => {
-        queueState.value = next;
-      }),
-    );
-    offEventHandlers.push(
-      EventsOn("produce_take_status_changed", (next: ProduceTakeStatusSnapshot) => {
-        takeSnapshot.value = next;
-      }),
-    );
-    offEventHandlers.push(
-      EventsOn("produce_take_file_changed", (next: ProduceTakeFileSnapshot) => {
-        takeFiles.value = next;
-      }),
-    );
   });
-
-  onBeforeUnmount(() => {
-    for (const off of offEventHandlers) {
-      off();
-    }
-    offEventHandlers.length = 0;
-  });
-
-  async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-    const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-    const fn = api?.[method];
-    if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-    return fn(...args) as Promise<T>;
-  }
-
-  function buildTakeRow(
-    plan: ProduceTakePlan,
-    fallbackDemoPath: string,
-    killMap: Map<string, DemoClipKill>,
-  ): ProduceTakeRow {
-    const demoPath = plan.demo_path || fallbackDemoPath;
-    const takeIndex = Number(plan.take_index || 0);
-    const view = String(plan.view || "killer");
-    const killIDs = (plan.kill_ids || []).filter((id) => !!id);
-    const kills = killIDs.map((id) => killMap.get(id)).filter((kill): kill is DemoClipKill => !!kill);
-    return {
-      key: takeRowKey(demoPath, takeIndex, view),
-      demo_path: demoPath,
-      take_index: takeIndex,
-      take_name: String(plan.take_name || ""),
-      view,
-      spec_mode: Number(plan.spec_mode || 1),
-      kill_ids: killIDs,
-      kills,
-      round: Number(plan.round || 0),
-      player_name: String(plan.player_name || ""),
-      player_steam_id: String(plan.player_steam_id || ""),
-    };
-  }
 
   function plannedRowsForDemo(entry: DemoListEntry): ProduceTakeRow[] {
     return plannedRowsByDemo.value.get(entry.file_path) || [];
@@ -512,8 +289,10 @@ export function useProducePage() {
 
   function povSegmentCountForDemo(entry: DemoListEntry): number {
     const selection = getFullRoundPOVSelection(entry);
-    if (!selection.enabled) return 0;
     const plan = fullRoundPlanByDemo.value[entry.key];
+    const selectedPlayer = String(selection.player_steam_id || "").trim();
+    const plannedPlayer = String(plan?.player_steam_id || "").trim();
+    if (!selection.enabled || !selectedPlayer || plannedPlayer !== selectedPlayer) return 0;
     return plan?.segments?.length ?? 0;
   }
 
@@ -530,218 +309,20 @@ export function useProducePage() {
   }
 
   function selectedRoundGroupsForDemo(entry: DemoListEntry): SelectedRoundGroup[] {
-    const grouped = new Map<number, DemoMaterialSelection[]>();
-    for (const item of pendingSelectionsForDemo(entry)) {
-      const round = Number(item.kill?.round || 0);
-      if (!grouped.has(round)) {
-        grouped.set(round, []);
-      }
-      grouped.get(round)!.push(item);
-    }
-    return Array.from(grouped.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([round, items]) => ({
-        round,
-        items: items.slice().sort((a, b) => {
-          const tickA = Number(a.kill?.tick || 0);
-          const tickB = Number(b.kill?.tick || 0);
-          if (tickA === tickB) {
-            return String(a.kill?.id || "").localeCompare(String(b.kill?.id || ""));
-          }
-          return tickA - tickB;
-        }),
-      }));
-  }
-
-  function splitKillsByRound(kills: DemoClipKill[]): Array<{ round: number; kills: DemoClipKill[] }> {
-    const grouped = new Map<number, DemoClipKill[]>();
-    for (const kill of kills) {
-      const round = Number(kill.round || 0);
-      const normalizedRound = round > 0 ? round : 0;
-      if (!grouped.has(normalizedRound)) {
-        grouped.set(normalizedRound, []);
-      }
-      grouped.get(normalizedRound)!.push(kill);
-    }
-    return Array.from(grouped.entries())
-      .sort((a, b) => {
-        if (a[0] <= 0 && b[0] <= 0) return 0;
-        if (a[0] <= 0) return 1;
-        if (b[0] <= 0) return -1;
-        return a[0] - b[0];
-      })
-      .map(([round, items]) => ({
-        round,
-        kills: items.slice().sort((a, b) => {
-          const tickA = Number(a.tick || 0);
-          const tickB = Number(b.tick || 0);
-          if (tickA === tickB) {
-            return String(a.id || "").localeCompare(String(b.id || ""));
-          }
-          return tickA - tickB;
-        }),
-      }));
-  }
-
-  function compareTakeRows(a: ProduceTakeRow, b: ProduceTakeRow): number {
-    if (a.take_index !== b.take_index) return a.take_index - b.take_index;
-    return a.view.localeCompare(b.view);
+    return buildSelectedRoundGroups(pendingSelectionsForDemo(entry));
   }
 
   function buildPendingBatchJobs(): GeneratePluginJSONRequest[] {
-    return clipReadyDemos.value
-      .map((entry) => {
-        const selection = getFullRoundPOVSelection(entry);
-        const hasPOVSegments = selection.enabled && !!selection.player_steam_id && povSegmentCountForDemo(entry) > 0;
-        return {
-          demo_path: entry.file_path,
-          tick_rate: entry.meta?.tick_rate ?? 64,
-          match_end_tick: entry.meta?.match_end_tick,
-          selected_items: pendingSelectionsForDemo(entry).map((item) => ({
-            kill: item.kill,
-            include_killer: item.include_killer,
-            include_victim: item.include_victim,
-            killer_spec_mode: 1,
-            victim_spec_mode: 1,
-            clip_overrides: item.clip_overrides,
-          })),
-          full_round_pov: hasPOVSegments
-            ? { player_steam_id: selection.player_steam_id }
-            : undefined,
-        };
-      })
-      .filter((job) => job.selected_items.length > 0 || !!job.full_round_pov);
-  }
-
-  async function generateAndLaunch() {
-    // Reserve the launch interaction before the asynchronous platform check.
-    // Otherwise two fast clicks can both pass the check and submit duplicate
-    // launch requests before doGenerateAndLaunch flips this flag.
-    if (generatingAndLaunching.value || produceBusy.value) return;
-    const jobs = buildPendingBatchJobs();
-    if (!jobs.length) return;
-
-    generatingAndLaunching.value = true;
-    try {
-      const allClosed = await platformCheck.checkAll();
-      if (!allClosed) {
-        showPlatformCheckModal.value = true;
-        return;
-      }
-      await doGenerateAndLaunch();
-    } finally {
-      await refreshWorkActivity();
-      generatingAndLaunching.value = false;
-    }
-  }
-
-  async function onPlatformCheckConfirmed() {
-    if (generatingAndLaunching.value || produceBusy.value) return;
-    showPlatformCheckModal.value = false;
-    platformCheck.reset();
-    generatingAndLaunching.value = true;
-    try {
-      await doGenerateAndLaunch();
-    } finally {
-      await refreshWorkActivity();
-      generatingAndLaunching.value = false;
-    }
-  }
-
-  function onPlatformCheckCancelled() {
-    showPlatformCheckModal.value = false;
-    platformCheck.reset();
-  }
-
-  async function doGenerateAndLaunch() {
-    try {
-      const jobs = buildPendingBatchJobs();
-      if (!jobs.length) return;
-      launchViewEnabled.value = true;
-      errorMessage.value = "";
-
-      const previousKillSnapshot = killSnapshotByDemo.value;
-      captureCurrentKillSnapshot();
-      const request: GeneratePluginJSONBatchRequest = {
-        jobs,
-        debug: {
-          keep_intermediate_files: keepProduceIntermediates.value,
-        },
-      };
-      const result = await callBackend<GeneratePluginJSONBatchResult>("GeneratePluginJSONBatchAndLaunchHLAE", request);
-      // A backend busy response is intentionally side-effect free and may be
-      // returned for a duplicate/stale request. Preserve the active session's
-      // take rows instead of replacing them with the busy response's empty
-      // result list.
-      if (!result.launch_started && result.launch_error && result.results.length === 0 && batchResult.value?.launch_started) {
-        killSnapshotByDemo.value = previousKillSnapshot;
-        errorMessage.value = result.launch_error;
-        return;
-      }
-      batchResult.value = result;
-      if (!result.launch_started && result.launch_error) {
-        errorMessage.value = result.launch_error;
-      }
-    } catch (err: unknown) {
-      errorMessage.value = err instanceof Error ? err.message : String(err);
-    }
-  }
-
-  async function generateConfigOnly() {
-    if (produceBusy.value) return;
-    try {
-      const jobs = buildPendingBatchJobs();
-      if (!jobs.length) return;
-      generatingConfigOnlyLoading.value = true;
-      errorMessage.value = "";
-
-      const result = await callBackend<GeneratePluginJSONBatchResult>("GeneratePluginJSONBatch", { jobs });
-      const summary = t("main.produce.batch_summary", {
-        success: result.success_count,
-        failed: result.failure_count,
-      });
-      if (result.success_count > 0 && result.failure_count === 0) {
-        message.success(summary);
-        return;
-      }
-      if (result.success_count > 0) {
-        message.warning(summary);
-        return;
-      }
-      message.error(summary);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errorMessage.value = msg;
-      message.error(msg);
-    } finally {
-      generatingConfigOnlyLoading.value = false;
-    }
-  }
-
-  function takeRowKey(demoPath: string, takeIndex: number, view: string): string {
-    return `${demoPath}#${takeIndex}#${view}`;
-  }
-
-  function takeStatusKey(demoPath: string, takeIndex: number): string {
-    return `${demoPath}#${takeIndex}`;
-  }
-
-  function takeFileKey(demoPath: string, takeIndex: number, view: string): string {
-    return `${demoPath}#${takeIndex}#${view}`;
+    return buildProduceJobs({
+      demos: clipReadyDemos.value,
+      getMaterialSelections: (entry) => pendingSelectionsForDemo(entry),
+      getFullRoundPOVSelection: (entry) => getFullRoundPOVSelection(entry),
+      getFullRoundPOVPlan: (entry) => fullRoundPlanByDemo.value[entry.key],
+    });
   }
 
   function resolveTakeState(row: ProduceTakeRow): ProduceRowState {
-    const file = takeFileByRow(row);
-    if (file?.status === "failed") return "failed";
-    if (file?.status === "completed") return "completed";
-    if (file?.status === "processing") return "processing";
-    if (file?.status === "waiting_files") return "waiting_files";
-    if (file?.status === "recorded") return "recorded";
-
-    const take = takeStatusByKey.value.get(takeStatusKey(row.demo_path, row.take_index));
-    if (take?.status === "recording") return "recording";
-    if (take?.status === "completed") return "recorded";
-    return "pending";
+    return resolveProduceTakeState(row, takeFileByKey.value, takeStatusByKey.value);
   }
 
   function statusText(state: ProduceRowState): string {
@@ -802,7 +383,7 @@ export function useProducePage() {
     const file = takeFileByRow(row);
     if (!file?.video_path) return;
     try {
-      await callBackend<void>("OpenProducedClipInFolder", file.video_path);
+      await requests.openProducedClip(file.video_path);
     } catch (err: unknown) {
       errorMessage.value = err instanceof Error ? err.message : String(err);
     }
@@ -812,7 +393,7 @@ export function useProducePage() {
     if (exportProduceLogsLoading.value) return;
     exportProduceLogsLoading.value = true;
     try {
-      const path = await callBackend<string>("ExportProduceWSLogs");
+      const path = await requests.exportProduceWSLogs();
       if (path) {
         message.success(t("main.produce.export_logs_success", { path }));
       } else {
@@ -839,6 +420,26 @@ export function useProducePage() {
     }
     killSnapshotByDemo.value = snapshot;
   }
+
+  const {
+    generatingAndLaunching,
+    generatingConfigOnlyLoading,
+    showPlatformCheckModal,
+    generateAndLaunch,
+    generateConfigOnly,
+    onPlatformCheckConfirmed,
+    onPlatformCheckCancelled,
+  } = useProduceLaunch({
+    buildJobs: buildPendingBatchJobs,
+    produceBusy,
+    keepProduceIntermediates,
+    batchResult,
+    launchViewEnabled,
+    errorMessage,
+    killSnapshotByDemo,
+    captureCurrentKillSnapshot,
+    refreshWorkActivity,
+  });
 
   function openHistoryDrawer() {
     window.dispatchEvent(new CustomEvent(OPEN_PRODUCE_HISTORY_EVENT));

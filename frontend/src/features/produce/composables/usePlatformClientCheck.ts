@@ -1,5 +1,6 @@
 import { computed, ref } from "vue";
 import type { PlatformClientStatus } from "@/shared/types";
+import { backend } from "@/shared/backend";
 
 const statuses = ref<PlatformClientStatus[]>([]);
 const refreshing = ref(false);
@@ -10,7 +11,7 @@ export function usePlatformClientCheck() {
 
   async function checkAll(): Promise<boolean> {
     try {
-      const result = await callBackend<PlatformClientStatus[]>("CheckPlatformClients");
+      const result = await backend.CheckPlatformClients();
       statuses.value = result;
       return result.every((s) => !s.running);
     } catch {
@@ -41,11 +42,4 @@ export function usePlatformClientCheck() {
     refresh,
     reset,
   };
-}
-
-async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-  const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return fn(...args) as Promise<T>;
 }

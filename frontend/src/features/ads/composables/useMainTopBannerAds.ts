@@ -1,4 +1,5 @@
 import { computed, type Ref } from "vue";
+import { backend } from "@/shared/backend";
 import type { StartupAd } from "@/shared/types";
 
 export function useMainTopBannerAds(ads: Ref<StartupAd[]>) {
@@ -8,15 +9,8 @@ export function useMainTopBannerAds(ads: Ref<StartupAd[]>) {
       .slice(),
   );
 
-  async function callBackend(method: string, ...args: unknown[]) {
-    const api = window.go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-    const fn = api?.[method];
-    if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-    return fn(...args);
-  }
-
   async function openAd(clickURL: string) {
-    await callBackend("OpenExternalURL", clickURL);
+    await backend.OpenExternalURL(clickURL);
   }
 
   return {

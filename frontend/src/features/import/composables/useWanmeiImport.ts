@@ -3,7 +3,7 @@ import { useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { EventsOn } from "../../../../wailsjs/runtime/runtime";
 import type { ProgressMessage, WanmeiMatchItem, WanmeiMatchListResult } from "@/shared/types";
-import { callBackend } from "@/features/import/composables/useDemoData";
+import { backend } from "@/shared/backend";
 
 const wanmeiProgressPrefix = "wanmei_import_";
 
@@ -41,7 +41,7 @@ export function useWanmeiImport(onDemosSelected?: (paths: string[]) => void) {
     hasMorePages.value = true;
     loading.value = true;
     try {
-      const next = (await callBackend<WanmeiMatchListResult>("ListWanmeiRecentMatches", 1)) as WanmeiMatchListResult | null;
+      const next = await backend.ListWanmeiRecentMatches(1);
       const nextRows = dedupeWanmeiMatches(next?.matches ?? []);
       result.value = {
         status: next?.status ?? "client_not_running",
@@ -88,7 +88,7 @@ export function useWanmeiImport(onDemosSelected?: (paths: string[]) => void) {
     const nextPage = currentPage.value + 1;
     loadingMore.value = true;
     try {
-      const next = (await callBackend<WanmeiMatchListResult>("ListWanmeiRecentMatches", nextPage)) as WanmeiMatchListResult | null;
+      const next = await backend.ListWanmeiRecentMatches(nextPage);
       const incoming = dedupeWanmeiMatches(next?.matches ?? []);
       if (!incoming.length) {
         hasMorePages.value = false;
@@ -297,7 +297,7 @@ export function useWanmeiImport(onDemosSelected?: (paths: string[]) => void) {
 
   async function runImportTask(task: { rawMatchID: string; normalizedKey: string }) {
     try {
-      const paths = (await callBackend<string[]>("ImportWanmeiMatch", task.rawMatchID)) as string[] | null;
+      const paths = await backend.ImportWanmeiMatch(task.rawMatchID);
       if (paths && paths.length > 0 && onDemosSelected) {
         onDemosSelected(paths);
       }

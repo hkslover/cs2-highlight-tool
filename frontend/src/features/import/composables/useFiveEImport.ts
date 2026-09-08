@@ -3,7 +3,7 @@ import { useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { EventsOn } from "../../../../wailsjs/runtime/runtime";
 import type { FiveEMatchItem, FiveEMatchListResult, ProgressMessage } from "@/shared/types";
-import { callBackend } from "@/features/import/composables/useDemoData";
+import { backend } from "@/shared/backend";
 
 const fiveEProgressPrefix = "fivee_import_";
 
@@ -53,7 +53,7 @@ export function useFiveEImport(onDemosSelected?: (paths: string[]) => void) {
     hasMorePages.value = true;
     loading.value = true;
     try {
-      const next = (await callBackend("ListFiveERecentMatches", playerName, 1)) as FiveEMatchListResult | null;
+      const next = await backend.ListFiveERecentMatches(playerName, 1);
       const nextRows = dedupeFiveEMatches(next?.matches ?? []);
       result.value = {
         player_name: next?.player_name || playerName,
@@ -120,7 +120,7 @@ export function useFiveEImport(onDemosSelected?: (paths: string[]) => void) {
     const nextPage = currentPage.value + 1;
     loadingMore.value = true;
     try {
-      const next = (await callBackend("ListFiveERecentMatches", playerName, nextPage)) as FiveEMatchListResult | null;
+      const next = await backend.ListFiveERecentMatches(playerName, nextPage);
       const incoming = dedupeFiveEMatches(next?.matches ?? []);
       if (!incoming.length) {
         hasMorePages.value = false;
@@ -278,7 +278,7 @@ export function useFiveEImport(onDemosSelected?: (paths: string[]) => void) {
 
   async function runImportTask(task: { rawMatchID: string; normalizedKey: string }) {
     try {
-      const paths = (await callBackend("ImportFiveEMatch", task.rawMatchID)) as string[] | null;
+      const paths = await backend.ImportFiveEMatch(task.rawMatchID);
       if (paths && paths.length > 0 && onDemosSelected) {
         onDemosSelected(paths);
       }
@@ -293,7 +293,7 @@ export function useFiveEImport(onDemosSelected?: (paths: string[]) => void) {
 
   async function loadInitialPlayerName() {
     try {
-      const next = (await callBackend("GetFiveEPlayerName")) as string;
+      const next = await backend.GetFiveEPlayerName();
       playerNameInput.value = String(next || "").trim();
       if (playerNameInput.value) {
         await refreshMatches();

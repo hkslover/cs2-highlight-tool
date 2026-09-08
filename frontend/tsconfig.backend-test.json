@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": [
+    "src/global.d.ts",
+    "src/shared/backend/**/*.ts",
+    "src/domains/**/*.ts",
+    "tests/**/*.types.ts"
+  ]
+}

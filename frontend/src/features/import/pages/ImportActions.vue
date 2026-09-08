@@ -58,6 +58,7 @@
 import { h, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
+import { backend } from "@/shared/backend";
 import wanmeiIconURL from "@/assets/images/platforms/wanmei.ico";
 import fiveeIconURL from "@/assets/images/platforms/fivee.ico";
 
@@ -68,17 +69,10 @@ const emit = defineEmits<{
 const importing = ref(false);
 const message = useMessage();
 
-async function callBackend(method: string, ...args: unknown[]) {
-  const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return fn(...args);
-}
-
 async function handleFileImport() {
   try {
     importing.value = true;
-    const paths = (await callBackend("PickDemoFiles")) as string[] | null;
+    const paths = await backend.PickDemoFiles();
     if (!paths || paths.length === 0) return;
     emit("demos-selected", paths);
   } catch (err: any) {

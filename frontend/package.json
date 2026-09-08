@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm run test:backend:types && npm run test:backend:runtime",
+    "test:backend:types": "tsc -p tsconfig.backend-test.json --pretty false",
+    "test:backend:runtime": "tsc -p tsconfig.backend-runtime.json --pretty false && node tests/prepare-runtime.mjs && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@types/dompurify": "^3.0.5",

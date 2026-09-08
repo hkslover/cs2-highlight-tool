@@ -51,25 +51,23 @@
 import { computed, ref } from "vue";
 import ImportDemoList from "@/features/import/components/ImportDemoList.vue";
 import ImportDetailPanel from "@/features/import/components/ImportDetailPanel.vue";
-import { useImportDemos } from "@/features/import/composables/useImportDemos";
-import { useSplitter } from "@/shared/composables/useSplitter";
-
-const {
-  demoList,
-  selectedIndex,
-  detailCollapsed,
-  selectedEntry,
-  selectedDemo,
-  canSelectPrev,
+import {
   canSelectNext,
+  canSelectPrev,
+  detailCollapsed,
+  demoList,
   onDemosSelected,
   removeDemoAt,
-  toggleSelected,
-  formatDuration,
-  selectPrevDemo,
   selectNextDemo,
+  selectPrevDemo,
+  selectedDemo,
+  selectedEntry,
+  selectedIndex,
   toggleDetailCollapsed,
-} = useImportDemos();
+  toggleSelected,
+} from "@/domains/demo";
+import { formatDuration } from "@/domains/clip-selection";
+import { useSplitter } from "@/shared/composables/useSplitter";
 
 const upperRef = ref<HTMLElement | null>(null);
 const {

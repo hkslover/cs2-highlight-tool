@@ -1,6 +1,6 @@
 <template>
   <n-space vertical :size="14">
-    <n-alert v-if="errorMessage" type="error" :bordered="false" closable @close="errorMessage = ''">{{ errorMessage }}</n-alert>
+    <n-alert v-if="errorMessage" type="error" :bordered="false" closable @close="dismissError">{{ errorMessage }}</n-alert>
     <n-alert v-if="successMessage" type="success" :bordered="false" closable @close="successMessage = ''">{{ successMessage }}</n-alert>
     <n-card size="small" :bordered="true" class="section-card">
       <template #header>
@@ -213,14 +213,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useDialog, useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
-import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
+import { backend } from "@/shared/backend";
 import povRadarDemoImage from "@/assets/images/pov-radar-demo.png";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
-import type { ClipSettings, DebugPluginDLLOverrideState, DemoStorageStats, OutputsStorageStats } from "@/shared/types";
 import { useWorkActivity } from "@/shared/state/useWorkActivity";
+import { useSettingsStore } from "@/domains/settings/settings-state";
+import {
+  SEARCHABLE_CLIP_SETTINGS,
+  getSearchableNumberValue,
+  getSearchableSwitchValue,
+  normalizeSettingSearch,
+  settingMatchesSearch,
+  type SearchableClipSettingItem,
+} from "@/domains/settings/settings-schema";
+import { useSettingsDebug } from "@/features/settings/composables/useSettingsDebug";
+import { useSettingsStorage } from "@/features/settings/composables/useSettingsStorage";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
 
 const props = withDefaults(
@@ -234,23 +244,12 @@ const props = withDefaults(
 
 const { storageBusy } = useWorkActivity();
 
-const AUTO_SAVE_DELAY_MS = 500;
-const saving = ref(false);
-const outputsLoading = ref(false);
-const demoLoading = ref(false);
-const openingOutputsDir = ref(false);
-const openingDemoDir = ref(false);
-const clearingOutputs = ref(false);
-const clearingDemo = ref(false);
-const pickingDebugPluginDLL = ref(false);
-const clearingDebugPluginDLL = ref(false);
-const errorMessage = ref("");
+const settingsStore = useSettingsStore();
+const settings = settingsStore.draftSettings;
+const localErrorMessage = ref("");
 const successMessage = ref("");
-const syncingSettings = ref(false);
-const hasPendingSave = ref(false);
 const settingSearchQuery = ref("");
 const settingPage = ref(1);
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let successTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearSuccessTimer() {
@@ -263,45 +262,39 @@ const SETTING_PAGE_SIZE = 8;
 const dialog = useDialog();
 const message = useMessage();
 const { debugEnabled, keepProduceIntermediates } = useDebugSettings();
-const settings = reactive<ClipSettings>({
-  killer_pre_seconds: 5,
-  killer_post_seconds: 5,
-  victim_pre_seconds: 1,
-  victim_post_seconds: 1,
-  auto_add_victim_view: true,
-  enable_voice: true,
-  record_fps: 60,
-  record_quality: "high",
-  edit_fps: 60,
-  edit_quality: "high",
-  video_preset: "auto",
-  launch_resolution: "4:3",
-  record_output_dir: "",
-  enable_spec_show_xray_zero: true,
-  hide_all_ui: false,
-  hide_player_avatars: false,
-  use_shoulder_camera: false,
-  pov_hud_enabled: true,
-  pov_radar_enabled: false,
-  sky_blackout: true,
-  disable_clouds: false,
-  kill_feed_lifetime: 4,
-  block_kill_feed: false,
-});
-const outputsStats = reactive<OutputsStorageStats>({
-  output_dir: "",
-  video_count: 0,
-  total_size_bytes: 0,
-});
-const demoStats = reactive<DemoStorageStats>({
-  demo_dir: "",
-  demo_count: 0,
-  total_size_bytes: 0,
-});
-const debugPluginDLL = reactive<DebugPluginDLLOverrideState>({
-  active: false,
-  path: "",
-});
+const storage = useSettingsStorage(
+  backend,
+  () => props.active,
+  () => storageBusy.value,
+);
+const {
+  outputsStats,
+  demoStats,
+  outputsLoading,
+  demoLoading,
+  openingOutputsDir,
+  openingDemoDir,
+  clearingOutputs,
+  clearingDemo,
+  loadOutputsStats,
+  loadDemoStats,
+  openOutputsDirectory,
+  openDemoDirectory,
+  clearOutputsDirectory: clearStoredOutputsDirectory,
+  clearDemoDirectory: clearStoredDemoDirectory,
+} = storage;
+const debug = useSettingsDebug(backend, () => props.active, debugEnabled);
+const {
+  debugPluginDLL,
+  pickingDebugPluginDLL,
+  clearingDebugPluginDLL,
+  loadDebugPluginDLLOverride,
+  pickDebugPluginDLL,
+  clearDebugPluginDLL,
+} = debug;
+const errorMessage = computed(
+  () => settingsStore.errorMessage.value || storage.errorMessage.value || debug.errorMessage.value || localErrorMessage.value,
+);
 const presetOptions = computed(() => [
   { label: t("main.settings.video_preset_auto"), value: "auto" },
   { label: t("main.settings.video_preset_c1"), value: "c1" },
@@ -324,114 +317,10 @@ const editQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_high"), value: "high" },
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
-type SearchableSwitchSettingKey =
-  | "enable_voice"
-  | "enable_spec_show_xray_zero"
-  | "hide_all_ui"
-  | "hide_player_avatars"
-  | "use_shoulder_camera"
-  | "pov_hud_enabled"
-  | "pov_radar_enabled"
-  | "sky_blackout"
-  | "disable_clouds"
-  | "block_kill_feed";
-type SearchableNumberSettingKey = "kill_feed_lifetime";
-type SearchableClipSettingItem =
-  | {
-      key: SearchableSwitchSettingKey;
-      labelKey: string;
-      kind: "switch";
-      aliases: string[];
-      hintKey?: string;
-    }
-  | {
-      key: SearchableNumberSettingKey;
-      labelKey: string;
-      kind: "number";
-      aliases: string[];
-      hintKey?: string;
-      min: number;
-      max: number;
-      step: number;
-      precision: number;
-    };
-const searchableClipSettings: SearchableClipSettingItem[] = [
-  {
-    key: "enable_voice",
-    labelKey: "main.settings.enable_voice",
-    kind: "switch",
-    aliases: ["启用队伍语音", "队伍语音", "team voice", "voice"],
-  },
-  {
-    key: "enable_spec_show_xray_zero",
-    labelKey: "main.settings.enable_spec_show_xray_zero",
-    kind: "switch",
-    aliases: ["关闭x光", "关闭 x 光", "xray", "x-ray", "x光", "spec_show_xray"],
-  },
-  {
-    key: "hide_all_ui",
-    labelKey: "main.settings.hide_all_ui",
-    kind: "switch",
-    aliases: ["隐藏所有ui", "hidden ui", "hide ui"],
-  },
-  {
-    key: "hide_player_avatars",
-    labelKey: "main.settings.hide_player_avatars",
-    kind: "switch",
-    aliases: ["隐藏玩家头像", "玩家头像", "player avatars", "teamcounter"],
-  },
-  {
-    key: "use_shoulder_camera",
-    labelKey: "main.settings.use_shoulder_camera",
-    kind: "switch",
-    aliases: ["越肩视角", "shoulder camera", "camera"],
-  },
-  {
-    key: "pov_hud_enabled",
-    labelKey: "main.settings.pov_hud_enabled",
-    kind: "switch",
-    aliases: ["pov hud", "hud"],
-  },
-  {
-    key: "pov_radar_enabled",
-    labelKey: "main.settings.pov_radar_enabled",
-    kind: "switch",
-    aliases: ["pov雷达", "pov radar", "radar"],
-    hintKey: "main.settings.pov_radar_hint",
-  },
-  {
-    key: "sky_blackout",
-    labelKey: "main.settings.sky_blackout",
-    kind: "switch",
-    aliases: ["天空变黑", "sky", "blackout", "drawskybox"],
-  },
-  {
-    key: "disable_clouds",
-    labelKey: "main.settings.disable_clouds",
-    kind: "switch",
-    aliases: ["关闭云层", "cloud", "clouds"],
-  },
-  {
-    key: "kill_feed_lifetime",
-    labelKey: "main.settings.kill_feed_lifetime",
-    kind: "number",
-    aliases: ["击杀信息留存", "kill feed", "death notice", "deathnotice"],
-    min: 1,
-    max: 10,
-    step: 1,
-    precision: 0,
-  },
-  {
-    key: "block_kill_feed",
-    labelKey: "main.settings.block_kill_feed",
-    kind: "switch",
-    aliases: ["屏蔽击杀信息", "block kill feed", "kill feed"],
-  },
-];
 const filteredSearchableClipSettings = computed(() => {
   const query = normalizeSettingSearch(settingSearchQuery.value);
-  if (!query) return searchableClipSettings;
-  return searchableClipSettings.filter((item) => settingMatchesSearch(item, query));
+  if (!query) return SEARCHABLE_CLIP_SETTINGS;
+  return SEARCHABLE_CLIP_SETTINGS.filter((item) => settingMatchesSearch(item, query, t(item.labelKey)));
 });
 const pagedSearchableClipSettings = computed(() => {
   const start = (settingPage.value - 1) * SETTING_PAGE_SIZE;
@@ -442,10 +331,10 @@ watch(
   () => props.active,
   (active) => {
     if (!active) {
-      clearAutoSaveTimer();
+      void settingsStore.dispose();
       return;
     }
-    void loadSettings();
+    void settingsStore.init();
     void loadOutputsStats();
     void loadDemoStats();
     if (debugEnabled.value) {
@@ -465,13 +354,17 @@ watch(
   { immediate: true },
 );
 
-watch(
-  settings,
-  () => {
-    scheduleAutoSave();
-  },
-  { deep: true },
-);
+watch(settingsStore.lastSavedVersion, (version, previousVersion) => {
+  if (version <= previousVersion) {
+    return;
+  }
+  clearSuccessTimer();
+  successMessage.value = t("main.settings.saved");
+  successTimer = setTimeout(() => {
+    successMessage.value = "";
+    successTimer = null;
+  }, 3000);
+});
 
 watch(settingSearchQuery, () => {
   settingPage.value = 1;
@@ -491,136 +384,15 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  clearAutoSaveTimer();
+  void settingsStore.dispose();
   clearSuccessTimer();
 });
 
-async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-  const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return fn(...args) as Promise<T>;
-}
-
-async function loadSettings() {
-  clearAutoSaveTimer();
-  errorMessage.value = "";
-  successMessage.value = "";
-  try {
-    const next = await callBackend<ClipSettings>("GetClipSettings");
-    await applySettingsFromBackend(next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  }
-}
-
-async function loadOutputsStats() {
-  if (!props.active || outputsLoading.value) {
-    return;
-  }
-  outputsLoading.value = true;
-  errorMessage.value = "";
-  try {
-    const next = await callBackend<OutputsStorageStats>("GetOutputsStorageStats");
-    Object.assign(outputsStats, next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    outputsLoading.value = false;
-  }
-}
-
-async function loadDemoStats() {
-  if (!props.active || demoLoading.value) {
-    return;
-  }
-  demoLoading.value = true;
-  errorMessage.value = "";
-  try {
-    const next = await callBackend<DemoStorageStats>("GetDemoStorageStats");
-    Object.assign(demoStats, next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    demoLoading.value = false;
-  }
-}
-
-async function loadDebugPluginDLLOverride() {
-  if (!props.active || !debugEnabled.value) {
-    return;
-  }
-  errorMessage.value = "";
-  try {
-    const next = await callBackend<DebugPluginDLLOverrideState>("GetDebugPluginDLLOverride");
-    Object.assign(debugPluginDLL, next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  }
-}
-
-async function pickDebugPluginDLL() {
-  if (pickingDebugPluginDLL.value) {
-    return;
-  }
-  pickingDebugPluginDLL.value = true;
-  errorMessage.value = "";
-  successMessage.value = "";
-  try {
-    const next = await callBackend<DebugPluginDLLOverrideState>("PickDebugPluginDLLOverride");
-    Object.assign(debugPluginDLL, next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    pickingDebugPluginDLL.value = false;
-  }
-}
-
-async function clearDebugPluginDLL() {
-  if (clearingDebugPluginDLL.value) {
-    return;
-  }
-  clearingDebugPluginDLL.value = true;
-  errorMessage.value = "";
-  successMessage.value = "";
-  try {
-    const next = await callBackend<DebugPluginDLLOverrideState>("ClearDebugPluginDLLOverride");
-    Object.assign(debugPluginDLL, next);
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    clearingDebugPluginDLL.value = false;
-  }
-}
-
-async function openOutputsDirectory() {
-  if (openingOutputsDir.value) {
-    return;
-  }
-  openingOutputsDir.value = true;
-  errorMessage.value = "";
-  try {
-    await callBackend<void>("OpenOutputsDirectory");
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    openingOutputsDir.value = false;
-  }
-}
-
-async function openDemoDirectory() {
-  if (openingDemoDir.value) {
-    return;
-  }
-  openingDemoDir.value = true;
-  errorMessage.value = "";
-  try {
-    await callBackend<void>("OpenDemoDirectory");
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    openingDemoDir.value = false;
-  }
+function dismissError(): void {
+  localErrorMessage.value = "";
+  settingsStore.clearError();
+  storage.errorMessage.value = "";
+  debug.errorMessage.value = "";
 }
 
 function confirmClearOutputs() {
@@ -657,17 +429,12 @@ async function clearOutputsDirectory() {
   if (clearingOutputs.value || storageBusy.value) {
     return;
   }
-  clearingOutputs.value = true;
-  errorMessage.value = "";
+  localErrorMessage.value = "";
+  storage.errorMessage.value = "";
   successMessage.value = "";
-  try {
-    const next = await callBackend<OutputsStorageStats>("ClearOutputsDirectory");
-    Object.assign(outputsStats, next);
+  await clearStoredOutputsDirectory();
+  if (!storage.errorMessage.value) {
     message.success(t("main.settings.outputs_clear_success"));
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    clearingOutputs.value = false;
   }
 }
 
@@ -675,60 +442,21 @@ async function clearDemoDirectory() {
   if (clearingDemo.value || storageBusy.value) {
     return;
   }
-  clearingDemo.value = true;
-  errorMessage.value = "";
+  localErrorMessage.value = "";
+  storage.errorMessage.value = "";
   successMessage.value = "";
-  try {
-    const next = await callBackend<DemoStorageStats>("ClearDemoDirectory");
-    Object.assign(demoStats, next);
+  await clearStoredDemoDirectory();
+  if (!storage.errorMessage.value) {
     message.success(t("main.settings.demo_clear_success"));
-  } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    clearingDemo.value = false;
   }
-}
-
-async function applySettingsFromBackend(next: ClipSettings) {
-  syncingSettings.value = true;
-  Object.assign(settings, next);
-  await nextTick();
-  syncingSettings.value = false;
-}
-
-function normalizeSettingSearch(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "");
-}
-
-function settingMatchesSearch(item: SearchableClipSettingItem, query: string): boolean {
-  const haystack = normalizeSettingSearch([t(item.labelKey), item.key, ...item.aliases].join(" "));
-  if (haystack.includes(query)) {
-    return true;
-  }
-  let queryIndex = 0;
-  for (const char of haystack) {
-    if (char === query[queryIndex]) {
-      queryIndex++;
-    }
-    if (queryIndex === query.length) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function switchSettingValue(item: SearchableClipSettingItem): boolean {
-  if (item.kind !== "switch") {
-    return false;
-  }
-  return settings[item.key];
+  return getSearchableSwitchValue(settings, item);
 }
 
 function numberSettingValue(item: SearchableClipSettingItem): number {
-  if (item.kind !== "number") {
-    return 0;
-  }
-  return settings[item.key];
+  return getSearchableNumberValue(settings, item);
 }
 
 function updateSwitchSetting(item: SearchableClipSettingItem, value: boolean): void {
@@ -743,60 +471,6 @@ function updateNumberSetting(item: SearchableClipSettingItem, value: number | nu
     return;
   }
   settings[item.key] = value;
-}
-
-function clearAutoSaveTimer() {
-  if (autoSaveTimer == null) {
-    return;
-  }
-  clearTimeout(autoSaveTimer);
-  autoSaveTimer = null;
-}
-
-function scheduleAutoSave() {
-  if (!props.active || syncingSettings.value) {
-    return;
-  }
-  clearAutoSaveTimer();
-  errorMessage.value = "";
-  successMessage.value = "";
-  autoSaveTimer = setTimeout(() => {
-    autoSaveTimer = null;
-    void saveSettings();
-  }, AUTO_SAVE_DELAY_MS);
-}
-
-async function saveSettings() {
-  if (!props.active || syncingSettings.value) {
-    return;
-  }
-  if (saving.value) {
-    hasPendingSave.value = true;
-    return;
-  }
-  saving.value = true;
-  errorMessage.value = "";
-  try {
-    const saved = await callBackend<ClipSettings>("SaveClipSettings", settings);
-    await applySettingsFromBackend(saved);
-    window.dispatchEvent(new CustomEvent(CLIP_SETTINGS_SAVED_EVENT));
-    clearSuccessTimer();
-    successMessage.value = t("main.settings.saved");
-    successTimer = setTimeout(() => {
-      successMessage.value = "";
-      successTimer = null;
-    }, 3000);
-  } catch (err: unknown) {
-    clearSuccessTimer();
-    successMessage.value = "";
-    errorMessage.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    saving.value = false;
-    if (hasPendingSave.value) {
-      hasPendingSave.value = false;
-      void saveSettings();
-    }
-  }
 }
 
 function formatBytes(bytes: number): string {

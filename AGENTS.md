@@ -25,7 +25,11 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/logging/`、`internal/changelog/` | 结构化日志与脱敏、内嵌版本更新说明 |
 | `frontend/src/app/` | 应用壳、导航、hash 路由 |
 | `frontend/src/features/` | `workspace-init`、`startup`、`import`、`clips`、`produce`、`edit`、`settings`、`ads`、`changelog` |
+| `frontend/src/domains/` | 跨页面领域状态与无头业务逻辑（`clip-selection`、`demo`、`edit`、`production`、`settings`；仅 TypeScript，不放 Vue SFC） |
 | `frontend/src/shared/` | 通用类型、状态、视角映射、事件常量、i18n |
+| `frontend/src/shared/backend/` | 强类型 Wails 调用适配层、后端方法契约与统一边界错误 |
+| `frontend/src/shared/ui/` | 跨 feature 复用的展示组件；业务页面组件仍归属对应 `features/` |
+| `frontend/tests/` | Node 原生领域单元测试与 TypeScript 契约检查；运行时产物写入前端缓存目录 |
 | `frontend/wailsjs/` | Wails 自动生成绑定 |
 | `.github/workflows/release-windows.yml` | Windows 发布构建 |
 
@@ -44,12 +48,13 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | --- | --- |
 | 后端代码 | `go test ./...` |
 | 前端代码 | `cd frontend && npm run build`（类型检查和 Vite 构建） |
-| 同时涉及前后端或接口契约 | 上述两项均执行 |
+| 前端领域/适配层测试 | `cd frontend && npm test`（类型检查与 Node 原生单元测试） |
+| 同时涉及前后端或接口契约 | 执行 `go test ./...`、`cd frontend && npm test` 与 `cd frontend && npm run build` |
 | 启动状态机、下载回退、日志脱敏 | 全量后端测试中确认 `internal/envsetup`、`internal/release` 及相关日志测试通过 |
 | 仅文档 | `git diff --check`，核对文档提及的路径、方法、字段与源码；无需仅为文档变更运行应用构建 |
 | 本地开发 / 产物构建 | `wails dev` / `wails build` |
 
-前端依赖缺失时可在 `frontend` 执行 `npm ci`。按改动补充有意义的测试；涉及 UI 交互时按前端规则核对相关路径。汇报实际执行结果和未验证项；单元测试、前端构建不能证明 Windows 上 HLAE/CS2 注入、录制或环境恢复成功。
+前端依赖缺失时可在 `frontend` 执行 `npm ci`。按改动补充有意义的测试；涉及 UI 交互时按前端规则核对相关路径。汇报实际执行结果和未验证项；Node 单元测试和前端构建不能证明真实 Wails 事件桥、Vue 页面交互或 Windows 上 HLAE/CS2 注入、录制和环境恢复成功。
 
 ## 跨层契约
 
@@ -78,7 +83,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 
 ### 设置与插件计划
 
-设置入口为 `internal/app/clip_settings.go`，默认值与持久化在 `internal/config/config.go`，命令生成在 `internal/clipsjson/builder.go`。
+设置入口为 `internal/app/clip_settings.go`，默认值与持久化在 `internal/config/config.go`，命令生成在 `internal/clipsjson/builder.go`。前端 `src/domains/settings/` 的共享草稿在工作目录切换进入 `workspace_init` 时必须调用 `resetForWorkspace`；离开该阶段后重新 `init`，旧 generation 的在途读写不得回写当前状态。
 
 | 字段 | 稳定语义 |
 | --- | --- |
