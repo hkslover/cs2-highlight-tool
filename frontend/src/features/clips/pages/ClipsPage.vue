@@ -1,281 +1,33 @@
 <template>
   <div class="clips-page">
     <div ref="containerRef" class="clips-layout">
-      <n-card
-        class="left-card"
+      <MaterialListPanel
         :style="leftPanelStyle"
-        :bordered="true"
-        content-style="height: 100%; overflow: hidden; padding: 0;"
-        content-class="left-card-content"
-      >
-        <div class="panel-head">
-          <span class="panel-title">{{ t("main.clips.material_list_title") }}</span>
-        </div>
-        <div class="card-body">
-          <n-empty v-if="!clipReadyDemos.length" :description="t('main.clips.no_demo')" />
-
-          <n-collapse
-            v-else
-            accordion
-            v-model:expanded-names="expandedDemoNames"
-            @update:expanded-names="handleExpandedChange"
-          >
-          <n-collapse-item
-            v-for="entry in clipReadyDemos"
-            :key="entry.key"
-            :name="entry.key"
-            :title="entry.file_name"
-          >
-            <template #header-extra>
-              <n-space align="center" size="small">
-                <n-tag size="small">{{ getMaterialSelectionCount(entry) }}</n-tag>
-                <n-tag
-                  v-if="getFullRoundPOVSelection(entry).enabled"
-                  size="small"
-                  type="info"
-                  :bordered="false"
-                >
-                  {{ t("main.clips.full_round_pov_tag") }}
-                </n-tag>
-                <n-tag
-                  v-if="producedCountForDemo(entry) > 0"
-                  size="small"
-                  type="warning"
-                  :bordered="false"
-                >
-                  {{ t("main.clips.produced_count", { count: producedCountForDemo(entry) }) }}
-                </n-tag>
-                <n-button
-                  v-if="canClearMaterials(entry)"
-                  size="tiny"
-                  type="error"
-                  secondary
-                  class="clear-materials-btn"
-                  @click.stop="handleClearMaterials(entry)"
-                >
-                  {{ t("main.clips.clear_selected") }}
-                </n-button>
-              </n-space>
-            </template>
-
-            <template v-if="getFullRoundPOVSelection(entry).enabled">
-              <div class="full-round-pov-section">
-                <template v-if="fullRoundPlanByDemo[entry.key]?.segments?.length">
-                  <n-collapse
-                    :expanded-names="getFullRoundPOVExpanded(entry)"
-                    @update:expanded-names="handleFullRoundPOVExpanded(entry, $event)"
-                  >
-                    <n-collapse-item
-                      :name="`${entry.key}-pov`"
-                      :title="t('main.clips.full_round_pov_group_title_count', { count: fullRoundPlanByDemo[entry.key].segments.length })"
-                    >
-                      <template #header-extra>
-                        <span class="full-round-player">{{
-                          t("main.clips.full_round_pov_indicator", {
-                            player: getFullRoundPOVTrackingLabel(entry),
-                          })
-                        }}</span>
-                      </template>
-
-                      <n-collapse
-                        :expanded-names="getPOVRoundExpanded(entry)"
-                        @update:expanded-names="handlePOVRoundExpanded(entry, $event)"
-                      >
-                        <n-collapse-item
-                          v-for="segment in fullRoundPlanByDemo[entry.key].segments"
-                          :key="`${entry.key}-pov-r${segment.round}`"
-                          :name="`r${segment.round}`"
-                          :title="povSegmentTitle(entry, segment)"
-                        >
-                          <div class="pov-round-kills">
-                            <template v-if="povRoundKills(entry, segment.round).length">
-                              <DeathNoticeLine
-                                v-for="kill in povRoundKills(entry, segment.round)"
-                                :key="kill.id"
-                                :kill="kill"
-                                compact
-                              />
-                            </template>
-                            <span v-else class="pov-round-empty">-</span>
-                          </div>
-                        </n-collapse-item>
-                      </n-collapse>
-                    </n-collapse-item>
-                  </n-collapse>
-                </template>
-
-                <div v-else-if="fullRoundPlanErrorByDemo[entry.key]" class="full-round-loading full-round-error">
-                  <span>{{ t("main.clips.full_round_pov_load_failed", { error: fullRoundPlanErrorByDemo[entry.key] }) }}</span>
-                </div>
-
-                <div v-else-if="fullRoundPlanByDemo[entry.key]" class="full-round-loading">
-                  <span>{{ t("main.clips.full_round_pov_no_kills_empty") }}</span>
-                </div>
-
-                <div v-else class="full-round-loading">
-                  <span>{{ t("main.clips.full_round_pov_loading") }}</span>
-                </div>
-              </div>
-            </template>
-
-            <n-empty
-              v-if="!getFullRoundPOVSelection(entry).enabled && !getMaterialSelections(entry).length"
-              :description="t('main.clips.no_materials_for_demo')"
-              size="small"
-            />
-
-            <n-collapse
-              v-if="getMaterialSelections(entry).length"
-              :expanded-names="getMaterialRoundExpandedNames(entry)"
-              @update:expanded-names="handleMaterialRoundExpandedChange(entry, $event)"
-            >
-              <n-collapse-item
-                v-for="group in getMaterialRoundGroups(entry)"
-                :key="`${entry.key}-round-${group.round}`"
-                :name="String(group.round)"
-                :title="t('main.clips.round_title', { round: group.round, kills: group.items.length })"
-              >
-                <n-space vertical :size="8">
-                  <div
-                    v-for="item in group.items"
-                    :key="item.kill.id"
-                    class="material-row"
-                    @dblclick="removeMaterialSelection(entry, item.kill.id)"
-                  >
-                    <div class="material-head">
-                      <div class="material-tags-row">
-                        <n-space align="center" size="small" class="view-tags">
-                          <n-tag v-if="isPrimaryIncluded(item)" size="small" type="success" :bordered="false">
-                            {{ t("main.clips.primary_view_tag") }}
-                          </n-tag>
-                          <n-tag v-if="isOpponentIncluded(item)" size="small" type="warning" :bordered="false">
-                            {{ t("main.clips.opponent_view_tag") }}
-                          </n-tag>
-                        </n-space>
-                        <n-tag
-                          v-if="isKillAlreadyProduced(entry.file_path, item.kill.id)"
-                          size="small"
-                          type="warning"
-                          :bordered="false"
-                        >
-                          {{ t("main.clips.already_produced") }}
-                        </n-tag>
-                        <div class="material-actions">
-                          <n-button
-                            text
-                            size="small"
-                            class="expand-btn"
-                            @click.stop="toggleMaterialSettings(entry, item.kill.id)"
-                            @dblclick.stop
-                          >
-                            {{ isMaterialSettingsExpanded(entry, item.kill.id) ? t("main.clips.collapse") : t("main.clips.expand") }}
-                            {{ isMaterialSettingsExpanded(entry, item.kill.id) ? "▾" : "▸" }}
-                          </n-button>
-                          <button
-                            type="button"
-                            class="material-delete-btn"
-                            :title="t('main.clips.remove_material')"
-                            @click.stop="removeMaterialSelection(entry, item.kill.id)"
-                            @dblclick.stop
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      <div class="material-meta">
-                        <DeathNoticeLine :kill="item.kill" compact />
-                      </div>
-                    </div>
-                    <div
-                      v-if="isMaterialSettingsExpanded(entry, item.kill.id)"
-                      class="material-settings"
-                      @dblclick.stop
-                    >
-                      <div class="setting-row">
-                        <n-checkbox
-                          :checked="isOpponentIncluded(item)"
-                          :disabled="isSelfKill(item.kill)"
-                          @update:checked="handleOpponentEnabledChange(entry, item, !!$event)"
-                        >
-                          {{ t("main.clips.opponent_enabled") }}
-                        </n-checkbox>
-                        <span v-if="isSelfKill(item.kill)" class="setting-hint">
-                          {{ t("main.clips.self_kill_no_opponent") }}
-                        </span>
-                      </div>
-                      <template v-if="isPrimaryIncluded(item)">
-                        <div class="setting-row">
-                          <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
-                          <n-input-number
-                            :value="positionSeconds(item, 'primary', 'pre')"
-                            :min="1"
-                            :max="20"
-                            :step="0.5"
-                            :precision="1"
-                            @update:value="handleSecondsChange(entry, item, 'primary', 'pre', $event)"
-                          />
-                        </div>
-                        <div class="setting-row">
-                          <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
-                          <n-input-number
-                            :value="positionSeconds(item, 'primary', 'post')"
-                            :min="1"
-                            :max="20"
-                            :step="0.5"
-                            :precision="1"
-                            @update:value="handleSecondsChange(entry, item, 'primary', 'post', $event)"
-                          />
-                        </div>
-                      </template>
-                      <template v-if="isOpponentIncluded(item)">
-                        <div class="setting-row">
-                          <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
-                          <n-input-number
-                            :value="positionSeconds(item, 'opponent', 'pre')"
-                            :min="1"
-                            :max="20"
-                            :step="0.5"
-                            :precision="1"
-                            @update:value="handleSecondsChange(entry, item, 'opponent', 'pre', $event)"
-                          />
-                        </div>
-                        <div class="setting-row">
-                          <span class="setting-label">{{ t("main.settings.victim_post_seconds") }}</span>
-                          <n-input-number
-                            :value="positionSeconds(item, 'opponent', 'post')"
-                            :min="1"
-                            :max="20"
-                            :step="0.5"
-                            :precision="1"
-                            @update:value="handleSecondsChange(entry, item, 'opponent', 'post', $event)"
-                          />
-                        </div>
-                      </template>
-                      <div class="setting-row">
-                        <span class="setting-label">{{ t("main.settings.enable_voice") }}</span>
-                        <n-switch
-                          :value="effectiveBooleanValue(item, 'enable_voice')"
-                          @update:value="handleVoiceEnabledChange(entry, item.kill.id, !!$event)"
-                        />
-                      </div>
-                      <div class="setting-row">
-                        <span class="setting-label">{{ t("main.settings.enable_spec_show_xray_zero") }}</span>
-                        <n-switch
-                          :value="effectiveBooleanValue(item, 'enable_spec_show_xray_zero')"
-                          @update:value="handleXrayEnabledChange(entry, item.kill.id, !!$event)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </n-space>
-              </n-collapse-item>
-            </n-collapse>
-          </n-collapse-item>
-          </n-collapse>
-        </div>
-      </n-card>
+        :clip-ready-demos="clipReadyDemos"
+        :expanded-demo-names="expandedDemoNames"
+        :clip-settings="clipSettings"
+        :material-count="getMaterialSelectionCount"
+        :materials="getMaterialSelections"
+        :get-p-o-v-selection="getFullRoundPOVSelection"
+        :get-p-o-v-plan="getFullRoundPOVPlan"
+        :get-p-o-v-error="getFullRoundPOVError"
+        :get-p-o-v-tracking-label="getFullRoundPOVTrackingLabel"
+        :produced-count="producedCountForDemo"
+        :can-clear-materials="canClearMaterials"
+        :is-kill-already-produced="isKillAlreadyProducedForEntry"
+        :get-p-o-v-expanded="getFullRoundPOVExpanded"
+        :get-p-o-v-round-expanded="getPOVRoundExpanded"
+        :pov-round-kills="povRoundKills"
+        :pov-segment-title="povSegmentTitle"
+        :get-material-expanded="getMaterialRoundExpandedNames"
+        :get-material-settings-expanded="getMaterialSettingsExpandedNames"
+        @update:expanded-demos="handleExpandedChange"
+        @clear-materials="handleClearMaterials"
+        @update:pov-expanded="handleFullRoundPOVExpanded"
+        @update:pov-round-expanded="handlePOVRoundExpanded"
+        @update:material-round-expanded="handleMaterialRoundExpandedChange"
+        @update:material-settings-expanded="handleMaterialSettingsExpanded"
+      />
 
       <div
         class="clips-splitter"
@@ -283,126 +35,44 @@
         @mousedown="startResize"
       />
 
-      <n-card
-        class="right-card"
+      <ClipSelectionPanel
         :style="rightPanelStyle"
-        :bordered="true"
-        content-style="height: 100%; overflow: hidden; padding: 0;"
-        content-class="right-card-content"
-      >
-        <div class="panel-head">
-          <span class="panel-title">{{ t("main.clips.select_title") }}</span>
-          <div class="panel-actions">
-            <span class="switch-label">{{ t("main.clips.full_round_pov_switch") }}</span>
-            <n-switch
-              size="small"
-              :value="fullRoundPOVEnabled"
-              @update:value="handleFullRoundPOVSwitch"
-            />
-          </div>
-        </div>
-        <div class="right-card-body">
-          <n-empty v-if="!activeDemoEntry" class="right-empty" :description="t('main.clips.no_demo')" />
-
-          <template v-else>
-            <div class="select-toolbar">
-              <!--
-                Full-round POV records whole rounds, so per-kill predicates have
-                nothing to act on. The player picker stays — it chooses who to
-                track — but the filter itself steps aside.
-              -->
-              <template v-if="fullRoundPOVEnabled">
-                <n-grid :cols="24" :x-gap="12" :y-gap="8">
-                  <n-gi :span="14">
-                    <n-select
-                      :value="selectedPlayerSteamID"
-                      :options="playerOptions"
-                      :placeholder="t('main.clips.player_placeholder')"
-                      @update:value="handlePlayerChange"
-                    />
-                  </n-gi>
-                  <n-gi :span="10">
-                    <div class="summary-box">
-                      <n-text depth="3">
-                        {{ t("main.clips.material_summary", { count: getMaterialSelectionCount(activeDemoEntry) }) }}
-                      </n-text>
-                    </div>
-                  </n-gi>
-                </n-grid>
-                <div class="mode-switch-row">
-                  <span class="switch-hint">{{ t("main.clips.filter.disabled_in_pov") }}</span>
-                </div>
-              </template>
-
-              <template v-else>
-                <KillFilterBar
-                  :filter="killFilter"
-                  :player-options="playerOptions"
-                  :player-steam-id="selectedPlayerSteamID"
-                  :matched-count="filteredKills.length"
-                  :total-count="scopedKills.length"
-                  :addable-count="addableKills.length"
-                  :selected-count="getMaterialSelectionCount(activeDemoEntry)"
-                  :max-round="maxRound"
-                  :max-distance="maxDistance"
-                  :weapon-groups="weaponGroups"
-                  @update:role="handleRoleChange"
-                  @update:player="handlePlayerChange"
-                  @update:ignore-player="handleIgnorePlayerChange"
-                  @update:traits="(value) => patchKillFilter(activeDemoEntry, { traits: value })"
-                  @update:weapons="(value) => patchKillFilter(activeDemoEntry, { weapons: value })"
-                  @update:hit-groups="(value) => patchKillFilter(activeDemoEntry, { hit_groups: value })"
-                  @update:sides="(value) => patchKillFilter(activeDemoEntry, { sides: value })"
-                  @update:rounds="(value) => patchKillFilter(activeDemoEntry, { rounds: value })"
-                  @update:distance="(value) => patchKillFilter(activeDemoEntry, { distance: value })"
-                  @apply-preset="handleApplyPreset"
-                  @clear="resetKillFilterConditions(activeDemoEntry)"
-                  @select-all="handleSelectAllFiltered"
-                />
-              </template>
-            </div>
-
-            <n-scrollbar class="select-scroll" trigger="none">
-              <n-empty v-if="!currentRounds.length" :description="emptyKillDescription" />
-
-              <n-collapse v-else v-model:expanded-names="expandedRounds">
-                <n-collapse-item
-                  v-for="round in currentRounds"
-                  :key="round.round"
-                  :name="String(round.round)"
-                  :title="t('main.clips.round_title', { round: round.round, kills: round.kills.length })"
-                >
-                  <n-space vertical :size="8">
-                    <div
-                      v-for="kill in round.kills"
-                      :key="kill.id"
-                      class="kill-row"
-                      :class="{ selected: isKillSelectedInDemo(activeDemoEntry, kill.id) }"
-                      @click="toggleKillSelection(kill)"
-                    >
-                      <div class="kill-line">
-                        <DeathNoticeLine :kill="kill" />
-                      </div>
-                      <n-tag
-                        v-if="isKillAlreadyProduced(activeDemoEntry.file_path, kill.id)"
-                        size="small"
-                        type="warning"
-                        :bordered="false"
-                      >
-                        {{ t("main.clips.already_produced") }}
-                      </n-tag>
-                    </div>
-                  </n-space>
-                </n-collapse-item>
-              </n-collapse>
-            </n-scrollbar>
-          </template>
-        </div>
-      </n-card>
+        :active-demo-entry="activeDemoEntry"
+        :full-round-p-o-v-enabled="fullRoundPOVEnabled"
+        :selected-player-steam-i-d="selectedPlayerSteamID"
+        :player-options="playerOptions"
+        :kill-filter="killFilter"
+        :matched-count="filteredKills.length"
+        :total-count="scopedKills.length"
+        :addable-count="addableKills.length"
+        :selected-count="getMaterialSelectionCount(activeDemoEntry)"
+        :max-round="maxRound"
+        :max-distance="maxDistance"
+        :weapon-groups="weaponGroups"
+        :current-rounds="currentRounds"
+        :expanded-rounds="expandedRounds"
+        :empty-kill-description="emptyKillDescription"
+        :is-kill-selected="isKillSelectedForActiveDemo"
+        :is-kill-already-produced="isKillAlreadyProduced"
+        @pov-toggle="handleFullRoundPOVSwitch"
+        @player-change="handlePlayerChange"
+        @role-change="handleRoleChange"
+        @ignore-player-change="handleIgnorePlayerChange"
+        @traits-change="handleTraitsChange"
+        @weapons-change="handleWeaponsChange"
+        @hit-groups-change="handleHitGroupsChange"
+        @sides-change="handleSidesChange"
+        @rounds-change="handleRoundsChange"
+        @distance-change="handleDistanceChange"
+        @apply-preset="handleApplyPreset"
+        @clear="handleClearFilter"
+        @select-all="handleSelectAllFiltered"
+        @rounds-expanded="handleRoundsExpanded"
+        @toggle-kill="toggleKillSelection"
+      />
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
@@ -428,6 +98,7 @@ import { t } from "@/shared/i18n";
 import { CLIP_SETTINGS_SAVED_EVENT } from "@/shared/events";
 import type {
   ClipSettings,
+  DemoHitGroup,
   DemoClipKill,
   DemoListEntry,
   DemoMaterialSelection,
@@ -454,12 +125,56 @@ import {
   type KillFilter,
   type KillFilterPreset,
   type KillPlayerRole,
+  type KillTrait,
 } from "@/shared/kill-filter";
-import { useImportDemos } from "@/features/import/composables/useImportDemos";
-import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
-import KillFilterBar from "@/features/clips/components/KillFilterBar.vue";
+import {
+  clipReadyDemos,
+  ensureClipDemoSelected,
+  selectedEntry,
+  selectDemoByKey,
+} from "@/domains/demo";
+import {
+  addMaterialSelection,
+  autoAddVictimView,
+  clearMaterialSelections,
+  fetchFullRoundPOVPlan,
+  formatDuration,
+  fullRoundPlanByDemo,
+  fullRoundPlanErrorByDemo,
+  getAllDemoKills,
+  getClipPlayers,
+  getClipRounds,
+  getDeathPlayers,
+  getDemoMaterials,
+  getFilteredKills,
+  getFilteredRounds,
+  getFullRoundPlayers,
+  getFullRoundPOVSelection,
+  getFullRoundPOVTrackingLabel,
+  getFullRoundPlayerSteamID,
+  getKillFilter,
+  getMaterialSelectionCount,
+  getMaterialSelections,
+  getSelectedPlayerSteamID,
+  isKillSelectedInDemo,
+  patchKillFilter,
+  removeMaterialSelection,
+  resetKillFilterConditions,
+  setAutoAddVictimView,
+  setFullRoundPOVEnabled,
+  setKillFilterRole,
+  setSelectedPlayerSteamID,
+  syncDefaultFullRoundPlayer,
+  syncFullRoundPOVPlayer,
+  updateMaterialClipOverrides,
+  updateMaterialIncludeKiller,
+  updateMaterialIncludeVictim,
+} from "@/domains/clip-selection";
+import ClipSelectionPanel from "@/features/clips/components/ClipSelectionPanel.vue";
+import MaterialListPanel from "@/features/clips/components/MaterialListPanel.vue";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
 import { useSplitter } from "@/shared/composables/useSplitter";
+import { backend } from "@/shared/backend";
 
 const containerRef = ref<HTMLElement | null>(null);
 const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter(containerRef, {
@@ -469,43 +184,6 @@ const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter
   splitterWidthPx: 12,
 });
 
-const {
-  selectedEntry,
-  clipReadyDemos,
-  selectDemoByKey,
-  ensureClipDemoSelected,
-  autoAddVictimView,
-  getClipPlayers,
-  getDeathPlayers,
-  getKillFilter,
-  patchKillFilter,
-  setKillFilterRole,
-  resetKillFilterConditions,
-  getAllDemoKills,
-  getFilteredKills,
-  getFilteredRounds,
-  getFullRoundPlayers,
-  getSelectedPlayerSteamID,
-  setSelectedPlayerSteamID,
-  getFullRoundPlayerSteamID,
-  getClipRounds,
-  getFullRoundPOVSelection,
-  setFullRoundPOVEnabled,
-  syncFullRoundPOVPlayer,
-  fullRoundPlanByDemo,
-  fullRoundPlanErrorByDemo,
-  fetchFullRoundPOVPlan,
-  getFullRoundPOVTrackingLabel,
-  getMaterialSelections,
-  getMaterialSelectionCount,
-  addMaterialSelection,
-  updateMaterialClipOverrides,
-  updateMaterialIncludeVictim,
-  updateMaterialIncludeKiller,
-  removeMaterialSelection,
-  clearMaterialSelections,
-  isKillSelectedInDemo,
-} = useImportDemos();
 const { historySnapshot } = useProduceHistory();
 const message = useMessage();
 
@@ -559,14 +237,19 @@ const activeDemoEntry = computed<DemoListEntry | null>(() => {
 const fullRoundPOVSelection = computed(() => getFullRoundPOVSelection(activeDemoEntry.value));
 const fullRoundPOVEnabled = computed(() => fullRoundPOVSelection.value.enabled);
 const killFilter = computed(() => getKillFilter(activeDemoEntry.value));
-const selectedPlayerSteamID = computed(() => getSelectedPlayerSteamID(activeDemoEntry.value));
+const selectedClipPlayerSteamID = computed(() => getSelectedPlayerSteamID(activeDemoEntry.value));
+const selectedPlayerSteamID = computed(() =>
+  fullRoundPOVEnabled.value
+    ? fullRoundPOVSelection.value.player_steam_id
+    : selectedClipPlayerSteamID.value,
+);
 const clipPlayers = computed(() => getClipPlayers(activeDemoEntry.value));
 const deathPlayers = computed(() => getDeathPlayers(activeDemoEntry.value));
 const fullRoundPlayers = computed(() => getFullRoundPlayers(activeDemoEntry.value));
 
 const allDemoKills = computed(() => getAllDemoKills(activeDemoEntry.value));
 const scopedKills = computed(() =>
-  collectScopedKills(allDemoKills.value, killFilter.value, selectedPlayerSteamID.value),
+  collectScopedKills(allDemoKills.value, killFilter.value, selectedClipPlayerSteamID.value),
 );
 const filteredKills = computed(() =>
   fullRoundPOVEnabled.value ? [] : getFilteredKills(activeDemoEntry.value),
@@ -647,7 +330,8 @@ watch(
 );
 
 onMounted(() => {
-  ensureClipDemoSelected();
+  const entry = ensureClipDemoSelected();
+  if (entry) syncDefaultFullRoundPlayer(entry);
   void ensureProduceHistoryInitialized();
   void loadClipSettings();
   window.addEventListener(CLIP_SETTINGS_SAVED_EVENT, onClipSettingsSaved);
@@ -690,18 +374,82 @@ const producedTakeCountByDemo = computed(() => {
   return byDemo;
 });
 
-async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-  const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return fn(...args) as Promise<T>;
+type ExpandedNames = string | number | Array<string | number> | null;
+
+interface POVPlanView {
+  readonly player_name: string;
+  readonly player_steam_id: string;
+  readonly segments: readonly Readonly<FullRoundPOVSegment>[];
+}
+
+function normalizeExpandedNames(names: ExpandedNames): string[] {
+  return (Array.isArray(names) ? names : names != null ? [names] : []).map((name) => String(name));
+}
+
+function getFullRoundPOVPlan(entry: DemoListEntry): POVPlanView | undefined {
+  return fullRoundPlanByDemo.value[entry.key];
+}
+
+function getFullRoundPOVError(entry: DemoListEntry): string | undefined {
+  return fullRoundPlanErrorByDemo.value[entry.key];
+}
+
+function getMaterialSettingsExpandedNames(entry: DemoListEntry): string[] {
+  return materialSettingsExpandedByDemo.value[entry.key] || [];
+}
+
+function handleMaterialSettingsExpanded(entry: DemoListEntry, names: string[]): void {
+  materialSettingsExpandedByDemo.value = {
+    ...materialSettingsExpandedByDemo.value,
+    [entry.key]: names,
+  };
+}
+
+function isKillAlreadyProducedForEntry(entry: DemoListEntry, killID: string): boolean {
+  return isKillAlreadyProduced(entry.file_path, killID);
+}
+
+function isKillSelectedForActiveDemo(killID: string): boolean {
+  return isKillSelectedInDemo(activeDemoEntry.value, killID);
+}
+
+function handleTraitsChange(value: KillTrait[]): void {
+  patchKillFilter(activeDemoEntry.value, { traits: value });
+}
+
+function handleWeaponsChange(value: string[]): void {
+  patchKillFilter(activeDemoEntry.value, { weapons: value });
+}
+
+function handleHitGroupsChange(value: DemoHitGroup[]): void {
+  patchKillFilter(activeDemoEntry.value, { hit_groups: value });
+}
+
+function handleSidesChange(value: string[]): void {
+  patchKillFilter(activeDemoEntry.value, { sides: value });
+}
+
+function handleRoundsChange(value: [number, number] | null): void {
+  patchKillFilter(activeDemoEntry.value, { rounds: value });
+}
+
+function handleDistanceChange(value: [number, number] | null): void {
+  patchKillFilter(activeDemoEntry.value, { distance: value });
+}
+
+function handleClearFilter(): void {
+  resetKillFilterConditions(activeDemoEntry.value);
+}
+
+function handleRoundsExpanded(names: ExpandedNames): void {
+  expandedRounds.value = normalizeExpandedNames(names);
 }
 
 async function loadClipSettings() {
   try {
-    const settings = await callBackend<ClipSettings>("GetClipSettings");
+    const settings = await backend.GetClipSettings();
     clipSettings.value = settings;
-    autoAddVictimView.value = !!settings.auto_add_victim_view;
+    setAutoAddVictimView(!!settings.auto_add_victim_view);
   } catch {
     // ignore settings load error in clips page
   }
@@ -746,12 +494,13 @@ async function handlePlayerChange(next: string | number | null) {
   }
   const playerSteamID = String(next);
   const entry = activeDemoEntry.value;
-  setSelectedPlayerSteamID(entry, playerSteamID);
-  syncFullRoundPOVPlayer(entry, playerSteamID);
-  sanitizeFilterConditionsForContext(entry, playerSteamID);
   if (fullRoundPOVEnabled.value && playerSteamID) {
+    syncFullRoundPOVPlayer(entry, playerSteamID);
     await fetchFullRoundPOVPlan(entry, playerSteamID);
+    return;
   }
+  setSelectedPlayerSteamID(entry, playerSteamID);
+  sanitizeFilterConditionsForContext(entry, playerSteamID);
 }
 
 function addKill(kill: DemoClipKill) {
@@ -825,7 +574,7 @@ async function handleFullRoundPOVSwitch(value: boolean) {
   if (!entry) return;
   setFullRoundPOVEnabled(entry, value);
   if (value) {
-    const playerSteamID = getSelectedPlayerSteamID(entry);
+    const playerSteamID = getFullRoundPOVSelection(entry).player_steam_id;
     if (playerSteamID) {
       await fetchFullRoundPOVPlan(entry, playerSteamID);
     }
@@ -1002,7 +751,7 @@ function getPOVRoundKillCount(entry: DemoListEntry | null, playerSteamID: string
 
 function povRoundKills(entry: DemoListEntry | null, roundNum: number): DemoClipKill[] {
   if (!entry?.meta?.clip_players) return [];
-  const playerSteamID = getSelectedPlayerSteamID(entry);
+  const playerSteamID = getFullRoundPOVSelection(entry).player_steam_id;
   const player = entry.meta.clip_players.find((p) => p.steam_id === playerSteamID);
   if (!player) return [];
   const round = player.rounds.find((r) => r.round === roundNum);
@@ -1014,7 +763,7 @@ function povRoundKills(entry: DemoListEntry | null, roundNum: number): DemoClipK
 }
 
 function povSegmentTitle(entry: DemoListEntry | null, segment: FullRoundPOVSegment): string {
-  const playerSteamID = getSelectedPlayerSteamID(entry);
+  const playerSteamID = getFullRoundPOVSelection(entry).player_steam_id;
   const kills = getPOVRoundKillCount(entry, playerSteamID, segment.round);
   const died = String(segment.end_reason || "").toLowerCase() === "target_death";
   const key = died ? "main.clips.full_round_pov_round_title_died" : "main.clips.full_round_pov_round_title_survived";

@@ -126,8 +126,9 @@
 import { computed, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { t } from "@/shared/i18n";
-import { ensureProduceHistoryInitialized } from "@/features/produce/composables/useProduceHistory";
-import DeathNoticeLine from "@/features/clips/components/DeathNoticeLine.vue";
+import { backend } from "@/shared/backend";
+import { initProduceHistory } from "@/domains/production";
+import DeathNoticeLine from "@/shared/ui/DeathNoticeLine.vue";
 import type { DemoClipKill, ProduceHistoryExportResult, ProduceHistoryItem, ProduceHistorySnapshot } from "@/shared/types";
 
 interface HistoryDemoGroup {
@@ -286,7 +287,10 @@ const historyRoundGroupsByDemo = computed(() => {
 async function ensureInit() {
   historyLoading.value = true;
   try {
-    await ensureProduceHistoryInitialized();
+    await initProduceHistory();
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    message.error(detail || t("main.produce.failed"));
   } finally {
     historyLoading.value = false;
   }
@@ -426,17 +430,10 @@ function normalizeExpandedNames(names: Array<string | number> | string | number 
   return [String(names)];
 }
 
-async function callBackend<T>(method: string, ...args: unknown[]): Promise<T> {
-  const api = (window as any).go?.app?.App as Record<string, (...a: unknown[]) => Promise<unknown>> | undefined;
-  const fn = api?.[method];
-  if (!fn) throw new Error(`Wails API not loaded: ${method}`);
-  return fn(...args) as Promise<T>;
-}
-
 async function openProducedClip(videoPath: string) {
   if (!videoPath) return;
   try {
-    await callBackend<void>("OpenProducedClipInFolder", videoPath);
+    await backend.OpenProducedClipInFolder(videoPath);
   } catch {
     // ignore open failures
   }
@@ -446,7 +443,7 @@ async function exportHistoryVideos() {
   if (historyExporting.value) return;
   historyExporting.value = true;
   try {
-    const result = await callBackend<ProduceHistoryExportResult>("ExportProduceHistoryVideos");
+    const result = await backend.ExportProduceHistoryVideos();
     if (result.cancelled) {
       message.info(t("topbar.history_export_cancelled"));
       return;

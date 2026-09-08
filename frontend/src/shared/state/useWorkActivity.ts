@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { WorkActivity } from "@/shared/types";
+import { backend } from "@/shared/backend";
 
 // Shared by the produce page and settings drawer. A failed or not-yet-loaded
 // snapshot disables actions; backend reservations remain the final authority.
@@ -12,9 +13,7 @@ function refreshWorkActivity(): Promise<void> {
   if (pending) return pending;
   pending = (async () => {
     try {
-      const api = window.go?.app?.App as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined;
-      if (!api?.GetWorkActivity) throw new Error("Wails API not loaded: GetWorkActivity");
-      activity.value = await api.GetWorkActivity() as WorkActivity;
+      activity.value = await backend.GetWorkActivity() as WorkActivity;
     } catch {
       activity.value = null;
     }

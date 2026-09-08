@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "rootDir": "src",
+    "outDir": "node_modules/.cache/cs2-highlight-tool-backend-tests",
+    "declaration": false,
+    "sourceMap": false,
+    "lib": ["ES2021", "DOM"]
+  },
+  "files": [
+    "src/global.d.ts",
+    "src/shared/backend/adapter.ts",
+    "src/domains/settings/settings-state.ts",
+    "src/domains/clip-selection/selection-logic.ts",
+    "src/domains/production/jobs.ts",
+    "src/domains/production/snapshot.ts",
+    "src/domains/production/storeCore.ts",
+    "src/domains/edit/editDomain.ts",
+    "src/domains/edit/history.ts"
+  ]
+}
