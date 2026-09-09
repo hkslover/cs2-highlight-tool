@@ -2,6 +2,7 @@ package envsetup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,11 @@ import (
 	"cs2-highlight-tool-v2/internal/download"
 	"cs2-highlight-tool-v2/internal/endpoints"
 	"cs2-highlight-tool-v2/internal/release"
+)
+
+var (
+	errDownloadCanceledByUser = errors.New(downloadCanceledMessage)
+	errDownloadRaceFinished   = errors.New("下载竞速已结束")
 )
 
 func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error {
@@ -285,9 +291,9 @@ func (s *Service) updatePhaseByReadiness() {
 	s.emitState()
 }
 
-func (s *Service) downloadFile(componentID string, url string, targetPath string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	active := &activeDownloadCancel{cancel: cancel}
+func (s *Service) beginDownloadGroup(componentID string) (*activeDownloadCancel, context.Context, context.CancelCauseFunc) {
+	ctx, cancelCause := context.WithCancelCause(context.Background())
+	active := &activeDownloadCancel{cancel: func() { cancelCause(errDownloadCanceledByUser) }}
 
 	s.cancelMu.Lock()
 	if oldCancel, exists := s.cancelMap[componentID]; exists {
@@ -297,6 +303,19 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 	}
 	s.cancelMap[componentID] = active
 	s.cancelMu.Unlock()
+	return active, ctx, cancelCause
+}
+
+func (s *Service) endDownloadGroup(componentID string, active *activeDownloadCancel) {
+	s.cancelMu.Lock()
+	if s.cancelMap[componentID] == active {
+		delete(s.cancelMap, componentID)
+	}
+	s.cancelMu.Unlock()
+}
+
+func (s *Service) downloadFile(componentID string, url string, targetPath string) error {
+	active, ctx, cancelCause := s.beginDownloadGroup(componentID)
 
 	started := s.logStepStart(componentID, "download", "download_asset", string(s.currentSource()), 0, map[string]string{
 		"url":    url,
@@ -306,12 +325,8 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 		s.emitProgress(componentID, active, percent, indeterminate)
 	})
 
-	s.cancelMu.Lock()
-	if s.cancelMap[componentID] == active {
-		delete(s.cancelMap, componentID)
-	}
-	s.cancelMu.Unlock()
-	cancel()
+	s.endDownloadGroup(componentID, active)
+	cancelCause(nil)
 
 	if err != nil {
 		s.logStepFail(componentID, "download", "download_asset", string(s.currentSource()), 0, started, err, map[string]string{

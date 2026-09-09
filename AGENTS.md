@@ -70,7 +70,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 状态源为 `GetStartupState` 和 `startup_state_changed`，模型见 `internal/envsetup/state.go`。`mode` 为 `workspace_init|startup|main`；`phase` 为 `detecting_source|waiting_source|running_tasks|ready`；二者不可混用。
 - 组件 ID：`hlae`、`plugin`、`ffmpeg`、`cs2`。组件/启动状态：`pending`、`checking`、`downloading`、`installing`、`ready`、`warning`、`failed`、`needs_action`。
 - 启动时实时 GeoIP 检测，统一更新源固定为 `github`，地区结果不持久化。先获取统一 Release 快照，再检查软件自身更新；确认 `self_update.available=true` 时必须先更新软件，不启动组件检查/安装。自更新检查失败保持非致命语义。
-- 组件下载顺序：CN 或 GeoIP 失败/为空时 `url → mirror_url`；非 CN 仅 `github_url`。失败直接报错，不恢复多源自动回退或 gh-proxy 终极兜底。统一源失败可使用本地已安装组件并标记 warning，不伪造远端成功。
+- 组件下载策略：CN 或 GeoIP 失败/为空时，`mirror_url` 与 `url` 并行竞速，先成功完成的链路胜出并取消另一条；非 CN 仅 `github_url`。竞速全部失败才报错，不恢复多源自动回退或 gh-proxy 终极兜底。统一源失败可使用本地已安装组件并标记 warning，不伪造远端成功。
 - HLAE、插件本地版本均来自各自安装目录 `changelog.xml` 首个 `<version>`，不以配置持久化版本为真值。
 - `StartupState.ads[]` 仅包含有效的 `main_steps_top_banner` Sponsored Card，展示字段为 `click_url/sponsor/title/rich_html/image_url/image_alt`；点击走外部浏览器，广告失败不得阻断启动。
 
