@@ -1,10 +1,15 @@
 package envsetup
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"cs2-highlight-tool-v2/internal/release"
 )
@@ -192,5 +197,166 @@ func TestDownloadAndInstallWithFallback_CNDoesNotAttemptGitHubURL(t *testing.T) 
 	}
 	if urlHits != 1 || mirrorHits != 1 || githubHits != 0 {
 		t.Fatalf("hits url=%d mirror=%d github=%d", urlHits, mirrorHits, githubHits)
+	}
+}
+
+func TestDownloadAndInstallWithFallback_RaceUsesFasterCandidate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/slow.zip":
+			// 声明一个远大于实际写入量的长度，确保慢链路不会因为提前 EOF 而胜出。
+			w.Header().Set("Content-Length", "1048576")
+			_, _ = w.Write([]byte("slow"))
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			select {
+			case <-r.Context().Done():
+			case <-time.After(3 * time.Second):
+			}
+		case "/fast.zip":
+			_, _ = w.Write([]byte("fast-payload"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	svc := New(t.TempDir(), "1.0.0")
+	svc.Startup(nil)
+	candidates := []releaseAssetCandidate{
+		{
+			Source:   DownloadSourceGitHub,
+			Asset:    release.Asset{Name: "hlae_2_0_0.zip"},
+			AssetURL: server.URL + "/slow.zip",
+			URLKind:  urlKindMirror,
+		},
+		{
+			Source:   DownloadSourceGitHub,
+			Asset:    release.Asset{Name: "hlae_2_0_0.zip"},
+			AssetURL: server.URL + "/fast.zip",
+			URLKind:  urlKindDirect,
+		},
+	}
+
+	var installedPath string
+	var installedContent string
+	err := svc.downloadAndInstallWithFallback(componentHLAE, "v2.0.0", candidates, func(path string) error {
+		installedPath = path
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		installedContent = string(data)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("downloadAndInstallWithFallback error: %v", err)
+	}
+	if !strings.HasSuffix(installedPath, "_"+urlKindDirect+".zip") {
+		t.Fatalf("installed path = %q, want fast direct candidate", installedPath)
+	}
+	if installedContent != "fast-payload" {
+		t.Fatalf("installed content = %q, want fast-payload", installedContent)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(svc.dataDir, "temp"))
+	if err != nil {
+		t.Fatalf("read temp dir: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(installedPath) {
+		t.Fatalf("temp entries = %#v, want only winner %s", entries, filepath.Base(installedPath))
+	}
+}
+
+func TestDownloadAndInstallWithFallback_RaceFallsBackWhenWinnerInstallFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mirror.zip":
+			_, _ = w.Write([]byte("mirror-payload"))
+		case "/url.zip":
+			_, _ = w.Write([]byte("url-payload"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	svc := New(t.TempDir(), "1.0.0")
+	svc.Startup(nil)
+	candidates := []releaseAssetCandidate{
+		{
+			Source:   DownloadSourceGitHub,
+			Asset:    release.Asset{Name: "hlae_2_0_0.zip"},
+			AssetURL: server.URL + "/mirror.zip",
+			URLKind:  urlKindMirror,
+		},
+		{
+			Source:   DownloadSourceGitHub,
+			Asset:    release.Asset{Name: "hlae_2_0_0.zip"},
+			AssetURL: server.URL + "/url.zip",
+			URLKind:  urlKindDirect,
+		},
+	}
+
+	installPaths := make([]string, 0, 2)
+	installedContent := ""
+	err := svc.downloadAndInstallWithFallback(componentHLAE, "v2.0.0", candidates, func(path string) error {
+		installPaths = append(installPaths, path)
+		if len(installPaths) == 1 {
+			return errors.New("模拟安装失败")
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		installedContent = string(data)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("downloadAndInstallWithFallback error: %v", err)
+	}
+	if len(installPaths) != 2 {
+		t.Fatalf("install calls = %d, want 2", len(installPaths))
+	}
+	if base := filepath.Base(installPaths[1]); base != "hlae_v2.0.0.zip" {
+		t.Fatalf("fallback install path = %q, want unsuffixed temp path", installPaths[1])
+	}
+	if installedContent != "mirror-payload" && installedContent != "url-payload" {
+		t.Fatalf("installed content = %q, want one of the candidate payloads", installedContent)
+	}
+}
+
+func TestAwaitRaceOutcome_UserCancelWinsOverQueuedSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	results := make(chan downloadRaceResult, 1)
+	results <- downloadRaceResult{index: 0}
+	cancel(errDownloadCanceledByUser)
+
+	outcome := awaitRaceOutcome(ctx, results, []releaseAssetCandidate{
+		{Source: DownloadSourceGitHub, URLKind: urlKindDirect},
+	})
+	if !outcome.canceled {
+		t.Fatalf("outcome = %#v, want canceled", outcome)
+	}
+	if outcome.winner != -1 {
+		t.Fatalf("winner = %d, want -1", outcome.winner)
+	}
+}
+
+func TestAwaitRaceOutcome_ReturnsQueuedSuccess(t *testing.T) {
+	ctx := context.Background()
+	results := make(chan downloadRaceResult, 1)
+	results <- downloadRaceResult{index: 1}
+
+	outcome := awaitRaceOutcome(ctx, results, []releaseAssetCandidate{
+		{Source: DownloadSourceGitHub, URLKind: urlKindDirect},
+		{Source: DownloadSourceGitHub, URLKind: urlKindMirror},
+	})
+	if outcome.canceled {
+		t.Fatalf("outcome = %#v, want not canceled", outcome)
+	}
+	if outcome.winner != 1 {
+		t.Fatalf("winner = %d, want 1", outcome.winner)
 	}
 }

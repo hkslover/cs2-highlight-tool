@@ -2,6 +2,7 @@ package envsetup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,11 @@ import (
 	"cs2-highlight-tool-v2/internal/download"
 	"cs2-highlight-tool-v2/internal/endpoints"
 	"cs2-highlight-tool-v2/internal/release"
+)
+
+var (
+	errDownloadCanceledByUser = errors.New(downloadCanceledMessage)
+	errDownloadFinished       = errors.New("下载已结束")
 )
 
 func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error {
@@ -285,9 +291,12 @@ func (s *Service) updatePhaseByReadiness() {
 	s.emitState()
 }
 
-func (s *Service) downloadFile(componentID string, url string, targetPath string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	active := &activeDownloadCancel{cancel: cancel}
+func (s *Service) beginDownloadGroup(componentID string) (*activeDownloadCancel, context.Context, context.CancelCauseFunc) {
+	ctx, cancelCause := context.WithCancelCause(context.Background())
+	active := &activeDownloadCancel{
+		cancel: func() { cancelCause(errDownloadCanceledByUser) },
+		ctx:    ctx,
+	}
 
 	s.cancelMu.Lock()
 	if oldCancel, exists := s.cancelMap[componentID]; exists {
@@ -297,6 +306,26 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 	}
 	s.cancelMap[componentID] = active
 	s.cancelMu.Unlock()
+	return active, ctx, cancelCause
+}
+
+func (a *activeDownloadCancel) canceledByUser() bool {
+	if a == nil || a.ctx == nil {
+		return false
+	}
+	return errors.Is(context.Cause(a.ctx), errDownloadCanceledByUser)
+}
+
+func (s *Service) endDownloadGroup(componentID string, active *activeDownloadCancel) {
+	s.cancelMu.Lock()
+	if s.cancelMap[componentID] == active {
+		delete(s.cancelMap, componentID)
+	}
+	s.cancelMu.Unlock()
+}
+
+func (s *Service) downloadFile(componentID string, url string, targetPath string) error {
+	active, ctx, cancelCause := s.beginDownloadGroup(componentID)
 
 	started := s.logStepStart(componentID, "download", "download_asset", string(s.currentSource()), 0, map[string]string{
 		"url":    url,
@@ -306,12 +335,13 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 		s.emitProgress(componentID, active, percent, indeterminate)
 	})
 
-	s.cancelMu.Lock()
-	if s.cancelMap[componentID] == active {
-		delete(s.cancelMap, componentID)
+	// 统一提交：先结束取消仲裁，再移除取消注册。
+	// 如果用户取消先于提交发生，即使文件已经下载完成，也以取消为准。
+	cancelCause(errDownloadFinished)
+	if isUserCancelCause(ctx) {
+		err = download.ErrCanceled
 	}
-	s.cancelMu.Unlock()
-	cancel()
+	s.endDownloadGroup(componentID, active)
 
 	if err != nil {
 		s.logStepFail(componentID, "download", "download_asset", string(s.currentSource()), 0, started, err, map[string]string{

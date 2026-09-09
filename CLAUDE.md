@@ -76,7 +76,7 @@ Import alias: Use `@/` for `frontend/src/**` imports.
 
 - **HLAE/plugin local version:** Must be read from installation directory's `changelog.xml` (first `<version>` element), not from persisted `config.json`.
 - **Logging:** All startup logs go through `internal/logging` (slog adapter). Sensitive values (tokens, auth headers, home paths) are automatically sanitized. Trace fields: `component`, `stage`, `action`, `source`, `attempt`, `error`, `elapsed_ms`.
-- **Unified release source:** A single release API snapshot is fetched at startup and consumed by all components. GitHub download URLs are rewritten via gh-proxy only when `country_code=CN`; non-CN goes direct. No multi-source fallback.
+- **Unified release source:** A single release API snapshot is fetched at startup and consumed by all components. For CN or unknown GeoIP, component downloads race `mirror_url` and `url` in parallel and the first completed link wins; non-CN uses `github_url` only. No update-source-level fallback.
 - **Concurrency:** Use existing `mu`/`configMu` mutexes for `Service.state`, `Service.logs`, `Service.config`. No blocking I/O inside locks. Always call `emitState()` after state mutation.
 - **Wails binding boundary:** Frontend accesses all backend methods via `window.go.app.App.*` and receives push events via `runtime.EventsOn(...)`. New Wails-exposed methods are stable public contracts — do not rename without coordination.
 
