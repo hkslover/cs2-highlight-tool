@@ -36,7 +36,7 @@
 - `src/domains/clip-selection/` 维护普通片段选择、筛选器和整局 POV 的独立状态；`src/domains/demo/` 维护 Demo 列表/解析状态，页面组件不得把整局 POV 塞回 Demo 元数据列表。
 - `src/domains/production/` 先建立事件订阅再读取初始快照，并按 `updated_at_ms` 与来源优先级合并；事件不能被延迟快照回滚。初始化/重试/销毁必须沿用其生命周期 API。
 - `src/domains/settings/` 是跨设置入口共享的草稿与确认状态，保存防抖、`flush` 和 `dispose` 必须等待在途读写；读取失败不得把前端占位默认值写回后端。工作目录切换进入 `workspace_init` 时调用 `resetForWorkspace`，离开该阶段后由 `init` 读取新工作目录；旧 generation 的在途读写不得回写当前状态。
-- `src/domains/edit/` 管理剪辑序列和合成进度；路由/应用生命周期切换时必须调用 `init`/`dispose`，旧 epoch 的导出完成或事件不得污染新实例。
+- `src/domains/edit/` 管理剪辑序列和合成进度；应用生命周期使用 `init`/`dispose` 管理订阅，编辑路由卸载不得销毁共享 domain，保证在途导出跨路由完成；旧 epoch 的导出完成或事件不得污染新实例。对方视角快节奏剪辑由 `fastEdit.ts` 提供无头纯函数，开关默认关闭；只处理带完整录制标记的 victim take，按用户序列中相邻且同 Demo/回合/击杀者分组，缺标记素材保持整段，无法满足裁后时长或过长转场时保持整段/硬切。工作区切换须清理序列、开关和 duration 缓存，导出期间冻结请求并禁用编辑。
 - ClipSettings 的允许值、默认值、命令开关语义遵循根文件“设置与插件计划”；前端不得自行决定编码能力或绕过后端归一化。
 - 精确 SteamID 使用 `steam_id_text` 或对应字符串字段；不得将 number 形式的 `steam_id` 作为请求值。
 - 主视角/对方视角通过 `primary_view` 映射，复用 `src/shared/clip-views.ts`；死亡模式的主视角是 victim，录制角色仍是 killer/victim。

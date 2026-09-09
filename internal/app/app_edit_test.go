@@ -1,17 +1,21 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"cs2-highlight-tool-v2/internal/config"
+	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
+	"cs2-highlight-tool-v2/internal/producews"
 )
 
 func TestNormalizeEditTransitions_ExplicitPlacement(t *testing.T) {
@@ -48,6 +52,108 @@ func TestNormalizeEditTransitions_LegacySequential(t *testing.T) {
 	}
 	if transitions[0].AfterIndex != 0 || transitions[1].AfterIndex != 1 {
 		t.Fatalf("unexpected sequential transition mapping: %+v", transitions)
+	}
+}
+
+func TestResolveEditTrimRange_ValidatesFiniteBoundedNonEmptyRange(t *testing.T) {
+	start := 0.0
+	end := 2.5
+	gotStart, gotEnd, hasTrim, err := resolveEditTrimRange(EditConcatClip{
+		StartSeconds: &start,
+		EndSeconds:   &end,
+	}, 2.5, 0)
+	if err != nil || !hasTrim || gotStart != 0 || gotEnd != 2.5 {
+		t.Fatalf("valid trim range = %.3f..%.3f trim=%v err=%v", gotStart, gotEnd, hasTrim, err)
+	}
+
+	// ProbeClipDuration rounds the format duration to milliseconds while the
+	// transition/trim probe keeps the video-stream duration. Permit that one
+	// millisecond discrepancy and clamp it to the authoritative stream end.
+	nearEnd := 2.5006
+	gotStart, gotEnd, hasTrim, err = resolveEditTrimRange(EditConcatClip{
+		EndSeconds: &nearEnd,
+	}, 2.5, 0)
+	if err != nil || !hasTrim || gotStart != 0 || gotEnd != 2.5 {
+		t.Fatalf("near-end trim range = %.3f..%.3f trim=%v err=%v", gotStart, gotEnd, hasTrim, err)
+	}
+
+	badRanges := []EditConcatClip{
+		{StartSeconds: ptrFloat64(-0.1)},
+		{EndSeconds: ptrFloat64(2.5011)},
+		{EndSeconds: ptrFloat64(2.6)},
+		{StartSeconds: ptrFloat64(1), EndSeconds: ptrFloat64(1)},
+		{StartSeconds: ptrFloat64(math.Inf(1))},
+	}
+	for index, clip := range badRanges {
+		if _, _, _, err := resolveEditTrimRange(clip, 2.5, index); err == nil {
+			t.Fatalf("bad trim range %d unexpectedly accepted: %+v", index, clip)
+		}
+	}
+}
+
+func ptrFloat64(value float64) *float64 {
+	return &value
+}
+
+func TestWriteProduceTakeMetadataSidecar_PreservesTimingFields(t *testing.T) {
+	videoPath := filepath.Join(t.TempDir(), "take0000.mp4")
+	item := ProduceHistoryItem{
+		DemoPath:           "match.dem",
+		TakeIndex:          1,
+		View:               "victim",
+		SpecMode:           1,
+		KillIDs:            []string{"kill-1"},
+		Kills:              []demo.ClipKill{{ID: "kill-1", Tick: 1200}},
+		TickRate:           64,
+		RecordStartTick:    1100,
+		RecordEndTick:      1400,
+		KillOffsetsSeconds: []float64{1.5625},
+		VideoPath:          videoPath,
+	}
+	if err := writeProduceTakeMetadataSidecar(videoPath, item); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+
+	payload, err := os.ReadFile(produceTakeMetadataPath(videoPath))
+	if err != nil {
+		t.Fatalf("read sidecar: %v", err)
+	}
+	var decoded ProduceHistoryItem
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode sidecar: %v", err)
+	}
+	if decoded.View != "victim" || decoded.RecordStartTick != 1100 || decoded.RecordEndTick != 1400 || decoded.TickRate != 64 {
+		t.Fatalf("sidecar timing fields = %+v", decoded)
+	}
+	if len(decoded.KillOffsetsSeconds) != 1 || decoded.KillOffsetsSeconds[0] != 1.5625 {
+		t.Fatalf("sidecar offsets = %+v", decoded.KillOffsetsSeconds)
+	}
+}
+
+func TestMergeObservedTakeStatusKeepsSourceWindow(t *testing.T) {
+	plan := ProduceTakePlan{
+		DemoPath:        "match.dem",
+		TakeIndex:       1,
+		View:            "victim",
+		StartTick:       900,
+		EndTick:         1200,
+		RecordStartTick: 910,
+		RecordEndTick:   1210,
+	}
+	got := mergeObservedTakeStatus(plan, producews.TakeStatus{
+		RecordStartTick: 920,
+		RecordEndTick:   1220,
+	})
+	if got.StartTick != 900 || got.EndTick != 1200 {
+		t.Fatalf("observed recorder ticks changed source window: %+v", got)
+	}
+	if got.RecordStartTick != 920 || got.RecordEndTick != 1220 {
+		t.Fatalf("recorder ticks were not updated: %+v", got)
+	}
+
+	partial := mergeObservedTakeStatus(plan, producews.TakeStatus{RecordStartTick: 0, RecordEndTick: 0})
+	if !reflect.DeepEqual(partial, plan) {
+		t.Fatalf("empty observation should preserve plan metadata: got=%+v want=%+v", partial, plan)
 	}
 }
 
@@ -264,6 +370,23 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 	}
 	if got[0].Duration != 4.25 || got[0].Width != 1600 || got[0].Height != 900 || got[0].SampleAspectRatio != "1:1" || got[0].DisplayAspectRatio != "16:9" {
 		t.Fatalf("resolved clip=%+v; probe result should override request duration", got[0])
+	}
+	start, end := 1.25, 3.75
+	trimmed, err := app.resolveEditClips([]EditConcatClip{{
+		VideoPath:    clipPath,
+		Duration:     99,
+		StartSeconds: &start,
+		EndSeconds:   &end,
+	}}, true)
+	if err != nil {
+		t.Fatalf("resolveEditClips with trim: %v", err)
+	}
+	if len(trimmed) != 1 || !trimmed[0].HasTrim || trimmed[0].Duration != 4.25 || trimmed[0].TrimStart != start || trimmed[0].TrimEnd != end {
+		t.Fatalf("resolved trim=%+v; trim should use probed source duration", trimmed)
+	}
+	invalidEnd := 4.5
+	if _, err := app.resolveEditClips([]EditConcatClip{{VideoPath: clipPath, StartSeconds: &start, EndSeconds: &invalidEnd}}, true); err == nil {
+		t.Fatal("trim past probed source duration should be rejected")
 	}
 }
 

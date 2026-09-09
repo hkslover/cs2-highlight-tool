@@ -34,6 +34,7 @@
 - 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；关闭命令开关时不生成命令或重置命令。
 - `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动；`sky_blackout` 不得联动关闭云层。
 - `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。
+- 录制 take plan/history 的 `tick_rate`、`record_start_tick`、`record_end_tick`、`kill_offsets_seconds` 只作为后续剪辑的可选观测元数据；插件动作和原有 source window 保持不变。最终视频旁的 `.fastedit.json` 只能 best-effort 写入，不能让成功录制失败。
 - debug DLL override 只作为 `App` 会话状态，不写入配置，也不参与启动插件版本检测。
 - debug override 仅改变注入源 DLL，目标、备份和恢复复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
 - 修改生成计划时核对 take 命名、稳定 source ID、历史去重键与前端选择状态，不能仅验证 JSON 能序列化。
@@ -51,4 +52,5 @@
 - 后端代码改动执行 `go test ./...`；envsetup/release 改动确认这两个包通过，可用 `go test ./internal/envsetup ./internal/release` 定位失败。
 - 状态、回退或日志契约变更，按涉及范围补充状态迁移、持久化/回退、字段与脱敏测试。
 - 制作生命周期变更应覆盖重复启动、文件清理互斥、失败收尾重试、进程归属与取消传播等实际受影响路径。
+- 剪辑裁剪范围须校验有限值、边界和非空结果；缺少可靠 victim 标记时保持整段，不按当前设置推断死亡位置。可选裁剪与无音轨合成沿用 `app_edit.go` / `edit_ffmpeg.go` 的单次处理路径，并覆盖混合整段/裁剪输入。
 - 跨层契约变更还须执行前端构建并更新根文件与前端规则；仅文档改动按根文件的文档检查执行。

@@ -108,6 +108,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 整局 POV 使用独立的 `full_round_pov.player_steam_id`。每回合一个 take，早于 victim clip takes；victim-only 片段须传 `include_killer=false`。
 - `PreviewFullRoundPOV` 仅解析预览，不生成文件；只保留目标至少有一次有效击杀的回合，无击杀时 segments 为空。回合起点取 `RoundStart`，有效击杀/死亡以 `RoundFreezetimeEnd` 后为准；生成录制终点为目标死亡后 1 秒，存活时为下一回合开始前 1 秒，无下一回合则回退本回合结束。预览原始 tick 与生成时补边分别见 `internal/demo/full_round_pov.go`、`internal/app/full_round_pov.go`。
 - `take_plans[]` 的整局 POV 使用 `view=full_round_pov` 和稳定 `source_id`，附带 `round/player_name/player_steam_id/start_tick/end_tick/end_reason`。
+- 击杀 take plan/history 可附带 `tick_rate`、`record_start_tick`、`record_end_tick` 和 `kill_offsets_seconds`；这些字段只描述实际录制观测与元数据，不改变原有的 Demo 事件窗口或插件命令时序。
 - 批量启动的 `debug.keep_intermediate_files` 仅本会话有效，默认 false；true 时收尾只清理 `*.mux.tmp.mp4`，保留 take 视频/音频中间产物。
 - `GetDebugPluginDLLOverride` / `PickDebugPluginDLLOverride` / `ClearDebugPluginDLLOverride` 返回 `active/path`；仅 debug UI 使用，会话级生效，不写配置、不参与组件版本检测，注入目标仍为 CS2 `game/csgo/plugin/bin/server.dll`。
 
@@ -120,6 +121,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 仅制作队列成功结束后发送 `end_produce_session`（`payload.request_id`），插件以 `session_exit_ack` 确认并在游戏线程排入 quit。对应连接在有限窗口内断开属于正常收尾，不写 WS 错误或 incident；确认超时再回退 PID 关闭。跨仓库插件行为须另行核验。
 - 状态读取：`GetProduceWSState`、`GetProduceQueueState`、`GetProduceTakeSnapshot`、`GetProduceTakeFiles`、`GetProduceHistorySnapshot`。历史的 `history_type=produce_clip|edited_video` 和 `source_label` 为可选字段，缺省按录制片段处理。
 - 剪辑使用 `ProbeClipDuration` / `ConcatEditClips`，后者返回输出路径并发射 `compose_progress`。转场时以后端 ffprobe 探测的时长和 SAR/DAR 为准；入口见 `internal/app/app_edit.go`、`internal/app/edit_ffmpeg.go`。
+- “对方视角快节奏剪辑”默认关闭，只由 `frontend/src/domains/edit/fastEdit.ts` 对有完整可靠录制标记的 victim take 计算可选裁剪范围；仅同 Demo、回合、击杀者且在用户序列中相邻的镜头连续，组内使用硬切，killer、full_round_pov、旧素材或缺标记素材保持整段。导出请求冻结范围并在编辑期间禁用修改；录制成功后可在视频旁写入 `.fastedit.json` 元数据，旁车失败不得使录制失败。
 - `OpenProducedClipInFolder` / `ExportProduceHistoryVideos` 负责定位和导出产物。`GetOutputsStorageStats` / `OpenOutputsDirectory` / `ClearOutputsDirectory` 与 Demo 对应方法管理受管控目录；清理仅删除目标目录的直接子项，保留目录本身；统计大小包含所有文件，数量分别为 `video_count/demo_count`。
 - `GetGameInfoHealth` / `RepairGameInfo` 是 gameinfo 健康状态来源，状态为 `ok|needs_repair|unknown`。修复独立成行的 `Game\tcsgo/plugin` 或 `Game csgo/plugin` 残留，不依赖会话备份。
 - `ExportProduceWSLogs` 导出单个脱敏诊断文件，包含 WS/队列/take 快照、事件环、滚动 host 日志、incident 和插件日志尾部；无 Wails context 时写入 `<dataDir>/logs/producews-export-<timestamp>.txt`。

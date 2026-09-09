@@ -7,6 +7,14 @@
         <n-tag size="small" :bordered="false" type="info">
           {{ totalDuration.toFixed(1) }}s
         </n-tag>
+        <n-button
+          size="tiny"
+          quaternary
+          :disabled="!sequenceItems.length || exporting"
+          @click="clearSequence"
+        >
+          {{ t("main.edit.clear") }}
+        </n-button>
       </n-space>
     </div>
 
@@ -92,16 +100,17 @@
       :export-path="exportPath"
       :transition-mode="transitionMode"
       :transition-duration="transitionDuration"
+      :opponent-fast-edit-enabled="opponentFastEditEnabled"
       :compose-progress="composeProgress"
       :compose-percent="composePercent"
       :compose-progress-label="composeProgressLabel"
       :transition-duration-options="transitionDurationOptions"
       @export="exportSequence"
-      @clear="clearSequence"
       @open-folder="openExportedClipFolder"
       @clear-error="clearExportError"
       @update:transition-mode="handleTransitionModeChange"
       @update:transition-duration="handleTransitionDurationChange"
+      @update:opponent-fast-edit="handleOpponentFastEditChange"
     />
   </section>
 </template>
@@ -122,6 +131,7 @@ const {
   exportPath,
   transitionMode,
   transitionDuration,
+  opponentFastEditEnabled,
   totalDuration,
   composeProgress,
   composePercent,
@@ -129,6 +139,7 @@ const {
   transitionDurationOptions,
   handleTransitionModeChange,
   handleTransitionDurationChange,
+  handleOpponentFastEditChange,
   exportSequence,
   clearExportError,
   openExportedClipFolder,

@@ -99,6 +99,51 @@ func TestService_InvalidEnvelopeAndPayloadDoNotDisconnectClient(t *testing.T) {
 	})
 }
 
+func TestService_RecordTicksAreRetainedAndRetryClearsPartialObservation(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	svc.handleRecordStatus(recordStatusPayload{
+		DemoPath:    "match.dem",
+		TakeIndex:   1,
+		TakeName:    "take0000",
+		RecordPhase: "start",
+		Tick:        1200,
+	})
+	snapshot := svc.GetTakeSnapshot()
+	if len(snapshot.Items) != 1 || snapshot.Items[0].RecordStartTick != 1200 || snapshot.Items[0].Status != "recording" {
+		t.Fatalf("start observation not retained: %+v", snapshot)
+	}
+
+	svc.mu.Lock()
+	changed := svc.resetRecordingTakesToPendingLocked()
+	svc.mu.Unlock()
+	if !changed {
+		t.Fatal("retry should clear the partial recording observation")
+	}
+	reset := svc.GetTakeSnapshot()
+	if len(reset.Items) != 1 || reset.Items[0].Status != "pending" || reset.Items[0].RecordStartTick != 0 || reset.Items[0].RecordEndTick != 0 || reset.Items[0].Tick != 0 {
+		t.Fatalf("retry left stale recording metadata: %+v", reset)
+	}
+
+	svc.handleRecordStatus(recordStatusPayload{
+		DemoPath:    "match.dem",
+		TakeIndex:   1,
+		TakeName:    "take0000",
+		RecordPhase: "start",
+		Tick:        1300,
+	})
+	svc.handleRecordStatus(recordStatusPayload{
+		DemoPath:    "match.dem",
+		TakeIndex:   1,
+		TakeName:    "take0000",
+		RecordPhase: "end",
+		Tick:        1500,
+	})
+	completed := svc.GetTakeSnapshot()
+	if len(completed.Items) != 1 || completed.Items[0].Status != "completed" || completed.Items[0].RecordStartTick != 1300 || completed.Items[0].RecordEndTick != 1500 {
+		t.Fatalf("retry did not retain the new complete observation: %+v", completed)
+	}
+}
+
 func TestService_DisconnectWritesSingleIncidentReport(t *testing.T) {
 	diagnostics := NewDiagnostics(t.TempDir())
 	svc := New("127.0.0.1:0", nil)

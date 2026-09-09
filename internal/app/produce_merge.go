@@ -47,6 +47,7 @@ func (a *App) enqueueCompletedTakes(state *produceSessionRuntime, snapshot produ
 				View:      "",
 			}
 		}
+		plan = mergeObservedTakeStatus(plan, item)
 		state.endedQueue = append(state.endedQueue, pendingCompletedTake{plan: plan})
 
 		a.updateTakeFileEntry(plan, func(file *ProduceTakeFile) {
@@ -55,6 +56,20 @@ func (a *App) enqueueCompletedTakes(state *produceSessionRuntime, snapshot produ
 			file.UpdatedAtMs = nowMs()
 		})
 	}
+}
+
+// mergeObservedTakeStatus replaces only recorder timing metadata. The source
+// event window (StartTick/EndTick) remains the plan's demo-event baseline, so
+// a missing or partial WS observation never makes the editor guess a new clip
+// window.
+func mergeObservedTakeStatus(plan ProduceTakePlan, status producews.TakeStatus) ProduceTakePlan {
+	if status.RecordStartTick > 0 {
+		plan.RecordStartTick = status.RecordStartTick
+	}
+	if status.RecordEndTick > 0 {
+		plan.RecordEndTick = status.RecordEndTick
+	}
+	return plan
 }
 
 func (a *App) dispatchMergeTasks(state *produceSessionRuntime) {

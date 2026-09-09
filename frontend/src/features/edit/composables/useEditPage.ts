@@ -53,6 +53,10 @@ export function useEditPage() {
     domain.setTransitionDuration(next);
   }
 
+  function handleOpponentFastEditChange(value: boolean) {
+    domain.setOpponentFastEditEnabled(value);
+  }
+
   function exportSequence() {
     // The promise is owned by the domain. A route change cannot cancel its
     // backend continuation or make completion depend on this component.
@@ -82,6 +86,7 @@ export function useEditPage() {
     exportPath: domain.exportPath,
     transitionMode: domain.transitionMode,
     transitionDuration: domain.transitionDuration,
+    opponentFastEditEnabled: domain.opponentFastEditEnabled,
     totalDuration: domain.totalDuration,
     composeProgress: domain.composeProgress,
     composePercent: domain.composePercent,
@@ -89,6 +94,7 @@ export function useEditPage() {
     transitionDurationOptions,
     handleTransitionModeChange,
     handleTransitionDurationChange,
+    handleOpponentFastEditChange,
     exportSequence,
     clearExportError: domain.clearExportError,
     openExportedClipFolder,

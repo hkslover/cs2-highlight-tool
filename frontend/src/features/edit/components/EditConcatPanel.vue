@@ -5,6 +5,7 @@
       <n-radio-group
         size="small"
         :value="transitionMode"
+        :disabled="exporting"
         @update:value="handleTransitionModeChange"
       >
         <n-radio-button value="none">{{ t("main.edit.transition_none") }}</n-radio-button>
@@ -15,10 +16,35 @@
         size="small"
         class="transition-select"
         :value="transitionDuration"
+        :disabled="exporting"
         :options="transitionDurationOptions"
         @update:value="handleTransitionDurationChange"
       />
+      <n-button
+        class="more-config-btn"
+        size="tiny"
+        quaternary
+        :type="opponentFastEditEnabled ? 'primary' : 'default'"
+        @click="moreConfigOpen = !moreConfigOpen"
+      >
+        {{ t("main.edit.more_config") }}
+        <span class="chevron" :class="{ open: moreConfigOpen }">▾</span>
+      </n-button>
     </div>
+
+    <n-collapse-transition :show="moreConfigOpen">
+      <div class="more-config-panel">
+        <div class="fast-edit-item">
+          <span class="config-label">{{ t("main.edit.opponent_fast_edit") }}</span>
+          <n-switch
+            size="small"
+            :value="opponentFastEditEnabled"
+            :disabled="exporting"
+            @update:value="handleOpponentFastEditChange"
+          />
+        </div>
+      </div>
+    </n-collapse-transition>
 
     <div class="sequence-actions">
       <n-space align="center" wrap>
@@ -29,14 +55,6 @@
           @click="handleExport"
         >
           {{ exporting ? t("main.edit.exporting") : t("main.edit.export") }}
-        </n-button>
-        <n-button
-          size="small"
-          quaternary
-          :disabled="!hasSequence || exporting"
-          @click="handleClear"
-        >
-          {{ t("main.edit.clear") }}
         </n-button>
         <n-tag v-if="exportPath" type="success" size="small">
           {{ t("main.edit.export_success", { path: basename(exportPath) }) }}
@@ -78,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { t } from "@/shared/i18n";
 import type { ComposeProgressMessage } from "@/shared/types";
 
@@ -88,6 +107,7 @@ const props = defineProps<{
   exportPath: string;
   transitionMode: string;
   transitionDuration: number;
+  opponentFastEditEnabled: boolean;
   composeProgress: ComposeProgressMessage;
   composePercent: number;
   composeProgressLabel: string;
@@ -96,12 +116,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "export"): void;
-  (e: "clear"): void;
   (e: "open-folder"): void;
   (e: "clear-error"): void;
   (e: "update:transition-mode", value: string | number): void;
   (e: "update:transition-duration", value: string | number | null): void;
+  (e: "update:opponent-fast-edit", value: boolean): void;
 }>();
+
+const moreConfigOpen = ref(false);
 
 function handleTransitionModeChange(value: string | number) {
   emit("update:transition-mode", value);
@@ -111,12 +133,12 @@ function handleTransitionDurationChange(value: string | number | null) {
   emit("update:transition-duration", value);
 }
 
-function handleExport() {
-  emit("export");
+function handleOpponentFastEditChange(value: boolean) {
+  emit("update:opponent-fast-edit", value);
 }
 
-function handleClear() {
-  emit("clear");
+function handleExport() {
+  emit("export");
 }
 
 function handleOpenFolder() {
@@ -154,8 +176,42 @@ function basename(path: string): string {
   width: 110px;
 }
 
+.more-config-btn {
+  margin-left: auto;
+}
+
+.chevron {
+  display: inline-block;
+  margin-left: 3px;
+  transition: transform 0.2s ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.more-config-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(20, 23, 21, 0.6);
+  border-bottom: 1px solid #303732;
+}
+
+.fast-edit-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-label {
+  color: #a7b2aa;
+  font-size: 12px;
+}
+
 .sequence-actions {
-  border-top: 1px solid #303732;
   padding: 10px 12px;
   background: rgba(17, 19, 18, 0.5);
   flex-shrink: 0;

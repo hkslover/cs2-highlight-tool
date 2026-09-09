@@ -12,6 +12,8 @@ export interface EditSequenceItem {
 export interface EditConcatClipPayload {
   video_path: string;
   duration: number;
+  start_seconds?: number;
+  end_seconds?: number;
 }
 
 export interface EditConcatTransitionPayload {

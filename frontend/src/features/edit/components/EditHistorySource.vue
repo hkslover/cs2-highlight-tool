@@ -9,7 +9,7 @@
           type="primary"
           secondary
           :loading="addingAll"
-          :disabled="!produceClipItems.length || addingAll"
+          :disabled="!produceClipItems.length || addingAll || exporting"
           @click="addAllFromHistory"
         >
           {{ addingAll ? t("main.edit.add_all_loading") : t("main.edit.add_all") }}
@@ -42,7 +42,7 @@
                 type="primary"
                 secondary
                 :loading="isAddingAllForDemo(demoGroup.demo_path)"
-                :disabled="isAddingAllForDemo(demoGroup.demo_path) || addingAll"
+                :disabled="isAddingAllForDemo(demoGroup.demo_path) || addingAll || exporting"
                 @click.stop="addAllFromDemo(demoGroup)"
               >
                 {{ t("main.edit.add_all") }}
@@ -95,6 +95,7 @@
                     type="primary"
                     secondary
                     :loading="isAdding(item.video_path)"
+                    :disabled="exporting"
                     @click="addFromHistory(item)"
                   >
                     {{ t("main.edit.add_clip") }}
@@ -128,7 +129,7 @@ import {
 import type { ProduceHistoryItem } from "@/shared/types";
 
 const message = useMessage();
-const { setExportError, setExportPath } = useEditState();
+const { exporting, setExportError, setExportPath } = useEditState();
 const {
   produceClipItems,
   produceClipsByDemo,
@@ -153,6 +154,7 @@ onMounted(async () => {
 });
 
 async function addFromHistory(item: ProduceHistoryItem) {
+  if (exporting.value) return;
   try {
     if (await addItemToSequence(item)) {
       setExportPath("");
@@ -165,7 +167,7 @@ async function addFromHistory(item: ProduceHistoryItem) {
 }
 
 async function addAllFromHistory() {
-  if (!produceClipItems.value.length || addingAll.value) return;
+  if (!produceClipItems.value.length || addingAll.value || exporting.value) return;
   addingAll.value = true;
   setExportPath("");
   setExportError("");
@@ -178,7 +180,7 @@ async function addAllFromHistory() {
 
 async function addAllFromDemo(demoGroup: HistoryDemoGroup) {
   const demoPath = demoGroup.demo_path;
-  if (!demoGroup.items.length || isAddingAllForDemo(demoPath) || addingAll.value) return;
+  if (!demoGroup.items.length || isAddingAllForDemo(demoPath) || addingAll.value || exporting.value) return;
   addingAllByDemo.value = { ...addingAllByDemo.value, [demoPath]: true };
   setExportPath("");
   setExportError("");

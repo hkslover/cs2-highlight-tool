@@ -138,6 +138,10 @@ export interface ProduceTakePlan {
   start_tick?: number;
   end_tick?: number;
   end_reason?: string;
+  tick_rate?: number;
+  record_start_tick?: number;
+  record_end_tick?: number;
+  kill_offsets_seconds?: number[];
 }
 
 export interface ProduceTakeFile {
@@ -183,6 +187,8 @@ export interface ProduceTakeStatus {
   record_phase?: string;
   status: string;
   tick?: number;
+  record_start_tick?: number;
+  record_end_tick?: number;
   cmd?: string;
   ts_ms: number;
 }

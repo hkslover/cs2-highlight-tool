@@ -1,7 +1,9 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,24 +45,28 @@ type ProduceTakeFileSnapshot struct {
 }
 
 type ProduceHistoryItem struct {
-	DemoPath      string          `json:"demo_path"`
-	TakeIndex     int             `json:"take_index"`
-	TakeName      string          `json:"take_name,omitempty"`
-	View          string          `json:"view"`
-	SpecMode      int             `json:"spec_mode"`
-	KillIDs       []string        `json:"kill_ids"`
-	Kills         []demo.ClipKill `json:"kills,omitempty"`
-	SourceID      string          `json:"source_id,omitempty"`
-	Round         int             `json:"round,omitempty"`
-	PlayerName    string          `json:"player_name,omitempty"`
-	PlayerSteamID string          `json:"player_steam_id,omitempty"`
-	StartTick     int             `json:"start_tick,omitempty"`
-	EndTick       int             `json:"end_tick,omitempty"`
-	EndReason     string          `json:"end_reason,omitempty"`
-	VideoPath     string          `json:"video_path"`
-	HistoryType   string          `json:"history_type,omitempty"`
-	SourceLabel   string          `json:"source_label,omitempty"`
-	CompletedAtMs int64           `json:"completed_at_ms"`
+	DemoPath           string          `json:"demo_path"`
+	TakeIndex          int             `json:"take_index"`
+	TakeName           string          `json:"take_name,omitempty"`
+	View               string          `json:"view"`
+	SpecMode           int             `json:"spec_mode"`
+	KillIDs            []string        `json:"kill_ids"`
+	Kills              []demo.ClipKill `json:"kills,omitempty"`
+	SourceID           string          `json:"source_id,omitempty"`
+	Round              int             `json:"round,omitempty"`
+	PlayerName         string          `json:"player_name,omitempty"`
+	PlayerSteamID      string          `json:"player_steam_id,omitempty"`
+	StartTick          int             `json:"start_tick,omitempty"`
+	EndTick            int             `json:"end_tick,omitempty"`
+	EndReason          string          `json:"end_reason,omitempty"`
+	TickRate           float64         `json:"tick_rate,omitempty"`
+	RecordStartTick    int             `json:"record_start_tick,omitempty"`
+	RecordEndTick      int             `json:"record_end_tick,omitempty"`
+	KillOffsetsSeconds []float64       `json:"kill_offsets_seconds,omitempty"`
+	VideoPath          string          `json:"video_path"`
+	HistoryType        string          `json:"history_type,omitempty"`
+	SourceLabel        string          `json:"source_label,omitempty"`
+	CompletedAtMs      int64           `json:"completed_at_ms"`
 }
 
 type ProduceHistorySnapshot struct {
@@ -253,6 +259,7 @@ func (a *App) produceHistorySnapshotLocked() ProduceHistorySnapshot {
 		if len(item.Kills) > 0 {
 			cloned.Kills = append([]demo.ClipKill(nil), item.Kills...)
 		}
+		cloned.KillOffsetsSeconds = append([]float64(nil), item.KillOffsetsSeconds...)
 		snapshot.Items = append(snapshot.Items, cloned)
 	}
 	return snapshot
@@ -271,28 +278,71 @@ func (a *App) addProduceHistoryEntry(state *produceSessionRuntime, plan ProduceT
 	}
 	key := plugingen.BuildProduceHistoryKeyWithSourceID(plan.DemoPath, plan.View, plan.SpecMode, plan.KillIDs, plan.SourceID)
 	kills := resolveHistoryKills(state, plan)
+	killOffsets := append([]float64(nil), plan.KillOffsetsSeconds...)
+	if plan.RecordStartTick > 0 && plan.TickRate > 0 && len(kills) > 0 {
+		killOffsets = make([]float64, 0, len(kills))
+		for _, kill := range kills {
+			offset := float64(kill.Tick-plan.RecordStartTick) / plan.TickRate
+			if math.IsNaN(offset) || math.IsInf(offset, 0) {
+				continue
+			}
+			killOffsets = append(killOffsets, offset)
+		}
+	}
 	item := ProduceHistoryItem{
-		DemoPath:      strings.TrimSpace(plan.DemoPath),
-		TakeIndex:     plan.TakeIndex,
-		TakeName:      strings.TrimSpace(plan.TakeName),
-		View:          strings.TrimSpace(plan.View),
-		SpecMode:      plan.SpecMode,
-		KillIDs:       append([]string(nil), plan.KillIDs...),
-		Kills:         append([]demo.ClipKill(nil), kills...),
-		SourceID:      strings.TrimSpace(plan.SourceID),
-		Round:         plan.Round,
-		PlayerName:    strings.TrimSpace(plan.PlayerName),
-		PlayerSteamID: strings.TrimSpace(plan.PlayerSteamID),
-		StartTick:     plan.StartTick,
-		EndTick:       plan.EndTick,
-		EndReason:     strings.TrimSpace(plan.EndReason),
-		VideoPath:     strings.TrimSpace(videoPath),
-		HistoryType:   produceHistoryTypeProduce,
-		SourceLabel:   "record_take",
-		CompletedAtMs: nowMs(),
+		DemoPath:           strings.TrimSpace(plan.DemoPath),
+		TakeIndex:          plan.TakeIndex,
+		TakeName:           strings.TrimSpace(plan.TakeName),
+		View:               strings.TrimSpace(plan.View),
+		SpecMode:           plan.SpecMode,
+		KillIDs:            append([]string(nil), plan.KillIDs...),
+		Kills:              append([]demo.ClipKill(nil), kills...),
+		SourceID:           strings.TrimSpace(plan.SourceID),
+		Round:              plan.Round,
+		PlayerName:         strings.TrimSpace(plan.PlayerName),
+		PlayerSteamID:      strings.TrimSpace(plan.PlayerSteamID),
+		StartTick:          plan.StartTick,
+		EndTick:            plan.EndTick,
+		EndReason:          strings.TrimSpace(plan.EndReason),
+		TickRate:           plan.TickRate,
+		RecordStartTick:    plan.RecordStartTick,
+		RecordEndTick:      plan.RecordEndTick,
+		KillOffsetsSeconds: killOffsets,
+		VideoPath:          strings.TrimSpace(videoPath),
+		HistoryType:        produceHistoryTypeProduce,
+		SourceLabel:        "record_take",
+		CompletedAtMs:      nowMs(),
 	}
 
+	// The in-memory history remains the source for the current session. Keep a
+	// small same-name sidecar beside each merged take so a later tool can recover
+	// the timing markers without changing the recording itself. A sidecar write
+	// is deliberately best-effort: it must never turn a successful recording
+	// into a failed take.
+	_ = writeProduceTakeMetadataSidecar(videoPath, item)
 	a.appendProduceHistoryItem(key, item)
+}
+
+const produceTakeMetadataSuffix = ".fastedit.json"
+
+func produceTakeMetadataPath(videoPath string) string {
+	return strings.TrimSpace(videoPath) + produceTakeMetadataSuffix
+}
+
+func writeProduceTakeMetadataSidecar(videoPath string, item ProduceHistoryItem) error {
+	path := produceTakeMetadataPath(videoPath)
+	if path == produceTakeMetadataSuffix {
+		return fmt.Errorf("视频路径为空")
+	}
+	payload, err := json.MarshalIndent(item, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化录制元数据失败: %w", err)
+	}
+	payload = append(payload, '\n')
+	if err := os.WriteFile(path, payload, 0644); err != nil {
+		return fmt.Errorf("写入录制元数据旁车失败: %w", err)
+	}
+	return nil
 }
 
 func (a *App) addEditedHistoryEntry(videoPath string, sourceLabel string) {
@@ -443,19 +493,23 @@ func collectTakePlans(results []GeneratePluginJSONBatchItemResult, onlySuccess b
 		}
 		for _, plan := range item.TakePlans {
 			plans = append(plans, ProduceTakePlan{
-				DemoPath:      strings.TrimSpace(plan.DemoPath),
-				TakeIndex:     plan.TakeIndex,
-				TakeName:      strings.TrimSpace(plan.TakeName),
-				View:          strings.TrimSpace(plan.View),
-				SpecMode:      plan.SpecMode,
-				KillIDs:       append([]string(nil), plan.KillIDs...),
-				SourceID:      strings.TrimSpace(plan.SourceID),
-				Round:         plan.Round,
-				PlayerName:    strings.TrimSpace(plan.PlayerName),
-				PlayerSteamID: strings.TrimSpace(plan.PlayerSteamID),
-				StartTick:     plan.StartTick,
-				EndTick:       plan.EndTick,
-				EndReason:     strings.TrimSpace(plan.EndReason),
+				DemoPath:           strings.TrimSpace(plan.DemoPath),
+				TakeIndex:          plan.TakeIndex,
+				TakeName:           strings.TrimSpace(plan.TakeName),
+				View:               strings.TrimSpace(plan.View),
+				SpecMode:           plan.SpecMode,
+				KillIDs:            append([]string(nil), plan.KillIDs...),
+				SourceID:           strings.TrimSpace(plan.SourceID),
+				Round:              plan.Round,
+				PlayerName:         strings.TrimSpace(plan.PlayerName),
+				PlayerSteamID:      strings.TrimSpace(plan.PlayerSteamID),
+				StartTick:          plan.StartTick,
+				EndTick:            plan.EndTick,
+				EndReason:          strings.TrimSpace(plan.EndReason),
+				TickRate:           plan.TickRate,
+				RecordStartTick:    plan.RecordStartTick,
+				RecordEndTick:      plan.RecordEndTick,
+				KillOffsetsSeconds: append([]float64(nil), plan.KillOffsetsSeconds...),
 			})
 		}
 	}

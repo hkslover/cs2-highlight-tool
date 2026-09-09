@@ -21,6 +21,10 @@ export interface ProduceHistoryItem {
   start_tick?: number;
   end_tick?: number;
   end_reason?: string;
+  tick_rate?: number;
+  record_start_tick?: number;
+  record_end_tick?: number;
+  kill_offsets_seconds?: number[];
   video_path: string;
   history_type?: "produce_clip" | "edited_video";
   source_label?: string;

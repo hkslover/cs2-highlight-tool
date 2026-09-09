@@ -114,14 +114,23 @@ type TakePlan struct {
 	StartTick     int      `json:"start_tick,omitempty"`
 	EndTick       int      `json:"end_tick,omitempty"`
 	EndReason     string   `json:"end_reason,omitempty"`
+	// TickRate and the record command ticks describe the generated recording
+	// window. StartTick/EndTick remain the source event window and are kept
+	// separate because spec_player and the recorder commands add a small delay.
+	TickRate           float64   `json:"tick_rate,omitempty"`
+	RecordStartTick    int       `json:"record_start_tick,omitempty"`
+	RecordEndTick      int       `json:"record_end_tick,omitempty"`
+	KillOffsetsSeconds []float64 `json:"kill_offsets_seconds,omitempty"`
 }
 
 type killSegment struct {
 	StartTick          int
 	EndTick            int
+	Round              int
 	Target             string
 	SpecMode           int
 	KillIDs            []string
+	KillTicks          []int
 	PreTicks           int
 	PostTicks          int
 	EnableVoice        bool
@@ -135,6 +144,7 @@ type clipPass struct {
 	SpecMode           int
 	View               string
 	KillIDs            []string
+	KillTicks          []int
 	SourceID           string
 	Round              int
 	PlayerName         string
@@ -249,7 +259,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 
 	killerSegments := buildKillerSegments(normalized, tickRate, preTicks, postTicks, matchEndBoundTick)
 	victimSegments := buildVictimSegments(normalized, tickRate, victimPreTicks, victimPostTicks, matchEndBoundTick)
-	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, buildPassCommandOptions{
+	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, tickRate, buildPassCommandOptions{
 		ForceVoice: opts.ForcePerPassVoiceCommands,
 		ForceXray:  opts.ForcePerPassXrayCommands,
 	})
@@ -410,9 +420,11 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 			segments = append(segments, killSegment{
 				StartTick:          startTick,
 				EndTick:            endTick,
+				Round:              item.Kill.Round,
 				Target:             target,
 				SpecMode:           item.KillerSpecMode,
 				KillIDs:            []string{item.Kill.ID},
+				KillTicks:          []int{item.Kill.Tick},
 				PreTicks:           preTicks,
 				PostTicks:          postTicks,
 				EnableVoice:        item.EnableVoice,
@@ -432,14 +444,23 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 				last.EndTick = endTick
 			}
 			last.KillIDs = append(last.KillIDs, item.Kill.ID)
+			last.KillTicks = append(last.KillTicks, item.Kill.Tick)
+			if last.Round != item.Kill.Round {
+				// A merged killer take may span round boundaries. Keep the
+				// history round unset rather than attributing the whole take to
+				// one of the source kills.
+				last.Round = 0
+			}
 			continue
 		}
 		segments = append(segments, killSegment{
 			StartTick:          startTick,
 			EndTick:            endTick,
+			Round:              item.Kill.Round,
 			Target:             target,
 			SpecMode:           item.KillerSpecMode,
 			KillIDs:            []string{item.Kill.ID},
+			KillTicks:          []int{item.Kill.Tick},
 			PreTicks:           preTicks,
 			PostTicks:          postTicks,
 			EnableVoice:        item.EnableVoice,
@@ -480,9 +501,11 @@ func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defau
 		segments = append(segments, killSegment{
 			StartTick:          startTick,
 			EndTick:            endTick,
+			Round:              item.Kill.Round,
 			Target:             target,
 			SpecMode:           item.VictimSpecMode,
 			KillIDs:            []string{item.Kill.ID},
+			KillTicks:          []int{item.Kill.Tick},
 			PreTicks:           preTicks,
 			PostTicks:          postTicks,
 			EnableVoice:        item.EnableVoice,
@@ -503,6 +526,7 @@ func buildMaterialSequences(
 	victimSegments []killSegment,
 	terminalCommand string,
 	seekSettleTicks int,
+	tickRate float64,
 	passCommandOptions buildPassCommandOptions,
 ) ([]Sequence, []TakePlan) {
 	sequences := make([]Sequence, 0, 2+len(victimSegments))
@@ -544,7 +568,7 @@ func buildMaterialSequences(
 		if len(killerSegments) > 0 || len(victimSegments) > 0 {
 			command = "go_to_next_sequence"
 		}
-		actions, plans := buildActionsFromPasses(fullRoundPasses, command, &takeCounter, seekSettleTicks, passCommandOptions)
+		actions, plans := buildActionsFromPasses(fullRoundPasses, command, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -560,6 +584,8 @@ func buildMaterialSequences(
 			SpecMode:           seg.SpecMode,
 			View:               "killer",
 			KillIDs:            append([]string(nil), seg.KillIDs...),
+			KillTicks:          append([]int(nil), seg.KillTicks...),
+			Round:              seg.Round,
 			EnableVoice:        seg.EnableVoice,
 			EnableSpecShowXray: seg.EnableSpecShowXray,
 		})
@@ -569,7 +595,7 @@ func buildMaterialSequences(
 		if len(victimSegments) > 0 {
 			command = "go_to_next_sequence"
 		}
-		actions, plans := buildActionsFromPasses(killerPasses, command, &takeCounter, seekSettleTicks, passCommandOptions)
+		actions, plans := buildActionsFromPasses(killerPasses, command, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -588,9 +614,11 @@ func buildMaterialSequences(
 			SpecMode:           seg.SpecMode,
 			View:               "victim",
 			KillIDs:            append([]string(nil), seg.KillIDs...),
+			KillTicks:          append([]int(nil), seg.KillTicks...),
+			Round:              seg.Round,
 			EnableVoice:        seg.EnableVoice,
 			EnableSpecShowXray: seg.EnableSpecShowXray,
-		}}, finalCommand, &takeCounter, seekSettleTicks, passCommandOptions)
+		}}, finalCommand, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
@@ -687,6 +715,7 @@ func buildActionsFromPasses(
 	finalCommand string,
 	takeCounter *int,
 	seekSettleTicks int,
+	tickRate float64,
 	passCommandOptions buildPassCommandOptions,
 ) ([]Action, []TakePlan) {
 	if len(passes) == 0 {
@@ -695,6 +724,9 @@ func buildActionsFromPasses(
 	command := strings.TrimSpace(finalCommand)
 	if command == "" {
 		command = "disconnect"
+	}
+	if tickRate <= 0 {
+		tickRate = DefaultTickRate
 	}
 
 	actions := make([]Action, 0, len(passes)*5+1)
@@ -747,18 +779,22 @@ func buildActionsFromPasses(
 			*takeCounter = *takeCounter + 1
 			takeName := fmt.Sprintf("take%04d", *takeCounter-1)
 			takePlans = append(takePlans, TakePlan{
-				TakeIndex:     *takeCounter,
-				TakeName:      takeName,
-				View:          strings.TrimSpace(pass.View),
-				SpecMode:      normalizeSpecMode(pass.SpecMode),
-				KillIDs:       append([]string(nil), pass.KillIDs...),
-				SourceID:      strings.TrimSpace(pass.SourceID),
-				Round:         pass.Round,
-				PlayerName:    strings.TrimSpace(pass.PlayerName),
-				PlayerSteamID: strings.TrimSpace(pass.PlayerSteamID),
-				StartTick:     pass.StartTick,
-				EndTick:       pass.EndTick,
-				EndReason:     strings.TrimSpace(pass.EndReason),
+				TakeIndex:          *takeCounter,
+				TakeName:           takeName,
+				View:               strings.TrimSpace(pass.View),
+				SpecMode:           normalizeSpecMode(pass.SpecMode),
+				KillIDs:            append([]string(nil), pass.KillIDs...),
+				SourceID:           strings.TrimSpace(pass.SourceID),
+				Round:              pass.Round,
+				PlayerName:         strings.TrimSpace(pass.PlayerName),
+				PlayerSteamID:      strings.TrimSpace(pass.PlayerSteamID),
+				StartTick:          pass.StartTick,
+				EndTick:            pass.EndTick,
+				EndReason:          strings.TrimSpace(pass.EndReason),
+				TickRate:           tickRate,
+				RecordStartTick:    startTick,
+				RecordEndTick:      endTick,
+				KillOffsetsSeconds: killOffsetsFromTicks(pass.KillTicks, startTick, tickRate),
 			})
 			actions = append(actions, Action{
 				Cmd:  "mirv_streams record start",
@@ -798,6 +834,23 @@ func xrayCommandValue(enableSpecShowXray bool) int {
 		return 0
 	}
 	return -1
+}
+
+func killOffsetsFromTicks(killTicks []int, recordStartTick int, tickRate float64) []float64 {
+	if len(killTicks) == 0 || recordStartTick <= 0 || tickRate <= 0 {
+		return nil
+	}
+	offsets := make([]float64, 0, len(killTicks))
+	for _, tick := range killTicks {
+		if tick < 0 {
+			continue
+		}
+		offsets = append(offsets, float64(tick-recordStartTick)/tickRate)
+	}
+	if len(offsets) == 0 {
+		return nil
+	}
+	return offsets
 }
 
 func buildFFmpegParams(preset string, quality string, launchResolution string) (string, string, error) {

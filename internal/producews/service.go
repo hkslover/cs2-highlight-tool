@@ -81,8 +81,12 @@ type TakeStatus struct {
 	RecordPhase string `json:"record_phase,omitempty"`
 	Status      string `json:"status"`
 	Tick        int    `json:"tick,omitempty"`
-	Cmd         string `json:"cmd,omitempty"`
-	TsMs        int64  `json:"ts_ms"`
+	// RecordStartTick and RecordEndTick preserve both recorder command
+	// observations. Tick remains the latest event tick for compatibility.
+	RecordStartTick int    `json:"record_start_tick,omitempty"`
+	RecordEndTick   int    `json:"record_end_tick,omitempty"`
+	Cmd             string `json:"cmd,omitempty"`
+	TsMs            int64  `json:"ts_ms"`
 }
 
 type TakeStatusSnapshot struct {
@@ -188,7 +192,7 @@ type Service struct {
 	// belongs to. time.Timer.Stop cannot cancel a callback that already fired
 	// and is waiting for mu, so stale callbacks must verify their generation
 	// before touching midDemoResumeTimer or dispatching.
-	midDemoResumeGen uint64
+	midDemoResumeGen   uint64
 	ackTimeout         time.Duration
 	connectWait        time.Duration
 	demoSwitchDelay    time.Duration
@@ -1467,6 +1471,12 @@ func (s *Service) handleRecordStatus(payload recordStatusPayload) {
 	current.RecordPhase = payload.RecordPhase
 	current.Status = status
 	current.Tick = payload.Tick
+	if strings.EqualFold(strings.TrimSpace(payload.RecordPhase), "start") {
+		current.RecordStartTick = payload.Tick
+		current.RecordEndTick = 0
+	} else if strings.EqualFold(strings.TrimSpace(payload.RecordPhase), "end") {
+		current.RecordEndTick = payload.Tick
+	}
 	current.Cmd = payload.Cmd
 	current.TsMs = payload.TsMs
 	s.takeStates[key] = current
@@ -1941,6 +1951,8 @@ func (s *Service) resetRecordingTakesToPendingLocked() bool {
 		state.RecordPhase = ""
 		state.Cmd = ""
 		state.Tick = 0
+		state.RecordStartTick = 0
+		state.RecordEndTick = 0
 		state.TsMs = nowMs()
 		s.takeStates[key] = state
 		changed = true
@@ -1951,6 +1963,8 @@ func (s *Service) resetRecordingTakesToPendingLocked() bool {
 		clone.RecordPhase = ""
 		clone.Cmd = ""
 		clone.Tick = 0
+		clone.RecordStartTick = 0
+		clone.RecordEndTick = 0
 		clone.TsMs = nowMs()
 		s.lastTakeEvent = &clone
 	}

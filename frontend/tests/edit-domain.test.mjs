@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   buildEditConcatRequest,
@@ -111,6 +112,34 @@ test("compose progress and export completion survive a route change", async () =
   assert.equal(domain.exporting.value, false);
   assert.equal(domain.composeProgress.value.percent, 100);
   assert.equal(fake.subscribeCount, 1);
+});
+
+test("edit page unmount leaves the in-flight export owned by the app domain", async () => {
+  const pageSource = await readFile(
+    new URL("../src/features/edit/composables/useEditPage.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(pageSource, /disposeEditDomain/);
+  assert.match(pageSource, /onBeforeUnmount\(\(\) => \{\s*mounted\.value = false;/s);
+
+  const fake = fakeRuntime();
+  const domain = createEditDomain(fake.runtime);
+  domain.addSequenceItem(historyItem("one.mp4"), 4);
+  domain.init();
+  const completion = deferred();
+  fake.setConcat(() => completion.promise);
+
+  const exporting = domain.exportSequence();
+  // A route unmount only drops page-local UI callbacks. It must not dispose
+  // the shared domain, because the next route mount reuses this export.
+  domain.init();
+  assert.equal(fake.subscribeCount, 1);
+  assert.equal(domain.exporting.value, true);
+
+  completion.resolve("C:/outputs/page-seam.mp4");
+  assert.equal(await exporting, "C:/outputs/page-seam.mp4");
+  assert.equal(domain.exportPath.value, "C:/outputs/page-seam.mp4");
+  assert.equal(fake.calls.length, 1);
 });
 
 test("dispose and re-init isolate a late completion from the new app lifecycle", async () => {
