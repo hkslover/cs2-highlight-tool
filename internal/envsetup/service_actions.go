@@ -118,6 +118,14 @@ func (s *Service) CancelStartupDownload(componentID string) StartupState {
 	}
 
 	active.cancel()
+	if !active.canceledByUser() {
+		// 竞速已经提交胜者或下载已经完成，本次取消不再生效，避免界面先显示“已取消”又继续安装。
+		s.emitLogWithFields("info", "当前组件下载已结束，忽略取消请求", logFields{
+			Component: componentID,
+			Action:    "cancel_download",
+		})
+		return s.GetStartupState()
+	}
 	s.updateStep(componentID, func(step *ComponentStatus) {
 		step.Status = statusFailed
 		step.Error = downloadCanceledMessage

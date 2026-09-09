@@ -15,7 +15,7 @@ import (
 
 var (
 	errDownloadCanceledByUser = errors.New(downloadCanceledMessage)
-	errDownloadRaceFinished   = errors.New("下载竞速已结束")
+	errDownloadFinished       = errors.New("下载已结束")
 )
 
 func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error {
@@ -293,7 +293,10 @@ func (s *Service) updatePhaseByReadiness() {
 
 func (s *Service) beginDownloadGroup(componentID string) (*activeDownloadCancel, context.Context, context.CancelCauseFunc) {
 	ctx, cancelCause := context.WithCancelCause(context.Background())
-	active := &activeDownloadCancel{cancel: func() { cancelCause(errDownloadCanceledByUser) }}
+	active := &activeDownloadCancel{
+		cancel: func() { cancelCause(errDownloadCanceledByUser) },
+		ctx:    ctx,
+	}
 
 	s.cancelMu.Lock()
 	if oldCancel, exists := s.cancelMap[componentID]; exists {
@@ -304,6 +307,13 @@ func (s *Service) beginDownloadGroup(componentID string) (*activeDownloadCancel,
 	s.cancelMap[componentID] = active
 	s.cancelMu.Unlock()
 	return active, ctx, cancelCause
+}
+
+func (a *activeDownloadCancel) canceledByUser() bool {
+	if a == nil || a.ctx == nil {
+		return false
+	}
+	return errors.Is(context.Cause(a.ctx), errDownloadCanceledByUser)
 }
 
 func (s *Service) endDownloadGroup(componentID string, active *activeDownloadCancel) {
@@ -325,8 +335,13 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 		s.emitProgress(componentID, active, percent, indeterminate)
 	})
 
+	// 统一提交：先结束取消仲裁，再移除取消注册。
+	// 如果用户取消先于提交发生，即使文件已经下载完成，也以取消为准。
+	cancelCause(errDownloadFinished)
+	if isUserCancelCause(ctx) {
+		err = download.ErrCanceled
+	}
 	s.endDownloadGroup(componentID, active)
-	cancelCause(nil)
 
 	if err != nil {
 		s.logStepFail(componentID, "download", "download_asset", string(s.currentSource()), 0, started, err, map[string]string{

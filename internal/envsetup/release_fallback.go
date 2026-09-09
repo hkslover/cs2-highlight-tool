@@ -181,12 +181,50 @@ type downloadRaceResult struct {
 	err   error
 }
 
+type raceOutcome struct {
+	winner   int
+	failures []string
+	canceled bool
+}
+
+// awaitRaceOutcome 统一仲裁竞速结果：用户取消优先于任何已入队的成功结果。
+// 取消检查同时放在接收结果前后，覆盖“成功结果已入队、随后用户取消、协调循环才读到该结果”的时序。
+func awaitRaceOutcome(ctx context.Context, results <-chan downloadRaceResult, candidates []releaseAssetCandidate) raceOutcome {
+	outcome := raceOutcome{winner: -1, failures: make([]string, 0, len(candidates))}
+	for remaining := len(candidates); remaining > 0; remaining-- {
+		if isUserCancelCause(ctx) {
+			outcome.canceled = true
+			return outcome
+		}
+		result := <-results
+		if isUserCancelCause(ctx) {
+			outcome.canceled = true
+			return outcome
+		}
+		if result.err == nil {
+			outcome.winner = result.index
+			return outcome
+		}
+		if errors.Is(result.err, download.ErrCanceled) {
+			// 竞速内部取消（另一条链路已胜出）不算失败。
+			continue
+		}
+		outcome.failures = append(outcome.failures, fmt.Sprintf("%d/%s(%s) 下载失败: %v", result.index+1, strings.ToUpper(string(candidates[result.index].Source)), candidates[result.index].URLKind, result.err))
+	}
+	outcome.canceled = isUserCancelCause(ctx)
+	return outcome
+}
+
+func isUserCancelCause(ctx context.Context) bool {
+	return ctx != nil && errors.Is(context.Cause(ctx), errDownloadCanceledByUser)
+}
+
 // raceDownloadCandidates 并行下载所有候选链接，第一个成功完成的胜出，其余立即取消并清理。
 // 只有全部候选都失败时才返回错误；用户取消返回 download.ErrCanceled。
 func (s *Service) raceDownloadCandidates(componentID string, latest string, candidates []releaseAssetCandidate) (releaseAssetCandidate, string, []string, error) {
 	active, ctx, cancelCause := s.beginDownloadGroup(componentID)
 	defer s.endDownloadGroup(componentID, active)
-	defer cancelCause(errDownloadRaceFinished)
+	defer cancelCause(errDownloadFinished)
 	defer s.emitProgress(componentID, false, 0, false)
 
 	targetPaths := make([]string, len(candidates))
@@ -218,29 +256,20 @@ func (s *Service) raceDownloadCandidates(componentID string, latest string, cand
 		}()
 	}
 
-	failures := make([]string, 0, len(candidates))
-	winner := -1
-	for remaining := len(candidates); remaining > 0; remaining-- {
-		result := <-results
-		if result.err == nil {
-			winner = result.index
-			cancelCause(errDownloadRaceFinished)
-			break
-		}
-		if errors.Is(result.err, download.ErrCanceled) {
-			if errors.Is(context.Cause(ctx), errDownloadCanceledByUser) {
-				cancelCause(errDownloadRaceFinished)
-				wg.Wait()
-				removeDownloadTempFiles(targetPaths)
-				return releaseAssetCandidate{}, "", nil, download.ErrCanceled
-			}
-			// 竞速内部取消（另一条链路已胜出）不算失败。
-			continue
-		}
-		failures = append(failures, fmt.Sprintf("%d/%s(%s) 下载失败: %v", result.index+1, strings.ToUpper(string(candidates[result.index].Source)), candidates[result.index].URLKind, result.err))
+	outcome := awaitRaceOutcome(ctx, results, candidates)
+
+	// 统一提交竞速结果：先取消其余链路，再仲裁用户取消是否先于本次提交。
+	// 如果用户取消先发生，即使成功结果已经入队，也必须以取消为准。
+	cancelCause(errDownloadFinished)
+	if outcome.canceled || isUserCancelCause(ctx) {
+		wg.Wait()
+		removeDownloadTempFiles(targetPaths)
+		return releaseAssetCandidate{}, "", nil, download.ErrCanceled
 	}
 	wg.Wait()
 
+	winner := outcome.winner
+	failures := outcome.failures
 	if winner < 0 {
 		removeDownloadTempFiles(targetPaths)
 		if len(failures) == 0 {

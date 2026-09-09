@@ -39,6 +39,7 @@ type Service struct {
 
 type activeDownloadCancel struct {
 	cancel context.CancelFunc
+	ctx    context.Context
 }
 
 func New(exeDir string, version string) *Service {

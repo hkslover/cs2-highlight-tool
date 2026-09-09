@@ -1,6 +1,7 @@
 package envsetup
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -323,5 +324,39 @@ func TestDownloadAndInstallWithFallback_RaceFallsBackWhenWinnerInstallFails(t *t
 	}
 	if installedContent != "mirror-payload" && installedContent != "url-payload" {
 		t.Fatalf("installed content = %q, want one of the candidate payloads", installedContent)
+	}
+}
+
+func TestAwaitRaceOutcome_UserCancelWinsOverQueuedSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	results := make(chan downloadRaceResult, 1)
+	results <- downloadRaceResult{index: 0}
+	cancel(errDownloadCanceledByUser)
+
+	outcome := awaitRaceOutcome(ctx, results, []releaseAssetCandidate{
+		{Source: DownloadSourceGitHub, URLKind: urlKindDirect},
+	})
+	if !outcome.canceled {
+		t.Fatalf("outcome = %#v, want canceled", outcome)
+	}
+	if outcome.winner != -1 {
+		t.Fatalf("winner = %d, want -1", outcome.winner)
+	}
+}
+
+func TestAwaitRaceOutcome_ReturnsQueuedSuccess(t *testing.T) {
+	ctx := context.Background()
+	results := make(chan downloadRaceResult, 1)
+	results <- downloadRaceResult{index: 1}
+
+	outcome := awaitRaceOutcome(ctx, results, []releaseAssetCandidate{
+		{Source: DownloadSourceGitHub, URLKind: urlKindDirect},
+		{Source: DownloadSourceGitHub, URLKind: urlKindMirror},
+	})
+	if outcome.canceled {
+		t.Fatalf("outcome = %#v, want not canceled", outcome)
+	}
+	if outcome.winner != 1 {
+		t.Fatalf("winner = %d, want 1", outcome.winner)
 	}
 }
