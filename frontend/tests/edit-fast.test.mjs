@@ -72,9 +72,9 @@ test("fast edit trims only adjacent victim takes in the same demo round and kill
   const items = [first, second, third, separatedByRound].map(sequenceItem);
 
   const plan = buildOpponentFastEditPlan(items);
-  assert.deepEqual(plan.ranges[0], { start_seconds: 1, end_seconds: 2.1 });
-  assert.deepEqual(plan.ranges[1], { start_seconds: 2, end_seconds: 3.1 });
-  assert.deepEqual(plan.ranges[2], { start_seconds: 3, end_seconds: 4.3 });
+  assert.deepEqual(plan.ranges[0], { start_seconds: 1, end_seconds: 2.3 });
+  assert.deepEqual(plan.ranges[1], { start_seconds: 2.2, end_seconds: 3.3 });
+  assert.deepEqual(plan.ranges[2], { start_seconds: 3.2, end_seconds: 4.5 });
   assert.deepEqual(plan.ranges[3], { start_seconds: 4, end_seconds: 5 });
   assert.equal(plan.hardCutAfter[0], true);
   assert.equal(plan.hardCutAfter[1], true);
@@ -91,7 +91,7 @@ test("missing markers, killer/full-round views, and non-adjacent candidates rema
     [valid, missing, killer, pov, edited].map(sequenceItem),
   );
   assert.deepEqual(ranges, [
-    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 1, end_seconds: 2.5 },
     undefined,
     undefined,
     undefined,
@@ -110,8 +110,8 @@ test("falls back to the kill round and never joins adjacent clips from different
   const plan = buildOpponentFastEditPlan([first, second].map(sequenceItem));
 
   assert.deepEqual(plan.ranges, [
-    { start_seconds: 1, end_seconds: 2.3 },
-    { start_seconds: 2, end_seconds: 3.3 },
+    { start_seconds: 1, end_seconds: 2.5 },
+    { start_seconds: 2, end_seconds: 3.5 },
   ]);
   assert.deepEqual(plan.hardCutAfter, [false]);
 });
@@ -122,8 +122,8 @@ test("same-tick deaths keep a short overlap and short source clips stay non-empt
     victimItem({ path: "same-b.mp4", tick: 1200, offset: 2 }),
   ].map(sequenceItem));
   assert.deepEqual(sameTick.ranges, [
-    { start_seconds: 1, end_seconds: 2.1 },
-    { start_seconds: 1.85, end_seconds: 2.3 },
+    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 1.85, end_seconds: 2.5 },
   ]);
   assert.deepEqual(sameTick.hardCutAfter, [true]);
 
@@ -138,8 +138,8 @@ test("reversed user order is trimmed independently and rounded ends stay within 
     victimItem({ path: "early.mp4", tick: 1200, offset: 2 }),
   ].map(sequenceItem));
   assert.deepEqual(reversed.ranges, [
-    { start_seconds: 2, end_seconds: 3.1 },
-    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 2, end_seconds: 3.3 },
+    { start_seconds: 1, end_seconds: 2.5 },
   ]);
   assert.deepEqual(reversed.hardCutAfter, [true]);
 
@@ -164,10 +164,10 @@ test("long gaps keep a short lead and mixed roles stay full length and fadeable"
 
   const plan = buildOpponentFastEditPlan([first, longGap, killer, lastVictim]);
   assert.deepEqual(plan.ranges, [
-    { start_seconds: 1, end_seconds: 2.1 },
-    { start_seconds: 3, end_seconds: 4.3 },
+    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 3, end_seconds: 4.5 },
     undefined,
-    { start_seconds: 5, end_seconds: 6.3 },
+    { start_seconds: 5, end_seconds: 6.5 },
   ]);
   assert.deepEqual(plan.hardCutAfter, [true, false, false]);
 
@@ -187,13 +187,13 @@ test("fast edit request adds optional trims and keeps fast-edit group gaps hard 
     video_path: "one.mp4",
     duration: 5,
     start_seconds: 1,
-    end_seconds: 2.1,
+    end_seconds: 2.3,
   });
   assert.deepEqual(request.clips[1], {
     video_path: "two.mp4",
     duration: 5,
-    start_seconds: 2,
-    end_seconds: 3.3,
+    start_seconds: 2.2,
+    end_seconds: 3.5,
   });
   assert.deepEqual(request.transitions, []);
   assert.deepEqual(
@@ -226,9 +226,11 @@ test("fast edit request adds optional trims and keeps fast-edit group gaps hard 
     video_path: "short-fast.mp4",
     duration: 1,
     start_seconds: 0,
-    end_seconds: 0.31,
+    end_seconds: 0.51,
   });
-  assert.deepEqual(safeTransitionRequest.transitions, []);
+  assert.deepEqual(safeTransitionRequest.transitions, [
+    { type: "fade", duration: 0.3, after_index: 0 },
+  ]);
 });
 
 test("workspace reset clears fast-edit state and detaches an in-flight export", async () => {

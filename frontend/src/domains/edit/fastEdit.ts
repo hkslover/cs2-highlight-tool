@@ -2,8 +2,8 @@ import type { ProduceHistoryItem } from "@/shared/types";
 import type { EditSequenceItem } from "./types";
 
 export const OPPONENT_FAST_EDIT_MAX_PRE_SECONDS = 1;
-export const OPPONENT_FAST_EDIT_INTERMEDIATE_POST_SECONDS = 0.1;
-export const OPPONENT_FAST_EDIT_GROUP_END_POST_SECONDS = 0.3;
+export const OPPONENT_FAST_EDIT_INTERMEDIATE_POST_SECONDS = 0.3;
+export const OPPONENT_FAST_EDIT_GROUP_END_POST_SECONDS = 0.5;
 export const OPPONENT_FAST_EDIT_ALLOWED_OVERLAP_SECONDS = 0.1;
 export const OPPONENT_FAST_EDIT_MIN_NEXT_LEAD_SECONDS = 0.15;
 export const OPPONENT_FAST_EDIT_MIN_CLIP_SECONDS = 0.05;
