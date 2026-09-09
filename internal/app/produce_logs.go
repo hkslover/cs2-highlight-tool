@@ -10,6 +10,8 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const utf8BOM = "\xEF\xBB\xBF"
+
 // ExportProduceWSLogs writes one sanitized diagnostic artifact for the current
 // produce WebSocket session. In tests and headless development it falls back
 // to the managed logs directory when no Wails context is available.
@@ -39,7 +41,11 @@ func (a *App) ExportProduceWSLogs() (string, error) {
 		}
 		targetPath = selected
 	}
-	if err := os.WriteFile(targetPath, []byte(a.produceW.ExportDiagnostics()), 0o644); err != nil {
+	// Keep the exported support report unambiguously UTF-8 for Windows text
+	// viewers that otherwise fall back to the system ANSI code page when the
+	// report starts with an ASCII-only header.
+	content := []byte(utf8BOM + a.produceW.ExportDiagnostics())
+	if err := os.WriteFile(targetPath, content, 0o644); err != nil {
 		return "", fmt.Errorf("写入制作日志文件失败: %w", err)
 	}
 	return targetPath, nil
