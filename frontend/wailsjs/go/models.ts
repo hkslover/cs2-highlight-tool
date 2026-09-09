@@ -129,6 +129,8 @@ export namespace app {
 	export class EditConcatClip {
 	    video_path: string;
 	    duration: number;
+	    start_seconds?: number;
+	    end_seconds?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new EditConcatClip(source);
@@ -138,6 +140,8 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.video_path = source["video_path"];
 	        this.duration = source["duration"];
+	        this.start_seconds = source["start_seconds"];
+	        this.end_seconds = source["end_seconds"];
 	    }
 	}
 	export class EditConcatTransition {
@@ -269,6 +273,10 @@ export namespace app {
 	    start_tick?: number;
 	    end_tick?: number;
 	    end_reason?: string;
+	    tick_rate?: number;
+	    record_start_tick?: number;
+	    record_end_tick?: number;
+	    kill_offsets_seconds?: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ProduceTakePlan(source);
@@ -289,6 +297,10 @@ export namespace app {
 	        this.start_tick = source["start_tick"];
 	        this.end_tick = source["end_tick"];
 	        this.end_reason = source["end_reason"];
+	        this.tick_rate = source["tick_rate"];
+	        this.record_start_tick = source["record_start_tick"];
+	        this.record_end_tick = source["record_end_tick"];
+	        this.kill_offsets_seconds = source["kill_offsets_seconds"];
 	    }
 	}
 	export class GeneratePluginJSONBatchItemResult {
@@ -621,6 +633,10 @@ export namespace app {
 	    start_tick?: number;
 	    end_tick?: number;
 	    end_reason?: string;
+	    tick_rate?: number;
+	    record_start_tick?: number;
+	    record_end_tick?: number;
+	    kill_offsets_seconds?: number[];
 	    video_path: string;
 	    history_type?: string;
 	    source_label?: string;
@@ -646,6 +662,10 @@ export namespace app {
 	        this.start_tick = source["start_tick"];
 	        this.end_tick = source["end_tick"];
 	        this.end_reason = source["end_reason"];
+	        this.tick_rate = source["tick_rate"];
+	        this.record_start_tick = source["record_start_tick"];
+	        this.record_end_tick = source["record_end_tick"];
+	        this.kill_offsets_seconds = source["kill_offsets_seconds"];
 	        this.video_path = source["video_path"];
 	        this.history_type = source["history_type"];
 	        this.source_label = source["source_label"];
@@ -1506,6 +1526,8 @@ export namespace producews {
 	    record_phase?: string;
 	    status: string;
 	    tick?: number;
+	    record_start_tick?: number;
+	    record_end_tick?: number;
 	    cmd?: string;
 	    ts_ms: number;
 	
@@ -1521,6 +1543,8 @@ export namespace producews {
 	        this.record_phase = source["record_phase"];
 	        this.status = source["status"];
 	        this.tick = source["tick"];
+	        this.record_start_tick = source["record_start_tick"];
+	        this.record_end_tick = source["record_end_tick"];
 	        this.cmd = source["cmd"];
 	        this.ts_ms = source["ts_ms"];
 	    }

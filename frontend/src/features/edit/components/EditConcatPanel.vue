@@ -20,15 +20,31 @@
         :options="transitionDurationOptions"
         @update:value="handleTransitionDurationChange"
       />
-      <div class="fast-edit-toggle">
-        <span class="transition-label">{{ t("main.edit.opponent_fast_edit") }}</span>
-        <n-switch
-          :value="opponentFastEditEnabled"
-          :disabled="exporting"
-          @update:value="handleOpponentFastEditChange"
-        />
-      </div>
+      <n-button
+        class="more-config-btn"
+        size="tiny"
+        quaternary
+        :type="opponentFastEditEnabled ? 'primary' : 'default'"
+        @click="moreConfigOpen = !moreConfigOpen"
+      >
+        {{ t("main.edit.more_config") }}
+        <span class="chevron" :class="{ open: moreConfigOpen }">▾</span>
+      </n-button>
     </div>
+
+    <n-collapse-transition :show="moreConfigOpen">
+      <div class="more-config-panel">
+        <div class="fast-edit-item">
+          <span class="config-label">{{ t("main.edit.opponent_fast_edit") }}</span>
+          <n-switch
+            size="small"
+            :value="opponentFastEditEnabled"
+            :disabled="exporting"
+            @update:value="handleOpponentFastEditChange"
+          />
+        </div>
+      </div>
+    </n-collapse-transition>
 
     <div class="sequence-actions">
       <n-space align="center" wrap>
@@ -39,14 +55,6 @@
           @click="handleExport"
         >
           {{ exporting ? t("main.edit.exporting") : t("main.edit.export") }}
-        </n-button>
-        <n-button
-          size="small"
-          quaternary
-          :disabled="!hasSequence || exporting"
-          @click="handleClear"
-        >
-          {{ t("main.edit.clear") }}
         </n-button>
         <n-tag v-if="exportPath" type="success" size="small">
           {{ t("main.edit.export_success", { path: basename(exportPath) }) }}
@@ -88,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { t } from "@/shared/i18n";
 import type { ComposeProgressMessage } from "@/shared/types";
 
@@ -107,13 +116,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "export"): void;
-  (e: "clear"): void;
   (e: "open-folder"): void;
   (e: "clear-error"): void;
   (e: "update:transition-mode", value: string | number): void;
   (e: "update:transition-duration", value: string | number | null): void;
   (e: "update:opponent-fast-edit", value: boolean): void;
 }>();
+
+const moreConfigOpen = ref(false);
 
 function handleTransitionModeChange(value: string | number) {
   emit("update:transition-mode", value);
@@ -129,10 +139,6 @@ function handleOpponentFastEditChange(value: boolean) {
 
 function handleExport() {
   emit("export");
-}
-
-function handleClear() {
-  emit("clear");
 }
 
 function handleOpenFolder() {
@@ -170,15 +176,42 @@ function basename(path: string): string {
   width: 110px;
 }
 
-.fast-edit-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.more-config-btn {
   margin-left: auto;
 }
 
+.chevron {
+  display: inline-block;
+  margin-left: 3px;
+  transition: transform 0.2s ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.more-config-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(20, 23, 21, 0.6);
+  border-bottom: 1px solid #303732;
+}
+
+.fast-edit-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-label {
+  color: #a7b2aa;
+  font-size: 12px;
+}
+
 .sequence-actions {
-  border-top: 1px solid #303732;
   padding: 10px 12px;
   background: rgba(17, 19, 18, 0.5);
   flex-shrink: 0;

@@ -7,6 +7,14 @@
         <n-tag size="small" :bordered="false" type="info">
           {{ totalDuration.toFixed(1) }}s
         </n-tag>
+        <n-button
+          size="tiny"
+          quaternary
+          :disabled="!sequenceItems.length || exporting"
+          @click="clearSequence"
+        >
+          {{ t("main.edit.clear") }}
+        </n-button>
       </n-space>
     </div>
 
@@ -98,7 +106,6 @@
       :compose-progress-label="composeProgressLabel"
       :transition-duration-options="transitionDurationOptions"
       @export="exportSequence"
-      @clear="clearSequence"
       @open-folder="openExportedClipFolder"
       @clear-error="clearExportError"
       @update:transition-mode="handleTransitionModeChange"
