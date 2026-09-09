@@ -17,6 +17,6 @@ const requestSettings: ClipSettings | null = store.requestSnapshot.value?.settin
 void confirmed;
 void requestSettings;
 void store.init();
+void store.refresh();
 void store.flush();
 void store.dispose();
-

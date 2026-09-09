@@ -31,7 +31,7 @@
 
 ## 设置、生成与游戏环境
 
-- 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；关闭命令开关时不生成命令或重置命令。
+- 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；关闭命令开关时不生成命令或重置命令。编码设置的 `effective_video_preset`、`effective_video_encoder`、`effective_video_status` 仅作为 Get/Save 响应的只读探测结果，不能覆盖持久化的 `video_preset` 用户策略。
 - `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动；`sky_blackout` 不得联动关闭云层。
 - `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。
 - 录制 take plan/history 的 `tick_rate`、`record_start_tick`、`record_end_tick`、`kill_offsets_seconds` 只作为后续剪辑的可选观测元数据；插件动作和原有 source window 保持不变。最终视频旁的 `.fastedit.json` 只能 best-effort 写入，不能让成功录制失败。

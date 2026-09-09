@@ -78,4 +78,7 @@ func TestResolvePluginVideoPreset_AutoUsesDetectedManualKeepsChoice(t *testing.T
 	if got := ResolvePluginVideoPreset("auto", nil); got != "c1" {
 		t.Fatalf("auto with nil cfg should fall back to c1, got=%q", got)
 	}
+	if got := ResolvePluginVideoPreset("n1", nil); got != "n1" {
+		t.Fatalf("manual preset with nil cfg should keep user choice, got=%q", got)
+	}
 }

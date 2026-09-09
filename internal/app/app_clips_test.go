@@ -727,6 +727,49 @@ func TestClipActionSettings_GetAndSave(t *testing.T) {
 	}
 }
 
+func TestClipSettings_ReportsEffectiveAutoProfileWithoutPersistingItAsUserChoice(t *testing.T) {
+	exeDir := t.TempDir()
+	cfg := config.Default(exeDir)
+	cfg.VideoPreset = config.DefaultVideoPreset
+	cfg.FFmpegDetectedPreset = "n1"
+	cfg.FFmpegDetectedEncoders = []string{"hevc_nvenc", "libx264"}
+	cfg.FFmpegDetectedAt = "2026-09-09T00:00:00Z"
+	if err := config.Save(filepath.Join(exeDir, "config.json"), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	app := &App{exeDir: exeDir}
+	settings, err := app.GetClipSettings()
+	if err != nil {
+		t.Fatalf("GetClipSettings: %v", err)
+	}
+	if settings.VideoPreset != "auto" {
+		t.Fatalf("user preset = %q, want auto", settings.VideoPreset)
+	}
+	if settings.EffectiveVideoPreset != "n1" || settings.EffectiveVideoEncoder != "hevc_nvenc" {
+		t.Fatalf("effective profile = %+v, want n1/hevc_nvenc", settings)
+	}
+	if settings.EffectiveVideoStatus != "ready" {
+		t.Fatalf("effective status = %q, want ready", settings.EffectiveVideoStatus)
+	}
+
+	saved, err := app.SaveClipSettings(*settings)
+	if err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+	if saved.VideoPreset != "auto" || saved.EffectiveVideoPreset != "n1" || saved.EffectiveVideoEncoder != "hevc_nvenc" {
+		t.Fatalf("saved settings = %+v, want auto request with n1/hevc_nvenc effective profile", saved)
+	}
+
+	reloadedCfg, err := config.LoadOrCreate(filepath.Join(exeDir, "config.json"), exeDir)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if reloadedCfg.VideoPreset != "auto" {
+		t.Fatalf("persisted user preset = %q, want auto", reloadedCfg.VideoPreset)
+	}
+}
+
 func TestClipSettings_GetAndSave(t *testing.T) {
 	exeDir := t.TempDir()
 	app := &App{exeDir: exeDir}

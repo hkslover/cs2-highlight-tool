@@ -31,6 +31,7 @@ import TopBar from "@/app/components/TopBar.vue";
 import StartupWizard from "@/features/startup/components/StartupWizard.vue";
 import WorkspaceInitModal from "@/features/workspace-init/components/WorkspaceInitModal.vue";
 import ChangelogModal from "@/features/changelog/components/ChangelogModal.vue";
+import { shouldRefreshSettingsForStartupState } from "@/app/startup-state";
 import { useChangelog } from "@/features/changelog/composables/useChangelog";
 import { useI18n } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
@@ -142,8 +143,13 @@ function statusForProgressKey(key: string): string {
 
 function applyState(next: StartupState) {
   const previousMode = state.mode;
+  const previousConfig = { ...state.config };
   const wasRunning = state.running;
   Object.assign(state, next);
+
+  if (shouldRefreshSettingsForStartupState(previousMode, previousConfig, next, settingsStore.loaded.value)) {
+    void settingsStore.refresh();
+  }
 
   if (next.mode === "workspace_init" && previousMode !== "workspace_init") {
     settingsStore.resetForWorkspace();

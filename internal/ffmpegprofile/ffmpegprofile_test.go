@@ -19,6 +19,49 @@ func TestNormalizeUserPreset(t *testing.T) {
 	}
 }
 
+func TestResolveVideoPreset_PreservesAutoAndReportsEffectiveEncoder(t *testing.T) {
+	resolved := ResolveVideoPreset(UserPresetAuto, UserPresetN1, []string{"hevc_nvenc", "libx264"})
+	if resolved.RequestedPreset != UserPresetAuto {
+		t.Fatalf("requested preset = %q, want auto", resolved.RequestedPreset)
+	}
+	if resolved.EffectivePreset != UserPresetN1 || resolved.Encoder != "hevc_nvenc" {
+		t.Fatalf("effective profile = %+v, want n1/hevc_nvenc", resolved)
+	}
+	if resolved.Status != VideoPresetStatusReady {
+		t.Fatalf("status = %q, want ready", resolved.Status)
+	}
+}
+
+func TestResolveVideoPreset_ReportsHardwareH264Fallback(t *testing.T) {
+	resolved := ResolveVideoPreset(UserPresetAuto, "", []string{"h264_nvenc", "libx264"})
+	if resolved.EffectivePreset != internalPresetN1H264 || resolved.Encoder != "h264_nvenc" {
+		t.Fatalf("effective profile = %+v, want n1_h264/h264_nvenc", resolved)
+	}
+	if resolved.Status != VideoPresetStatusReady {
+		t.Fatalf("status = %q, want ready", resolved.Status)
+	}
+}
+
+func TestResolveVideoPreset_MarksMissingDetectionPending(t *testing.T) {
+	resolved := ResolveVideoPreset(UserPresetAuto, "", nil)
+	if resolved.EffectivePreset != UserPresetC1 || resolved.Encoder != "libx264" {
+		t.Fatalf("fallback profile = %+v, want c1/libx264", resolved)
+	}
+	if resolved.Status != VideoPresetStatusPending {
+		t.Fatalf("status = %q, want pending", resolved.Status)
+	}
+}
+
+func TestResolveVideoPresetManualUsesRequestedProfile(t *testing.T) {
+	resolved := ResolveVideoPreset(UserPresetN1, UserPresetA1, []string{"hevc_amf"})
+	if resolved.RequestedPreset != UserPresetN1 || resolved.EffectivePreset != UserPresetN1 || resolved.Encoder != "hevc_nvenc" {
+		t.Fatalf("manual resolution = %+v, want n1/hevc_nvenc", resolved)
+	}
+	if resolved.Status != VideoPresetStatusManual {
+		t.Fatalf("status = %q, want manual", resolved.Status)
+	}
+}
+
 func TestResolveProfile_AutoPriority(t *testing.T) {
 	caps := CapabilitiesFromEncoders([]string{"h264_nvenc", "libx264"})
 	resolved := ResolveProfile(UserPresetAuto, caps)

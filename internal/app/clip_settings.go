@@ -11,29 +11,32 @@ import (
 )
 
 type ClipSettings struct {
-	KillerPreSeconds   float64 `json:"killer_pre_seconds"`
-	KillerPostSeconds  float64 `json:"killer_post_seconds"`
-	VictimPreSeconds   float64 `json:"victim_pre_seconds"`
-	VictimPostSeconds  float64 `json:"victim_post_seconds"`
-	AutoAddVictimView  bool    `json:"auto_add_victim_view"`
-	EnableVoice        bool    `json:"enable_voice"`
-	RecordFPS          int     `json:"record_fps"`
-	RecordQuality      string  `json:"record_quality"`
-	EditFPS            int     `json:"edit_fps"`
-	EditQuality        string  `json:"edit_quality"`
-	VideoPreset        string  `json:"video_preset"`
-	LaunchResolution   string  `json:"launch_resolution"`
-	RecordOutputDir    string  `json:"record_output_dir"`
-	EnableSpecShowXray bool    `json:"enable_spec_show_xray_zero"`
-	HideAllUI          bool    `json:"hide_all_ui"`
-	HidePlayerAvatars  bool    `json:"hide_player_avatars"`
-	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
-	PovHudEnabled      bool    `json:"pov_hud_enabled"`
-	PovRadarEnabled    bool    `json:"pov_radar_enabled"`
-	SkyBlackout        bool    `json:"sky_blackout"`
-	DisableClouds      bool    `json:"disable_clouds"`
-	KillFeedLifetime   int     `json:"kill_feed_lifetime"`
-	BlockKillFeed      bool    `json:"block_kill_feed"`
+	KillerPreSeconds      float64 `json:"killer_pre_seconds"`
+	KillerPostSeconds     float64 `json:"killer_post_seconds"`
+	VictimPreSeconds      float64 `json:"victim_pre_seconds"`
+	VictimPostSeconds     float64 `json:"victim_post_seconds"`
+	AutoAddVictimView     bool    `json:"auto_add_victim_view"`
+	EnableVoice           bool    `json:"enable_voice"`
+	RecordFPS             int     `json:"record_fps"`
+	RecordQuality         string  `json:"record_quality"`
+	EditFPS               int     `json:"edit_fps"`
+	EditQuality           string  `json:"edit_quality"`
+	VideoPreset           string  `json:"video_preset"`
+	EffectiveVideoPreset  string  `json:"effective_video_preset,omitempty"`
+	EffectiveVideoEncoder string  `json:"effective_video_encoder,omitempty"`
+	EffectiveVideoStatus  string  `json:"effective_video_status,omitempty"`
+	LaunchResolution      string  `json:"launch_resolution"`
+	RecordOutputDir       string  `json:"record_output_dir"`
+	EnableSpecShowXray    bool    `json:"enable_spec_show_xray_zero"`
+	HideAllUI             bool    `json:"hide_all_ui"`
+	HidePlayerAvatars     bool    `json:"hide_player_avatars"`
+	UseShoulderCamera     bool    `json:"use_shoulder_camera"`
+	PovHudEnabled         bool    `json:"pov_hud_enabled"`
+	PovRadarEnabled       bool    `json:"pov_radar_enabled"`
+	SkyBlackout           bool    `json:"sky_blackout"`
+	DisableClouds         bool    `json:"disable_clouds"`
+	KillFeedLifetime      int     `json:"kill_feed_lifetime"`
+	BlockKillFeed         bool    `json:"block_kill_feed"`
 }
 
 type ClipActionSettings struct {
@@ -107,6 +110,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 		KillFeedLifetime:   cfg.KillFeedLifetime,
 		BlockKillFeed:      cfg.BlockKillFeed,
 	})
+	decorateEffectiveVideoSettings(&settings, cfg)
 	actionSettings := config.ResolveClipActionSettings(cfg)
 	settings.EnableVoice = actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH
 	return &settings, nil
@@ -115,7 +119,7 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 	settings := normalizeClipSettings(input)
 	settings.RecordOutputDir = a.fixedRecordOutputDir()
-	if _, err := a.updateConfig(func(cfg *config.Config) error {
+	updatedCfg, err := a.updateConfig(func(cfg *config.Config) error {
 		cfg.KillerPreSeconds = settings.KillerPreSeconds
 		cfg.KillerPostSeconds = settings.KillerPostSeconds
 		cfg.VictimPreSeconds = settings.VictimPreSeconds
@@ -150,9 +154,11 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		}
 		config.SetClipActionSettings(cfg, actionSettings)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
+	decorateEffectiveVideoSettings(&settings, updatedCfg)
 	return &settings, nil
 }
 
@@ -235,6 +241,9 @@ func normalizeClipSettings(input ClipSettings) ClipSettings {
 		settings.EditQuality = config.DefaultEditQuality
 	}
 	settings.VideoPreset = ffmpegprofile.NormalizeUserPreset(settings.VideoPreset)
+	settings.EffectiveVideoPreset = ""
+	settings.EffectiveVideoEncoder = ""
+	settings.EffectiveVideoStatus = ""
 	settings.LaunchResolution = strings.TrimSpace(settings.LaunchResolution)
 	if !config.IsSupportedLaunchResolution(settings.LaunchResolution) {
 		settings.LaunchResolution = config.DefaultLaunchResolution
@@ -250,6 +259,23 @@ func normalizeClipSettings(input ClipSettings) ClipSettings {
 		settings.KillFeedLifetime = config.MaxKillFeedLifetime
 	}
 	return settings
+}
+
+func decorateEffectiveVideoSettings(settings *ClipSettings, cfg *config.Config) {
+	if settings == nil {
+		return
+	}
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	resolved := ffmpegprofile.ResolveVideoPreset(
+		settings.VideoPreset,
+		cfg.FFmpegDetectedPreset,
+		cfg.FFmpegDetectedEncoders,
+	)
+	settings.EffectiveVideoPreset = resolved.EffectivePreset
+	settings.EffectiveVideoEncoder = resolved.Encoder
+	settings.EffectiveVideoStatus = resolved.Status
 }
 
 func normalizeClipActionSettings(input ClipActionSettings) ClipActionSettings {

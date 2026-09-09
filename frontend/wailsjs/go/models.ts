@@ -52,6 +52,9 @@ export namespace app {
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
+	    effective_video_preset?: string;
+	    effective_video_encoder?: string;
+	    effective_video_status?: string;
 	    launch_resolution: string;
 	    record_output_dir: string;
 	    enable_spec_show_xray_zero: boolean;
@@ -82,6 +85,9 @@ export namespace app {
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
+	        this.effective_video_preset = source["effective_video_preset"];
+	        this.effective_video_encoder = source["effective_video_encoder"];
+	        this.effective_video_status = source["effective_video_status"];
 	        this.launch_resolution = source["launch_resolution"];
 	        this.record_output_dir = source["record_output_dir"];
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];

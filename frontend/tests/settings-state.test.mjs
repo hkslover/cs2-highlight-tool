@@ -380,3 +380,47 @@ test("a failed save keeps the draft and a later flush can retry it", async () =>
   assert.equal(store.dirty.value, false);
   await store.dispose();
 });
+
+test("refresh updates the effective encoder while preserving the auto choice and unsaved draft", async () => {
+  let current = settings({
+    video_preset: "auto",
+    effective_video_preset: "c1",
+    effective_video_encoder: "libx264",
+    effective_video_status: "pending",
+  });
+  const calls = [];
+  const store = createSettingsStore({
+    backend: {
+      GetWorkspaceState: async () => workspace(),
+      GetClipSettings: async () => ({ ...current }),
+      SaveClipSettings: async (next) => {
+        calls.push({ ...next });
+        current = { ...current, ...next };
+        return { ...current };
+      },
+    },
+    autoSaveDelayMs: 10,
+  });
+
+  await store.init();
+  store.draftSettings.edit_fps = 120;
+  current = {
+    ...current,
+    effective_video_preset: "n1",
+    effective_video_encoder: "hevc_nvenc",
+    effective_video_status: "ready",
+  };
+
+  await store.refresh();
+
+  assert.equal(store.draftSettings.video_preset, "auto");
+  assert.equal(store.draftSettings.effective_video_preset, "n1");
+  assert.equal(store.draftSettings.effective_video_encoder, "hevc_nvenc");
+  assert.equal(store.draftSettings.edit_fps, 120);
+  assert.equal(store.dirty.value, true);
+
+  await store.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].video_preset, "auto");
+  await store.dispose();
+});
