@@ -92,20 +92,15 @@ func BuildBatchRecordSubDirs(demoPaths []string) []string {
 // ResolvePluginVideoPreset resolves the effective video preset to use.
 // If userPreset is "auto", it derives the best preset from cfg's detected capabilities.
 func ResolvePluginVideoPreset(userPreset string, cfg *config.Config) string {
-	normalized := ffmpegprofile.NormalizeUserPreset(userPreset)
-	if normalized != ffmpegprofile.UserPresetAuto {
-		return normalized
+	var detectedPreset string
+	var detectedEncoders []string
+	if cfg != nil {
+		detectedPreset = cfg.FFmpegDetectedPreset
+		detectedEncoders = cfg.FFmpegDetectedEncoders
 	}
-	if cfg == nil {
+	resolved := ffmpegprofile.ResolveVideoPreset(userPreset, detectedPreset, detectedEncoders)
+	if strings.TrimSpace(resolved.EffectivePreset) == "" {
 		return ffmpegprofile.UserPresetC1
 	}
-	if detected, ok := ffmpegprofile.ProfileByID(cfg.FFmpegDetectedPreset); ok && strings.TrimSpace(detected.ID) != "" {
-		return detected.ID
-	}
-	caps := ffmpegprofile.CapabilitiesFromEncoders(cfg.FFmpegDetectedEncoders)
-	resolved := ffmpegprofile.ResolveProfile(ffmpegprofile.UserPresetAuto, caps)
-	if strings.TrimSpace(resolved.SelectedProfile.ID) == "" {
-		return ffmpegprofile.UserPresetC1
-	}
-	return resolved.SelectedProfile.ID
+	return resolved.EffectivePreset
 }

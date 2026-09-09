@@ -99,7 +99,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `disable_clouds` | 默认 false；开启仅写入 `mirv_sky clouds draw 0`，与天空开关独立 |
 | `pov_radar_enabled` | 默认 false；开启仅写入 `csdm_radar_pov 1`，与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期独立 |
 
-上述命令开关关闭时不写入对应命令或反向重置命令。FFmpeg 探测缓存字段为 `ffmpeg_detected_preset/ffmpeg_detected_encoders/ffmpeg_detected_at`，供自动选择和编码回退使用。`GetClipActionSettings` / `SaveClipActionSettings` 的语音配置必须与 ClipSettings 语义一致。
+上述命令开关关闭时不写入对应命令或反向重置命令。FFmpeg 探测缓存字段为 `ffmpeg_detected_preset/ffmpeg_detected_encoders/ffmpeg_detected_at`，供自动选择和编码回退使用。`GetClipSettings` / `SaveClipSettings` 响应中的 `effective_video_preset/effective_video_encoder/effective_video_status` 是只读的实际编码结果，不改变持久化的 `video_preset=auto`；前端应在探测完成后展示这些字段。`GetClipActionSettings` / `SaveClipActionSettings` 的语音配置必须与 ClipSettings 语义一致。
 
 - 生成入口为 `GeneratePluginJSON`、`GeneratePluginJSONBatch`、`GeneratePluginJSONBatchAndLaunchHLAE`；批量请求通过 `jobs[]` 承载单 Demo 请求。请求/结果结构见 `internal/app/plugin_generate.go`。
 - 新调用使用 `selected_items[]`；`selected_kills` 仅作兼容。`include_killer` 缺省为 true，`include_victim` 控制被害者录制。

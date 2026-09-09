@@ -42,6 +42,8 @@ export interface SettingsStore {
   /** Identifies the active workspace lifetime. */
   workspaceGeneration: Ref<number>;
   init(): Promise<void>;
+  /** Reload backend-normalized settings without discarding a newer draft. */
+  refresh(): Promise<void>;
   /** Detach all work from the previous workspace and restore the placeholder draft. */
   resetForWorkspace(): void;
   flush(): Promise<void>;
@@ -213,8 +215,8 @@ export function createSettingsStore(options: SettingsStateOptions = {}): Setting
     assignDraft(mergeDraftChanges(backendSettings, loadDraftSnapshot, currentDraft));
   }
 
-  async function fetchSettings(generation: number): Promise<void> {
-    const loadDraftSnapshot = cloneSettings(draftSettings);
+  async function fetchSettings(generation: number, draftSnapshot?: ClipSettings): Promise<void> {
+    const loadDraftSnapshot = cloneSettings(draftSnapshot ?? draftSettings);
     const loadRequestId = ++requestVersion.value;
     latestLoadRequestVersion = loadRequestId;
     loading.value = true;
@@ -260,6 +262,42 @@ export function createSettingsStore(options: SettingsStateOptions = {}): Setting
     }
     const generation = workspaceGeneration.value;
     const task = fetchSettings(generation);
+    activeLoad = task;
+    try {
+      await task;
+    } finally {
+      if (activeLoad === task) {
+        activeLoad = null;
+      }
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    const generation = workspaceGeneration.value;
+
+    // Do not race a settings write with a capability-refresh read. Waiting for
+    // all queued saves keeps the backend response authoritative while the
+    // existing merge logic preserves edits made after each save snapshot.
+    while (activeSave) {
+      await activeSave;
+      if (generation !== workspaceGeneration.value) {
+        return;
+      }
+    }
+    if (activeLoad) {
+      await activeLoad;
+      if (generation !== workspaceGeneration.value) {
+        return;
+      }
+    }
+    if (!loaded.value || generation !== workspaceGeneration.value) {
+      return;
+    }
+
+    const refreshSnapshot = confirmedSettings.value
+      ? cloneSettings(confirmedSettings.value)
+      : cloneSettings(draftSettings);
+    const task = fetchSettings(generation, refreshSnapshot);
     activeLoad = task;
     try {
       await task;
@@ -419,6 +457,7 @@ export function createSettingsStore(options: SettingsStateOptions = {}): Setting
     lastSavedVersion,
     workspaceGeneration,
     init,
+    refresh,
     resetForWorkspace,
     flush,
     dispose,

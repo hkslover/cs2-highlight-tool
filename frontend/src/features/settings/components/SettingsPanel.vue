@@ -295,8 +295,22 @@ const {
 const errorMessage = computed(
   () => settingsStore.errorMessage.value || storage.errorMessage.value || debug.errorMessage.value || localErrorMessage.value,
 );
+
+function effectivePresetLabel(): string {
+  if (settings.effective_video_status !== "ready") {
+    return t("main.settings.video_preset_auto");
+  }
+
+  const preset = (settings.effective_video_preset || "").trim().replace(/_h264$/i, "");
+  const encoder = (settings.effective_video_encoder || "").trim();
+  if (preset && encoder) {
+    return `${preset} (${encoder})`;
+  }
+  return encoder || preset || t("main.settings.video_preset_auto");
+}
+
 const presetOptions = computed(() => [
-  { label: t("main.settings.video_preset_auto"), value: "auto" },
+  { label: effectivePresetLabel(), value: "auto" },
   { label: t("main.settings.video_preset_c1"), value: "c1" },
   { label: t("main.settings.video_preset_n1"), value: "n1" },
   { label: t("main.settings.video_preset_a1"), value: "a1" },

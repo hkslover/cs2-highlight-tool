@@ -10,6 +10,10 @@ export interface ClipSettings {
   edit_fps: number;
   edit_quality: "standard" | "high" | "ultra";
   video_preset: "auto" | "c1" | "n1" | "a1" | "i1";
+  /** Backend-resolved metadata; these do not change the persisted request. */
+  effective_video_preset?: string;
+  effective_video_encoder?: string;
+  effective_video_status?: "manual" | "ready" | "pending" | string;
   launch_resolution: "16:9" | "4:3" | "4:3_1280x960";
   record_output_dir: string;
   enable_spec_show_xray_zero: boolean;
