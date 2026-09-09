@@ -92,6 +92,7 @@
       :export-path="exportPath"
       :transition-mode="transitionMode"
       :transition-duration="transitionDuration"
+      :opponent-fast-edit-enabled="opponentFastEditEnabled"
       :compose-progress="composeProgress"
       :compose-percent="composePercent"
       :compose-progress-label="composeProgressLabel"
@@ -102,6 +103,7 @@
       @clear-error="clearExportError"
       @update:transition-mode="handleTransitionModeChange"
       @update:transition-duration="handleTransitionDurationChange"
+      @update:opponent-fast-edit="handleOpponentFastEditChange"
     />
   </section>
 </template>
@@ -122,6 +124,7 @@ const {
   exportPath,
   transitionMode,
   transitionDuration,
+  opponentFastEditEnabled,
   totalDuration,
   composeProgress,
   composePercent,
@@ -129,6 +132,7 @@ const {
   transitionDurationOptions,
   handleTransitionModeChange,
   handleTransitionDurationChange,
+  handleOpponentFastEditChange,
   exportSequence,
   clearExportError,
   openExportedClipFolder,

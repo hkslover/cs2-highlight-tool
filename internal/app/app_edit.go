@@ -13,8 +13,10 @@ import (
 )
 
 type EditConcatClip struct {
-	VideoPath string  `json:"video_path"`
-	Duration  float64 `json:"duration"`
+	VideoPath    string   `json:"video_path"`
+	Duration     float64  `json:"duration"`
+	StartSeconds *float64 `json:"start_seconds,omitempty"`
+	EndSeconds   *float64 `json:"end_seconds,omitempty"`
 }
 
 type EditConcatTransition struct {
@@ -31,10 +33,15 @@ type EditConcatRequest struct {
 type resolvedEditClip struct {
 	VideoPath          string
 	Duration           float64
+	TrimStart          float64
+	TrimEnd            float64
+	HasTrim            bool
 	Width              int
 	Height             int
 	SampleAspectRatio  string
 	DisplayAspectRatio string
+	HasAudio           bool
+	AudioKnown         bool
 }
 
 type editEncodeSettings struct {
@@ -48,6 +55,10 @@ const (
 	defaultEditTransitionDuration = 0.3
 	minEditTransitionDuration     = 0.05
 	maxEditTransitionDuration     = 5.0
+	// ProbeClipDuration rounds the format duration to milliseconds while the
+	// video-stream probe keeps the authoritative stream duration. Accept only
+	// that one-millisecond boundary discrepancy before clamping to the stream.
+	editTrimBoundaryToleranceSeconds = 0.001
 )
 
 // ConcatEditClips merges edit clips. The transition path uses one filter graph
@@ -65,7 +76,14 @@ func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
 		return "", err
 	}
 
-	resolvedClips, err := a.resolveEditClips(request.Clips, len(transitionByIndex) > 0)
+	needsTrimProbe := false
+	for _, clip := range request.Clips {
+		if clip.StartSeconds != nil || clip.EndSeconds != nil {
+			needsTrimProbe = true
+			break
+		}
+	}
+	resolvedClips, err := a.resolveEditClips(request.Clips, len(transitionByIndex) > 0 || needsTrimProbe)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +102,7 @@ func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
 	outputPath := filepath.Join(outputDir, fmt.Sprintf("edit_%s.mp4", time.Now().Format("20060102_150405")))
 	tracker := newComposeProgressTracker(a, editComposeStageCount(len(resolvedClips), len(transitionByIndex) > 0))
 
-	if len(transitionByIndex) == 0 {
+	if len(transitionByIndex) == 0 && !hasEditTrim(resolvedClips) {
 		if _, err := concatSimple(ffmpegExe, resolvedClips, outputPath, encode, tracker); err != nil {
 			tracker.fail(err)
 			return "", err
@@ -137,6 +155,8 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 		height := 0
 		sampleAspectRatio := ""
 		displayAspectRatio := ""
+		hasAudio := false
+		audioKnown := false
 		if probeForTransitions {
 			info, err := probeVideoStreamInfo(ffprobeExe, p)
 			if err != nil {
@@ -147,6 +167,11 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 			height = info.Height
 			sampleAspectRatio = info.SampleAspectRatio
 			displayAspectRatio = info.DisplayAspectRatio
+			// A probed stream set is authoritative, including a missing audio
+			// stream. Keep AudioKnown separate so white-box callers that build
+			// resolvedEditClip values retain the historical audio assumption.
+			hasAudio = info.HasAudio
+			audioKnown = info.AudioKnown
 		} else if duration <= 0 {
 			if ffprobeExe == "" {
 				return nil, fmt.Errorf("clip %d duration is invalid and ffprobe not found", i+1)
@@ -163,6 +188,14 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 		if duration <= 0 {
 			return nil, fmt.Errorf("clip %d duration must be > 0", i+1)
 		}
+		if math.IsNaN(duration) || math.IsInf(duration, 0) {
+			return nil, fmt.Errorf("clip %d duration must be finite", i+1)
+		}
+
+		trimStart, trimEnd, hasTrim, trimErr := resolveEditTrimRange(clip, duration, i)
+		if trimErr != nil {
+			return nil, trimErr
+		}
 
 		resolvedDuration := duration
 		if !probeForTransitions {
@@ -171,13 +204,63 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 		resolved = append(resolved, resolvedEditClip{
 			VideoPath:          p,
 			Duration:           resolvedDuration,
+			TrimStart:          trimStart,
+			TrimEnd:            trimEnd,
+			HasTrim:            hasTrim,
 			Width:              width,
 			Height:             height,
 			SampleAspectRatio:  sampleAspectRatio,
 			DisplayAspectRatio: displayAspectRatio,
+			HasAudio:           hasAudio,
+			AudioKnown:         audioKnown,
 		})
 	}
 	return resolved, nil
+}
+
+func hasEditTrim(clips []resolvedEditClip) bool {
+	for _, clip := range clips {
+		if clip.HasTrim {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveEditTrimRange(clip EditConcatClip, duration float64, index int) (float64, float64, bool, error) {
+	if clip.StartSeconds == nil && clip.EndSeconds == nil {
+		return 0, duration, false, nil
+	}
+	start := 0.0
+	if clip.StartSeconds != nil {
+		start = *clip.StartSeconds
+	}
+	end := duration
+	if clip.EndSeconds != nil {
+		end = *clip.EndSeconds
+	}
+	if math.IsNaN(start) || math.IsInf(start, 0) || math.IsNaN(end) || math.IsInf(end, 0) {
+		return 0, 0, false, fmt.Errorf("clip %d trim range must be finite", index+1)
+	}
+	if start < 0 || end < 0 {
+		return 0, 0, false, fmt.Errorf("clip %d trim range is invalid: %.6f..%.6f (duration %.6f)", index+1, start, end, duration)
+	}
+	if start > duration {
+		if start-duration > editTrimBoundaryToleranceSeconds {
+			return 0, 0, false, fmt.Errorf("clip %d trim range is invalid: %.6f..%.6f (duration %.6f)", index+1, start, end, duration)
+		}
+		start = duration
+	}
+	if end > duration {
+		if end-duration > editTrimBoundaryToleranceSeconds {
+			return 0, 0, false, fmt.Errorf("clip %d trim range is invalid: %.6f..%.6f (duration %.6f)", index+1, start, end, duration)
+		}
+		end = duration
+	}
+	if start >= duration || end <= start {
+		return 0, 0, false, fmt.Errorf("clip %d trim range is invalid: %.6f..%.6f (duration %.6f)", index+1, start, end, duration)
+	}
+	return start, end, true, nil
 }
 
 func normalizeEditTransitions(clipCount int, input []EditConcatTransition) (map[int]EditConcatTransition, error) {
@@ -241,6 +324,9 @@ func normalizeTransition(input EditConcatTransition) (EditConcatTransition, erro
 	}
 
 	d := transition.Duration
+	if math.IsNaN(d) || math.IsInf(d, 0) {
+		return EditConcatTransition{}, fmt.Errorf("transition duration must be finite")
+	}
 	if d <= 0 {
 		d = defaultEditTransitionDuration
 	}
@@ -324,8 +410,8 @@ func concatWithTransitions(
 	encode editEncodeSettings,
 	tracker *composeProgressTracker,
 ) ([]byte, error) {
-	if len(clips) < 2 {
-		return nil, fmt.Errorf("at least 2 clips are required for transitions")
+	if len(clips) == 0 {
+		return nil, fmt.Errorf("at least 1 clip is required")
 	}
 
 	plan, err := buildTransitionFilterGraph(clips, transitionByIndex, encode.FPS)
@@ -391,8 +477,8 @@ func buildTransitionFilterGraph(
 	transitionByIndex map[int]EditConcatTransition,
 	fps int,
 ) (transitionGraphPlan, error) {
-	if len(clips) < 2 {
-		return transitionGraphPlan{}, fmt.Errorf("at least 2 clips are required for transitions")
+	if len(clips) == 0 {
+		return transitionGraphPlan{}, fmt.Errorf("at least 1 clip is required")
 	}
 	if fps <= 0 {
 		return transitionGraphPlan{}, fmt.Errorf("edit fps must be > 0")
@@ -409,7 +495,16 @@ func buildTransitionFilterGraph(
 		if clip.Width <= 0 || clip.Height <= 0 {
 			return transitionGraphPlan{}, fmt.Errorf("clip %d has invalid resolution: %dx%d", i, clip.Width, clip.Height)
 		}
-		durations[i] = alignToFrameGrid(clip.Duration, fps)
+		start := 0.0
+		end := clip.Duration
+		if clip.HasTrim {
+			start = clip.TrimStart
+			end = clip.TrimEnd
+			if math.IsNaN(start) || math.IsInf(start, 0) || math.IsNaN(end) || math.IsInf(end, 0) || start < 0 || end <= start || end > clip.Duration {
+				return transitionGraphPlan{}, fmt.Errorf("clip %d trim range is invalid: %.6f..%.6f (duration %.6f)", i, start, end, clip.Duration)
+			}
+		}
+		durations[i] = alignToFrameGrid(end-start, fps)
 		if durations[i] < 2*frameDuration {
 			return transitionGraphPlan{}, fmt.Errorf("clip %d is too short after frame alignment: %.6f seconds", i, durations[i])
 		}
@@ -420,8 +515,16 @@ func buildTransitionFilterGraph(
 	targetSampleAspectRatio := editClipSampleAspectRatio(clips[0])
 	filters := make([]string, 0, len(clips)*2+len(clips)-1)
 	for i, duration := range durations {
+		start := 0.0
+		if clips[i].HasTrim {
+			start = clips[i].TrimStart
+		}
+		videoTrim := fmt.Sprintf("trim=duration=%.6f", duration)
+		if clips[i].HasTrim {
+			videoTrim = fmt.Sprintf("trim=start=%.6f:duration=%.6f", start, duration)
+		}
 		filters = append(filters, fmt.Sprintf(
-			"[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=%s,fps=%d,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p,trim=duration=%.6f,setpts=PTS-STARTPTS[v%d]",
+			"[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=%s,fps=%d,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p,%s,setpts=PTS-STARTPTS[v%d]",
 			i,
 			width,
 			height,
@@ -429,15 +532,27 @@ func buildTransitionFilterGraph(
 			height,
 			targetSampleAspectRatio,
 			fps,
-			duration,
+			videoTrim,
 			i,
 		))
-		filters = append(filters, fmt.Sprintf(
-			"[%d:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,apad,atrim=0:%.6f,asetpts=PTS-STARTPTS[a%d]",
-			i,
-			duration,
-			i,
-		))
+		if !clips[i].AudioKnown || clips[i].HasAudio {
+			audioTrim := fmt.Sprintf("atrim=0:%.6f", duration)
+			if clips[i].HasTrim {
+				audioTrim = fmt.Sprintf("atrim=start=%.6f:duration=%.6f", start, duration)
+			}
+			filters = append(filters, fmt.Sprintf(
+				"[%d:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,apad,%s,asetpts=PTS-STARTPTS[a%d]",
+				i,
+				audioTrim,
+				i,
+			))
+		} else {
+			filters = append(filters, fmt.Sprintf(
+				"anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=%.6f,asetpts=PTS-STARTPTS[a%d]",
+				duration,
+				i,
+			))
+		}
 	}
 
 	currentVideo := "[v0]"
@@ -491,6 +606,9 @@ func buildTransitionFilterGraph(
 		}
 		currentVideo = outputVideo
 		currentAudio = outputAudio
+	}
+	if len(clips) == 1 {
+		filters = append(filters, "[v0]null[v]", "[a0]anull[a]")
 	}
 
 	return transitionGraphPlan{

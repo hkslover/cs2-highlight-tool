@@ -27,6 +27,8 @@ type probedVideoInfo struct {
 	Height             int
 	SampleAspectRatio  string
 	DisplayAspectRatio string
+	HasAudio           bool
+	AudioKnown         bool
 }
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
@@ -80,8 +82,7 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 	cmd := ffmpegCommand(
 		ffprobeExe,
 		"-v", "error",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=duration,width,height,sample_aspect_ratio,display_aspect_ratio",
+		"-show_entries", "stream=codec_type,duration,width,height,sample_aspect_ratio,display_aspect_ratio",
 		"-show_entries", "format=duration",
 		"-of", "json",
 		videoPath,
@@ -95,6 +96,7 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 
 	var payload struct {
 		Streams []struct {
+			CodecType          string          `json:"codec_type"`
 			Duration           json.RawMessage `json:"duration"`
 			Width              int             `json:"width"`
 			Height             int             `json:"height"`
@@ -112,7 +114,25 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 		return probedVideoInfo{}, fmt.Errorf("ffprobe returned no video stream")
 	}
 
-	stream := payload.Streams[0]
+	videoIndex := -1
+	hasAudio := false
+	hasCodecType := false
+	for index, candidate := range payload.Streams {
+		codecType := strings.ToLower(strings.TrimSpace(candidate.CodecType))
+		if codecType != "" {
+			hasCodecType = true
+		}
+		if codecType == "audio" {
+			hasAudio = true
+		}
+		if videoIndex < 0 && (codecType == "video" || codecType == "") {
+			videoIndex = index
+		}
+	}
+	if videoIndex < 0 {
+		return probedVideoInfo{}, fmt.Errorf("ffprobe returned no video stream")
+	}
+	stream := payload.Streams[videoIndex]
 	duration, ok := parseFFProbeDurationValue(stream.Duration)
 	if !ok {
 		duration, ok = parseFFProbeDurationValue(payload.Format.Duration)
@@ -130,6 +150,8 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 		Height:             stream.Height,
 		SampleAspectRatio:  strings.TrimSpace(stream.SampleAspectRatio),
 		DisplayAspectRatio: strings.TrimSpace(stream.DisplayAspectRatio),
+		HasAudio:           hasAudio,
+		AudioKnown:         hasCodecType,
 	}, nil
 }
 

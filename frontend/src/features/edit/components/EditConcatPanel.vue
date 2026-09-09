@@ -5,6 +5,7 @@
       <n-radio-group
         size="small"
         :value="transitionMode"
+        :disabled="exporting"
         @update:value="handleTransitionModeChange"
       >
         <n-radio-button value="none">{{ t("main.edit.transition_none") }}</n-radio-button>
@@ -15,9 +16,18 @@
         size="small"
         class="transition-select"
         :value="transitionDuration"
+        :disabled="exporting"
         :options="transitionDurationOptions"
         @update:value="handleTransitionDurationChange"
       />
+      <div class="fast-edit-toggle">
+        <span class="transition-label">{{ t("main.edit.opponent_fast_edit") }}</span>
+        <n-switch
+          :value="opponentFastEditEnabled"
+          :disabled="exporting"
+          @update:value="handleOpponentFastEditChange"
+        />
+      </div>
     </div>
 
     <div class="sequence-actions">
@@ -88,6 +98,7 @@ const props = defineProps<{
   exportPath: string;
   transitionMode: string;
   transitionDuration: number;
+  opponentFastEditEnabled: boolean;
   composeProgress: ComposeProgressMessage;
   composePercent: number;
   composeProgressLabel: string;
@@ -101,6 +112,7 @@ const emit = defineEmits<{
   (e: "clear-error"): void;
   (e: "update:transition-mode", value: string | number): void;
   (e: "update:transition-duration", value: string | number | null): void;
+  (e: "update:opponent-fast-edit", value: boolean): void;
 }>();
 
 function handleTransitionModeChange(value: string | number) {
@@ -109,6 +121,10 @@ function handleTransitionModeChange(value: string | number) {
 
 function handleTransitionDurationChange(value: string | number | null) {
   emit("update:transition-duration", value);
+}
+
+function handleOpponentFastEditChange(value: boolean) {
+  emit("update:opponent-fast-edit", value);
 }
 
 function handleExport() {
@@ -152,6 +168,13 @@ function basename(path: string): string {
 
 .transition-select {
   width: 110px;
+}
+
+.fast-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .sequence-actions {

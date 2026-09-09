@@ -38,6 +38,8 @@ import type {
 export interface EditConcatClip {
   video_path: string;
   duration: number;
+  start_seconds?: number;
+  end_seconds?: number;
 }
 
 /** The transition shape generated for `ConcatEditClips` by the Go app package. */
@@ -164,4 +166,3 @@ export type TypedBackendApi = {
     ...args: BackendArgs<M>
   ) => Promise<BackendResult<M>>;
 };
-

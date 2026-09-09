@@ -36,6 +36,8 @@ import { useI18n } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
 import type { ProgressMessage, StartupState } from "@/shared/types";
 import { useSettingsStore } from "@/domains/settings/settings-state";
+import { resetEditDomainForWorkspace } from "@/domains/edit";
+import { resetEditSequenceDurationCache } from "@/features/edit/composables/useEditSequenceActions";
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -145,6 +147,8 @@ function applyState(next: StartupState) {
 
   if (next.mode === "workspace_init" && previousMode !== "workspace_init") {
     settingsStore.resetForWorkspace();
+    resetEditDomainForWorkspace();
+    resetEditSequenceDurationCache();
   } else if (previousMode === "workspace_init" && next.mode !== "workspace_init") {
     // Keep an always-open settings drawer in sync with the newly selected
     // workspace. init() remains deduplicated for the startup event sequence.

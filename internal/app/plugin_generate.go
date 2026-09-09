@@ -78,19 +78,23 @@ type GeneratePluginJSONBatchResult struct {
 }
 
 type ProduceTakePlan struct {
-	DemoPath      string   `json:"demo_path"`
-	TakeIndex     int      `json:"take_index"`
-	TakeName      string   `json:"take_name,omitempty"`
-	View          string   `json:"view"`
-	SpecMode      int      `json:"spec_mode"`
-	KillIDs       []string `json:"kill_ids"`
-	SourceID      string   `json:"source_id,omitempty"`
-	Round         int      `json:"round,omitempty"`
-	PlayerName    string   `json:"player_name,omitempty"`
-	PlayerSteamID string   `json:"player_steam_id,omitempty"`
-	StartTick     int      `json:"start_tick,omitempty"`
-	EndTick       int      `json:"end_tick,omitempty"`
-	EndReason     string   `json:"end_reason,omitempty"`
+	DemoPath           string    `json:"demo_path"`
+	TakeIndex          int       `json:"take_index"`
+	TakeName           string    `json:"take_name,omitempty"`
+	View               string    `json:"view"`
+	SpecMode           int       `json:"spec_mode"`
+	KillIDs            []string  `json:"kill_ids"`
+	SourceID           string    `json:"source_id,omitempty"`
+	Round              int       `json:"round,omitempty"`
+	PlayerName         string    `json:"player_name,omitempty"`
+	PlayerSteamID      string    `json:"player_steam_id,omitempty"`
+	StartTick          int       `json:"start_tick,omitempty"`
+	EndTick            int       `json:"end_tick,omitempty"`
+	EndReason          string    `json:"end_reason,omitempty"`
+	TickRate           float64   `json:"tick_rate,omitempty"`
+	RecordStartTick    int       `json:"record_start_tick,omitempty"`
+	RecordEndTick      int       `json:"record_end_tick,omitempty"`
+	KillOffsetsSeconds []float64 `json:"kill_offsets_seconds,omitempty"`
 }
 
 type pluginAction = clipsjson.Action
@@ -640,19 +644,23 @@ func (a *App) generatePluginJSONInternal(
 	takePlans := make([]ProduceTakePlan, 0, len(buildResult.TakePlans))
 	for _, plan := range buildResult.TakePlans {
 		takePlans = append(takePlans, ProduceTakePlan{
-			DemoPath:      absDemoPath,
-			TakeIndex:     plan.TakeIndex,
-			TakeName:      plan.TakeName,
-			View:          strings.TrimSpace(plan.View),
-			SpecMode:      plan.SpecMode,
-			KillIDs:       append([]string(nil), plan.KillIDs...),
-			SourceID:      strings.TrimSpace(plan.SourceID),
-			Round:         plan.Round,
-			PlayerName:    strings.TrimSpace(plan.PlayerName),
-			PlayerSteamID: strings.TrimSpace(plan.PlayerSteamID),
-			StartTick:     plan.StartTick,
-			EndTick:       plan.EndTick,
-			EndReason:     strings.TrimSpace(plan.EndReason),
+			DemoPath:           absDemoPath,
+			TakeIndex:          plan.TakeIndex,
+			TakeName:           plan.TakeName,
+			View:               strings.TrimSpace(plan.View),
+			SpecMode:           plan.SpecMode,
+			KillIDs:            append([]string(nil), plan.KillIDs...),
+			SourceID:           strings.TrimSpace(plan.SourceID),
+			Round:              plan.Round,
+			PlayerName:         strings.TrimSpace(plan.PlayerName),
+			PlayerSteamID:      strings.TrimSpace(plan.PlayerSteamID),
+			StartTick:          plan.StartTick,
+			EndTick:            plan.EndTick,
+			EndReason:          strings.TrimSpace(plan.EndReason),
+			TickRate:           plan.TickRate,
+			RecordStartTick:    plan.RecordStartTick,
+			RecordEndTick:      plan.RecordEndTick,
+			KillOffsetsSeconds: append([]float64(nil), plan.KillOffsetsSeconds...),
 		})
 	}
 

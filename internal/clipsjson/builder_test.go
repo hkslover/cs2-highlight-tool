@@ -2,6 +2,7 @@ package clipsjson
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -520,6 +521,40 @@ func TestBuild_AddsRecordStartEndAndTakeMetadata(t *testing.T) {
 		if starts[idx].Tick > ends[idx].Tick {
 			t.Fatalf("record start tick should <= end tick: %d > %d", starts[idx].Tick, ends[idx].Tick)
 		}
+	}
+}
+
+func TestBuild_TakePlanCarriesRecorderOffsetsWithoutChangingWindow(t *testing.T) {
+	includeKiller := false
+	result, err := Build([]Item{
+		{
+			Kill:          demo.ClipKill{ID: "victim-kill", Round: 7, Tick: 200, KillerSlot: 7, VictimSlot: 11},
+			IncludeKiller: &includeKiller,
+			IncludeVictim: true,
+		},
+	}, BuildOptions{
+		TickRate:          64,
+		VictimPreSeconds:  1,
+		VictimPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "c1",
+		RecordOutputDir:   `D:/clips/output`,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.TakePlans) != 1 {
+		t.Fatalf("take plans len=%d want 1", len(result.TakePlans))
+	}
+	plan := result.TakePlans[0]
+	if plan.View != "victim" || plan.Round != 7 || plan.StartTick != 136 || plan.EndTick != 264 {
+		t.Fatalf("unexpected source event window: %+v", plan)
+	}
+	if plan.TickRate != 64 || plan.RecordStartTick != 146 || plan.RecordEndTick != 265 {
+		t.Fatalf("unexpected recorder metadata: %+v", plan)
+	}
+	if len(plan.KillOffsetsSeconds) != 1 || math.Abs(plan.KillOffsetsSeconds[0]-0.84375) > 1e-9 {
+		t.Fatalf("unexpected kill offsets: %+v", plan.KillOffsetsSeconds)
 	}
 }
 

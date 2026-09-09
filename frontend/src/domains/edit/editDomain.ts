@@ -8,6 +8,10 @@ import type {
   EditSequenceItem,
   EditTransitionMode,
 } from "./types";
+import {
+  buildOpponentFastEditPlan,
+  type EditTrimRange,
+} from "./fastEdit.js";
 
 const COMPOSE_PROGRESS_EVENT = "compose_progress";
 
@@ -23,6 +27,7 @@ export interface EditDomainState {
   exportPath: Readonly<Ref<string>>;
   transitionMode: Readonly<Ref<EditTransitionMode>>;
   transitionDuration: Readonly<Ref<number>>;
+  opponentFastEditEnabled: Readonly<Ref<boolean>>;
   totalDuration: ComputedRef<number>;
   composeProgress: Readonly<Ref<ComposeProgressMessage>>;
   composePercent: ComputedRef<number>;
@@ -31,13 +36,15 @@ export interface EditDomainState {
 export interface EditDomainController extends EditDomainState {
   init(): void;
   dispose(): void;
-  addSequenceItem(item: ProduceHistoryItem, duration: number): void;
+  addSequenceItem(item: ProduceHistoryItem, duration: number): boolean;
   moveSequenceItemUp(index: number): void;
   moveSequenceItemDown(index: number): void;
   removeSequenceItem(index: number): void;
   clearSequence(): void;
   setTransitionMode(mode: EditTransitionMode): void;
   setTransitionDuration(duration: number): void;
+  setOpponentFastEditEnabled(enabled: boolean): void;
+  resetForWorkspace(): void;
   setExportError(value: string): void;
   setExportPath(value: string): void;
   clearExportError(): void;
@@ -90,14 +97,29 @@ export function buildEditConcatRequest(
   sequenceItems: readonly EditSequenceItem[],
   transitionMode: EditTransitionMode,
   transitionDuration: number,
+  opponentFastEditEnabled = false,
 ): EditConcatRequestPayload {
-  const clips = sequenceItems.map((item) => ({
-    video_path: item.videoPath,
-    duration: item.duration,
-  }));
+  const fastEditPlan = opponentFastEditEnabled
+    ? buildOpponentFastEditPlan(sequenceItems)
+    : undefined;
+  const clips = sequenceItems.map((item, index) => {
+    const range: EditTrimRange | undefined = fastEditPlan?.ranges[index];
+    return {
+      video_path: item.videoPath,
+      duration: item.duration,
+      ...(range || {}),
+    };
+  });
   const transitions: EditConcatTransitionPayload[] = [];
   if (transitionMode === "fade" && sequenceItems.length > 1) {
     for (let index = 0; index < sequenceItems.length - 1; index++) {
+      if (
+        fastEditPlan?.hardCutAfter[index] ||
+        isFastEditTransitionTooLong(fastEditPlan?.ranges[index], transitionDuration) ||
+        isFastEditTransitionTooLong(fastEditPlan?.ranges[index + 1], transitionDuration)
+      ) {
+        continue;
+      }
       transitions.push({
         type: "fade",
         duration: transitionDuration,
@@ -108,6 +130,18 @@ export function buildEditConcatRequest(
   return { clips, transitions };
 }
 
+function isFastEditTransitionTooLong(
+  range: EditTrimRange | undefined,
+  transitionDuration: number,
+): boolean {
+  if (!range) return false;
+  const clipDuration = range.end_seconds - range.start_seconds;
+  // The backend frame-aligns both values at the minimum supported edit FPS
+  // (24). Leave one frame of headroom so a 0.31s trim and a 0.3s fade cannot
+  // collapse to the same 7-frame duration and make the filter graph fail.
+  return Number.isFinite(clipDuration) && transitionDuration + 1 / 24 >= clipDuration;
+}
+
 export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()): EditDomainController {
   const sequenceItems = ref<EditSequenceItem[]>([]);
   const exporting = ref(false);
@@ -115,6 +149,7 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
   const exportPath = ref("");
   const transitionMode = ref<EditTransitionMode>("none");
   const transitionDuration = ref(0.3);
+  const opponentFastEditEnabled = ref(false);
   const composeProgress = ref<ComposeProgressMessage>(initialComposeProgress());
   const totalDuration = computed(() =>
     sequenceItems.value.reduce((sum, item) => sum + item.duration, 0),
@@ -164,16 +199,19 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
     offComposeProgress = undefined;
   }
 
-  function addSequenceItem(item: ProduceHistoryItem, duration: number) {
+  function addSequenceItem(item: ProduceHistoryItem, duration: number): boolean {
+    if (exporting.value) return false;
     sequenceItems.value.push({
       id: generateId(),
       historyItem: item,
       videoPath: item.video_path,
       duration,
     });
+    return true;
   }
 
   function moveSequenceItemUp(index: number) {
+    if (exporting.value) return;
     if (index <= 0 || index >= sequenceItems.value.length) return;
     const next = sequenceItems.value.slice();
     const [moved] = next.splice(index, 1);
@@ -182,6 +220,7 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
   }
 
   function moveSequenceItemDown(index: number) {
+    if (exporting.value) return;
     if (index < 0 || index >= sequenceItems.value.length - 1) return;
     const next = sequenceItems.value.slice();
     const [moved] = next.splice(index, 1);
@@ -190,6 +229,7 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
   }
 
   function removeSequenceItem(index: number) {
+    if (exporting.value) return;
     if (index < 0 || index >= sequenceItems.value.length) return;
     const next = sequenceItems.value.slice();
     next.splice(index, 1);
@@ -197,17 +237,25 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
   }
 
   function clearSequence() {
+    if (exporting.value) return;
     sequenceItems.value = [];
     exportError.value = "";
     exportPath.value = "";
   }
 
   function setTransitionMode(mode: EditTransitionMode) {
+    if (exporting.value) return;
     transitionMode.value = mode;
   }
 
   function setTransitionDuration(duration: number) {
+    if (exporting.value) return;
     transitionDuration.value = duration;
+  }
+
+  function setOpponentFastEditEnabled(enabled: boolean) {
+    if (exporting.value) return;
+    opponentFastEditEnabled.value = !!enabled;
   }
 
   function setExportError(value: string) {
@@ -227,7 +275,22 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
       sequenceItems.value,
       transitionMode.value,
       transitionDuration.value,
+      opponentFastEditEnabled.value,
     );
+  }
+
+  function resetForWorkspace() {
+    initialized = false;
+    lifecycleEpoch += 1;
+    offComposeProgress?.();
+    offComposeProgress = undefined;
+    activeExportEpoch = undefined;
+    sequenceItems.value = [];
+    opponentFastEditEnabled.value = false;
+    exporting.value = false;
+    exportError.value = "";
+    exportPath.value = "";
+    composeProgress.value = initialComposeProgress();
   }
 
   async function exportSequence(): Promise<string | null> {
@@ -287,6 +350,7 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
     exportPath,
     transitionMode,
     transitionDuration,
+    opponentFastEditEnabled,
     totalDuration,
     composeProgress,
     composePercent,
@@ -299,6 +363,8 @@ export function createEditDomain(runtime: EditDomainRuntime = defaultRuntime()):
     clearSequence,
     setTransitionMode,
     setTransitionDuration,
+    setOpponentFastEditEnabled,
+    resetForWorkspace,
     setExportError,
     setExportPath,
     clearExportError,
@@ -315,6 +381,10 @@ export function initEditDomain(): void {
 
 export function disposeEditDomain(): void {
   editDomain.dispose();
+}
+
+export function resetEditDomainForWorkspace(): void {
+  editDomain.resetForWorkspace();
 }
 
 /** App-shell integration point. The domain owns the subscription until this is disposed. */

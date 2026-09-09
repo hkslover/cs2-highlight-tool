@@ -350,6 +350,7 @@
       "transition_mode": "转场模式",
       "transition_none": "无转场",
       "transition_fade": "淡入淡出",
+      "opponent_fast_edit": "对方视角快节奏剪辑",
       "fade": "淡入淡出",
       "duration": "时长",
       "clip_library": "制作历史片段",

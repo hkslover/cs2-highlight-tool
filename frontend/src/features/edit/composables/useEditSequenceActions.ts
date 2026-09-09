@@ -21,6 +21,12 @@ export interface EditSequenceActions {
 // route remount, so navigating away during an export does not cause a second
 // probe when the source panel is shown again.
 const sharedDurationCache = ref<Record<string, number>>({});
+let durationCacheGeneration = 0;
+
+export function resetEditSequenceDurationCache(): void {
+  durationCacheGeneration += 1;
+  sharedDurationCache.value = {};
+}
 
 export function useEditSequenceActions(): EditSequenceActions {
   const domain = useEditDomain();
@@ -40,25 +46,28 @@ export function useEditSequenceActions(): EditSequenceActions {
     addingByPath.value = next;
   }
 
-  async function getDuration(videoPath: string): Promise<number> {
+  async function getDuration(videoPath: string, generation: number): Promise<number> {
     const cached = durationCache.value[videoPath];
     if (cached > 0) return cached;
     const duration = await backend.ProbeClipDuration(videoPath);
     if (!(duration > 0)) {
       throw new Error("ProbeClipDuration returned an invalid duration");
     }
-    durationCache.value = { ...durationCache.value, [videoPath]: duration };
+    if (generation === durationCacheGeneration) {
+      durationCache.value = { ...durationCache.value, [videoPath]: duration };
+    }
     return duration;
   }
 
   async function addFromHistory(item: ProduceHistoryItem): Promise<boolean> {
     const videoPath = String(item.video_path || "").trim();
     if (!videoPath || isAdding(videoPath)) return false;
+    const generation = durationCacheGeneration;
     setAdding(videoPath, true);
     try {
-      const duration = await getDuration(videoPath);
-      domain.addSequenceItem(item, duration);
-      return true;
+      const duration = await getDuration(videoPath, generation);
+      if (generation !== durationCacheGeneration) return false;
+      return domain.addSequenceItem(item, duration);
     } finally {
       setAdding(videoPath, false);
     }
@@ -68,7 +77,9 @@ export function useEditSequenceActions(): EditSequenceActions {
     let added = 0;
     let failed = 0;
     let firstError = "";
+    const generation = durationCacheGeneration;
     for (const item of items) {
+      if (domain.exporting.value || generation !== durationCacheGeneration) break;
       const videoPath = String(item.video_path || "").trim();
       if (!videoPath) {
         failed++;
@@ -76,9 +87,10 @@ export function useEditSequenceActions(): EditSequenceActions {
         continue;
       }
       try {
-        const duration = await getDuration(videoPath);
-        domain.addSequenceItem(item, duration);
-        added++;
+        const duration = await getDuration(videoPath, generation);
+        if (generation !== durationCacheGeneration) break;
+        if (domain.addSequenceItem(item, duration)) added++;
+        else break;
       } catch (err: unknown) {
         failed++;
         if (!firstError) firstError = err instanceof Error ? err.message : String(err);
