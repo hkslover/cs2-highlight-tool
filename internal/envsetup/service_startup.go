@@ -14,6 +14,9 @@ import (
 )
 
 func (s *Service) RunStartupChecks() StartupState {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	s.emitLogWithFields("info", "用户触发启动检查", logFields{
 		Component: "startup",
 		Action:    "run_startup_checks",

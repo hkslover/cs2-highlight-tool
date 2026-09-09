@@ -32,6 +32,12 @@ type probedVideoInfo struct {
 }
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
+	release, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return 0, fileErr
+	}
+	defer release()
+
 	videoPath = strings.TrimSpace(videoPath)
 	if videoPath == "" {
 		return 0, fmt.Errorf("video path is empty")

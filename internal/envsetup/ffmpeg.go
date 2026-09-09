@@ -175,6 +175,7 @@ func (s *Service) scheduleFFmpegCapabilityDetection(ffmpegExe string) {
 		return
 	}
 	detectCtx, cancel := context.WithCancel(context.Background())
+	releaseTask := s.beginTask()
 	s.ffmpegDetectRunning = true
 	s.ffmpegDetectCancel = cancel
 	s.ffmpegDetectWG.Add(1)
@@ -182,6 +183,7 @@ func (s *Service) scheduleFFmpegCapabilityDetection(ffmpegExe string) {
 
 	ffmpegDetectAsyncRunner(func() {
 		defer func() {
+			releaseTask()
 			s.ffmpegDetectMu.Lock()
 			s.ffmpegDetectRunning = false
 			s.ffmpegDetectCancel = nil

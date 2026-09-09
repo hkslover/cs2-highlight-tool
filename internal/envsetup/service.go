@@ -35,6 +35,12 @@ type Service struct {
 	ffmpegDetectRunning bool
 	ffmpegDetectCancel  context.CancelFunc
 	ffmpegDetectWG      sync.WaitGroup
+
+	// activeTasks covers synchronous startup actions and child work that may
+	// outlive their parent call (currently the FFmpeg capability probe). App
+	// uses it as a final guard before deleting the workspace.
+	taskMu      sync.Mutex
+	activeTasks int
 }
 
 type activeDownloadCancel struct {
@@ -65,6 +71,37 @@ func NewWithDataDir(exeDir string, dataDir string, version string) *Service {
 	})
 	s.runTasksFn = s.runTasksDefault
 	return s
+}
+
+func (s *Service) beginTask() func() {
+	if s == nil {
+		return func() {}
+	}
+	s.taskMu.Lock()
+	s.activeTasks++
+	s.taskMu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.taskMu.Lock()
+			if s.activeTasks > 0 {
+				s.activeTasks--
+			}
+			s.taskMu.Unlock()
+		})
+	}
+}
+
+// HasActiveTasks reports startup work that can still read or write the
+// service's data directory. It is intentionally a snapshot; callers that
+// need exclusion must hold the App workspace admission gate as well.
+func (s *Service) HasActiveTasks() bool {
+	if s == nil {
+		return false
+	}
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	return s.activeTasks > 0
 }
 
 func (s *Service) Startup(ctx context.Context) {

@@ -15,6 +15,14 @@ import (
 // appSubDir 是应用在用户选择的父目录下自动创建的子目录名。
 const appSubDir = "cs2HighLightTool"
 
+// Keep destructive/external operations replaceable in focused tests. The
+// production implementations remain the appdata/os functions below.
+var (
+	writeDataDirToRegistry    = appdata.WriteDataDirToRegistry
+	deleteDataDirFromRegistry = appdata.DeleteDataDirFromRegistry
+	removeWorkspaceDir        = os.RemoveAll
+)
+
 // appendAppSubdir 在 parent 末尾追加 appSubDir。
 // 若路径末段已是 appSubDir，直接返回原值（幂等）。
 func appendAppSubdir(parent string) string {
@@ -81,6 +89,23 @@ func (a *App) ValidateWorkspaceDir(path string) WorkspaceValidateResult {
 // SetWorkspaceDir 接受用户最终选择，写注册表，
 // 清理 legacy 数据，构造 service 并触发 RunStartupChecks。
 func (a *App) SetWorkspaceDir(path string) error {
+	releaseTransition, err := a.beginWorkspaceTransition()
+	if err != nil {
+		return err
+	}
+	defer releaseTransition()
+
+	a.serviceMu.Lock()
+	pendingReset := a.workspaceResetPendingPath != "" || a.workspaceResetRegistryPending
+	initialized := a.service != nil || a.dataDir != ""
+	a.serviceMu.Unlock()
+	if pendingReset {
+		return fmt.Errorf("工作目录重置尚未完成，请先重试重置")
+	}
+	if initialized {
+		return fmt.Errorf("工作目录已初始化，不能在运行中切换；请先重置工作目录")
+	}
+
 	if err := appdata.ValidateDataDir(path); err != nil {
 		return err
 	}
@@ -88,14 +113,16 @@ func (a *App) SetWorkspaceDir(path string) error {
 	// Windows 写注册表。非 Windows 平台略过（registry_other.go 返回 unsupported），
 	// 视为本地开发兜底场景，依然允许设置。
 	if runtime.GOOS == "windows" {
-		if err := appdata.WriteDataDirToRegistry(path); err != nil {
+		if err := writeDataDirToRegistry(path); err != nil {
 			return fmt.Errorf("写入注册表失败: %w", err)
 		}
 	}
 
 	// 后台清理 legacy 数据，失败仅 log，不阻塞主流程。
 	exeDir := a.exeDir
+	legacyRelease := a.reserveManagedWorkspaceTask()
 	go func() {
+		defer legacyRelease()
 		if err := appdata.CleanupLegacyData(exeDir); err != nil {
 			if a.ctx != nil {
 				wruntime.LogWarning(a.ctx, fmt.Sprintf("cleanup legacy app data failed: %v", err))
@@ -106,10 +133,11 @@ func (a *App) SetWorkspaceDir(path string) error {
 	// 构造 service 并启动
 	a.serviceMu.Lock()
 	a.dataDir = path
-	a.seedFirstInstallChangelog()
+	a.workspaceResetCompleted = false
 	a.service = envsetup.NewWithDataDir(a.exeDir, path, a.version)
 	svc := a.service
 	a.serviceMu.Unlock()
+	a.seedFirstInstallChangelogAt(path, a.version)
 	a.configureProduceDiagnostics(path)
 
 	if a.ctx != nil {
@@ -117,7 +145,9 @@ func (a *App) SetWorkspaceDir(path string) error {
 	}
 
 	// 触发启动检查（异步）
+	startupRelease := a.reserveManagedWorkspaceTask()
 	go func() {
+		defer startupRelease()
 		svc.RunStartupChecks()
 	}()
 	return nil
@@ -126,22 +156,45 @@ func (a *App) SetWorkspaceDir(path string) error {
 // ResetWorkspace 删除当前 DataDir + 清注册表 + 重置 service。
 // 调用后前端会收到 mode=workspace_init 状态。
 func (a *App) ResetWorkspace() error {
-	a.serviceMu.Lock()
-	dataDir := a.dataDir
-	a.serviceMu.Unlock()
+	releaseTransition, err := a.beginWorkspaceTransition()
+	if err != nil {
+		return err
+	}
+	defer releaseTransition()
 
-	if dataDir == "" {
-		// 已经未初始化，幂等
+	a.serviceMu.Lock()
+	configuredDataDir := a.dataDir
+	pendingDataDir := a.workspaceResetPendingPath
+	service := a.service
+	registryPending := a.workspaceResetRegistryPending
+	a.serviceMu.Unlock()
+	if configuredDataDir == "" && pendingDataDir == "" && service == nil && !registryPending {
+		// Already uninitialized: keep reset idempotent without repeating
+		// registry/diagnostics side effects.
 		a.emitWorkspaceInitState()
 		return nil
 	}
+	dataDir := configuredDataDir
+	if dataDir == "" {
+		dataDir = pendingDataDir
+	}
 
-	if err := os.RemoveAll(dataDir); err != nil {
-		return fmt.Errorf("删除工作目录失败: %w", err)
+	if service != nil && service.HasActiveTasks() {
+		return fmt.Errorf("启动检查或后台组件任务仍在运行，请完成后再试")
+	}
+
+	if dataDir != "" {
+		if err := removeWorkspaceDir(dataDir); err != nil {
+			a.detachWorkspaceForReset(dataDir)
+			a.emitWorkspaceInitState()
+			return fmt.Errorf("删除工作目录失败: %w", err)
+		}
 	}
 
 	if runtime.GOOS == "windows" {
-		if err := appdata.DeleteDataDirFromRegistry(); err != nil {
+		if err := deleteDataDirFromRegistry(); err != nil {
+			a.detachWorkspaceForReset(dataDir)
+			a.emitWorkspaceInitState()
 			return fmt.Errorf("清除注册表失败: %w", err)
 		}
 	}
@@ -149,11 +202,28 @@ func (a *App) ResetWorkspace() error {
 	a.serviceMu.Lock()
 	a.service = nil
 	a.dataDir = ""
+	a.workspaceResetPendingPath = ""
+	a.workspaceResetRegistryPending = false
+	a.workspaceResetCompleted = true
 	a.serviceMu.Unlock()
 	a.configureProduceDiagnostics(a.exeDir)
 
 	a.emitWorkspaceInitState()
 	return nil
+}
+
+// detachWorkspaceForReset makes a failed/partial reset non-operational. The
+// old service is deliberately dropped before returning so it cannot recreate
+// files in the removed directory; the saved path and registry flag let a
+// later ResetWorkspace retry the remaining cleanup.
+func (a *App) detachWorkspaceForReset(dataDir string) {
+	a.serviceMu.Lock()
+	a.service = nil
+	a.dataDir = ""
+	a.workspaceResetPendingPath = dataDir
+	a.workspaceResetRegistryPending = true
+	a.serviceMu.Unlock()
+	a.configureProduceDiagnostics(a.exeDir)
 }
 
 // ExitApp 退出应用，供初始化 modal 的"退出"按钮调用。

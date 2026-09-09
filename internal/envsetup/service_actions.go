@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) RetryStartupComponent(componentID string) StartupState {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	componentID = strings.TrimSpace(componentID)
 	s.emitLogWithFields("info", "用户触发重试组件", logFields{
 		Component: componentID,
@@ -47,6 +50,9 @@ func (s *Service) RetryStartupComponent(componentID string) StartupState {
 }
 
 func (s *Service) ReinstallStartupComponent(componentID string) (StartupState, error) {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	componentID = strings.TrimSpace(componentID)
 	s.emitLogWithFields("info", "用户触发重装组件", logFields{
 		Component: componentID,
@@ -91,6 +97,9 @@ func (s *Service) ReinstallStartupComponent(componentID string) (StartupState, e
 }
 
 func (s *Service) CancelStartupDownload(componentID string) StartupState {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	componentID = strings.TrimSpace(componentID)
 	s.emitLogWithFields("info", "用户触发取消下载", logFields{
 		Component: componentID,
@@ -189,6 +198,9 @@ func (s *Service) OpenExternalURL(rawURL string) error {
 }
 
 func (s *Service) ImportManualDownload(componentID string) StartupState {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	s.emitLogWithFields("info", "用户触发手动导入", logFields{
 		Component: componentID,
 		Action:    "manual_import",
@@ -236,6 +248,9 @@ func (s *Service) ImportManualDownload(componentID string) StartupState {
 }
 
 func (s *Service) PickCS2Path() StartupState {
+	releaseTask := s.beginTask()
+	defer releaseTask()
+
 	s.emitLogWithFields("info", "用户触发选择 CS2 路径", logFields{
 		Component: componentCS2,
 		Action:    "pick_path",

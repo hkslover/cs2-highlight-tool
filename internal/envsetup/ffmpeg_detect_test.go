@@ -282,6 +282,9 @@ func TestStopFFmpegCapabilityDetectionCancelsRunningProbe(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("probe did not start")
 	}
+	if !svc.HasActiveTasks() {
+		t.Fatal("active FFmpeg probe was not registered as a service task")
+	}
 
 	start := time.Now()
 	svc.stopFFmpegCapabilityDetection()
@@ -289,6 +292,9 @@ func TestStopFFmpegCapabilityDetectionCancelsRunningProbe(t *testing.T) {
 		t.Fatalf("stopFFmpegCapabilityDetection elapsed=%s, want under 1s", elapsed)
 	}
 	waitFFmpegDetectDone(t, svc, 2*time.Second)
+	if svc.HasActiveTasks() {
+		t.Fatal("service task remained active after FFmpeg probe stopped")
+	}
 
 	cfg, err := config.LoadOrCreate(filepath.Join(exeDir, "config.json"), exeDir)
 	if err != nil {

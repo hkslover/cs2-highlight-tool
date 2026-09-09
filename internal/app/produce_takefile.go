@@ -114,7 +114,7 @@ func (a *App) OpenProducedClipInFolder(videoPath string) error {
 }
 
 func (a *App) ExportProduceHistoryVideos() (*ExportProduceHistoryResult, error) {
-	releaseFiles, fileErr := a.beginManagedFileUse()
+	releaseFiles, fileErr := a.beginManagedExternalUse()
 	if fileErr != nil {
 		return nil, fileErr
 	}

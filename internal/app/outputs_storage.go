@@ -23,6 +23,11 @@ type DemoStorageStats struct {
 }
 
 func (a *App) GetOutputsStorageStats() (*OutputsStorageStats, error) {
+	release, err := a.beginManagedFileUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	return a.outputsStorageStats()
 }
 
@@ -41,11 +46,21 @@ func (a *App) ClearOutputsDirectory() (*OutputsStorageStats, error) {
 }
 
 func (a *App) OpenOutputsDirectory() error {
+	release, err := a.beginManagedFileUse()
+	if err != nil {
+		return err
+	}
+	defer release()
 	outputDir := a.fixedRecordOutputDir()
 	return openManagedDirectory(outputDir, "输出目录")
 }
 
 func (a *App) GetDemoStorageStats() (*DemoStorageStats, error) {
+	release, err := a.beginManagedFileUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	return a.demoStorageStats()
 }
 
@@ -64,6 +79,11 @@ func (a *App) ClearDemoDirectory() (*DemoStorageStats, error) {
 }
 
 func (a *App) OpenDemoDirectory() error {
+	release, err := a.beginManagedFileUse()
+	if err != nil {
+		return err
+	}
+	defer release()
 	demoDir := a.demoStorageDir()
 	return openManagedDirectory(demoDir, "Dem 目录")
 }

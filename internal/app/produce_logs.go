@@ -19,6 +19,11 @@ func (a *App) ExportProduceWSLogs() (string, error) {
 	if a == nil || a.produceW == nil {
 		return "", fmt.Errorf("制作 WebSocket 服务未初始化")
 	}
+	release, err := a.beginManagedFileUse()
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	defaultDir := a.dataPath("logs")
 	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
 		return "", fmt.Errorf("创建制作日志目录失败: %w", err)

@@ -40,9 +40,19 @@ type App struct {
 	// never interleave and corrupt each other's environment or take state.
 	produceLaunchMu sync.Mutex
 
-	managedFilesMu       sync.Mutex
+	managedFilesMu sync.Mutex
+	// managedFileUsers counts every operation that may touch the managed
+	// workspace, including startup tasks registered by the App. The name is
+	// retained for compatibility with the existing file-use tests.
 	managedFileUsers     int
 	managedFilesClearing bool
+
+	// A failed reset detaches the old service so it cannot write into a
+	// partially removed directory. Keep enough state to make ResetWorkspace
+	// retryable without allowing a new workspace to be installed in between.
+	workspaceResetPendingPath     string
+	workspaceResetRegistryPending bool
+	workspaceResetCompleted       bool
 
 	// produceEnvEpoch is the monotonically increasing produce-environment
 	// generation counter (see beginProduceEnvironmentPrep). Guarded by
@@ -121,10 +131,21 @@ func (a *App) initWorkspaceLocked() {
 // 必须在 dataDir 已设置、任何 LoadOrCreate 之前调用。失败仅吞噬：下一次
 // LoadOrCreate 会以同等原因再次失败并自然把错误带回前端。
 func (a *App) seedFirstInstallChangelog() {
-	if a.dataDir == "" || a.version == "" {
+	if a == nil {
 		return
 	}
-	_, _ = config.EnsureFirstInstallChangelogSeed(a.configPath(), a.dataDir, a.version)
+	a.serviceMu.Lock()
+	dataDir := a.dataDir
+	version := a.version
+	a.serviceMu.Unlock()
+	a.seedFirstInstallChangelogAt(dataDir, version)
+}
+
+func (a *App) seedFirstInstallChangelogAt(dataDir string, version string) {
+	if a == nil || dataDir == "" || version == "" {
+		return
+	}
+	_, _ = config.EnsureFirstInstallChangelogSeed(filepath.Join(dataDir, "config.json"), dataDir, version)
 }
 
 // isUsableDataDir 用于"已初始化"分支：目录存在 + 字符白名单 + 非磁盘根 + 长度合规。
@@ -223,13 +244,22 @@ func resolveExecutableDir() string {
 }
 
 func (a *App) dataRoot() string {
-	if a != nil && a.dataDir != "" {
-		return a.dataDir
+	if a == nil {
+		return ""
 	}
-	if a != nil {
-		return a.exeDir
+	a.serviceMu.Lock()
+	dataDir := a.dataDir
+	exeDir := a.exeDir
+	pending := a.workspaceResetPendingPath != "" || a.workspaceResetRegistryPending
+	resetCompleted := a.workspaceResetCompleted
+	a.serviceMu.Unlock()
+	if dataDir != "" {
+		return dataDir
 	}
-	return ""
+	if pending || resetCompleted {
+		return ""
+	}
+	return exeDir
 }
 
 func (a *App) dataPath(elem ...string) string {
@@ -242,17 +272,29 @@ func (a *App) configPath() string {
 }
 
 func (a *App) loadConfig() (*config.Config, error) {
+	release, dataDir, err := a.beginManagedWorkspaceUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
-	return config.LoadOrCreate(a.configPath(), a.dataRoot())
+	return config.LoadOrCreate(filepath.Join(dataDir, "config.json"), dataDir)
 }
 
 func (a *App) updateConfig(mutate func(*config.Config) error) (*config.Config, error) {
+	release, dataDir, err := a.beginManagedWorkspaceUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
 
-	path := a.configPath()
-	cfg, err := config.LoadOrCreate(path, a.dataRoot())
+	path := filepath.Join(dataDir, "config.json")
+	cfg, err := config.LoadOrCreate(path, dataDir)
 	if err != nil {
 		return nil, err
 	}
