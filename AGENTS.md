@@ -125,7 +125,8 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - `CSDM_WS_PORT` 始终为当前 producews 会话固定的 loopback 端口；`CSDM_LOG_PATH` 指向 `<dataDir>/logs/cs2-server-plugin.log`，插件打不开时按协议回退 `csdm.log`。
 - 仅制作队列成功结束后发送 `end_produce_session`（`payload.request_id`），插件以 `session_exit_ack` 确认并在游戏线程排入 quit。对应连接在有限窗口内断开属于正常收尾，不写 WS 错误或 incident；确认超时再回退 PID 关闭。跨仓库插件行为须另行核验。
 - 状态读取：`GetProduceWSState`、`GetProduceQueueState`、`GetProduceTakeSnapshot`、`GetProduceTakeFiles`、`GetProduceHistorySnapshot`。历史的 `history_type=produce_clip|edited_video` 和 `source_label` 为可选字段，缺省按录制片段处理。
-- 剪辑使用 `ProbeClipDuration` / `ConcatEditClips`，后者返回输出路径并发射 `compose_progress`。转场时以后端 ffprobe 探测的时长和 SAR/DAR 为准；入口见 `internal/app/app_edit.go`、`internal/app/edit_ffmpeg.go`。
+- 剪辑使用 `ProbeClipDuration` / `ConcatEditClips`，后者返回输出路径并发射 `compose_progress`；一次只允许一个合成任务，第二个活跃请求返回忙碌错误而不排队。转场时以后端 ffprobe 探测的时长和 SAR/DAR 为准；入口见 `internal/app/app_edit.go`、`internal/app/edit_ffmpeg.go`、`internal/app/edit_task.go`。
+- 每次合成在 `<outputs>/edit` 下分配带随机后缀的唯一输出名（`O_EXCL` 原子预留）和任务专属临时目录：先写临时视频，验证后才 rename 提交并登记 history；提交前确认任务未取消，并校验预留路径仍是本任务创建的文件，被替换时保留原对象并拒绝覆盖。失败、超时或取消只清理本任务登记的路径，不覆盖既有视频；提交成功后即按成功登记 history，不删除已发布文件。FFprobe/FFmpeg 统一使用任务 context（探测为有限超时，合成超时与工作目录取消分别归类），取消后不进入编码器回退，并等待子进程与输出 reader 结束后才释放文件使用权。
 - “对方视角快节奏剪辑”默认关闭，只由 `frontend/src/domains/edit/fastEdit.ts` 对有完整可靠录制标记的 victim take 计算可选裁剪范围；仅同 Demo、回合、击杀者且在用户序列中相邻的镜头连续，组内使用硬切，killer、full_round_pov、旧素材或缺标记素材保持整段。导出请求冻结范围并在编辑期间禁用修改；录制成功后可在视频旁写入 `.fastedit.json` 元数据，旁车失败不得使录制失败。
 - `OpenProducedClipInFolder` / `ExportProduceHistoryVideos` 负责定位和导出产物。`GetOutputsStorageStats` / `OpenOutputsDirectory` / `ClearOutputsDirectory` 与 Demo 对应方法管理受管控目录；清理仅删除目标目录的直接子项，保留目录本身；统计大小包含所有文件，数量分别为 `video_count/demo_count`。
 - `GetGameInfoHealth` / `RepairGameInfo` 是 gameinfo 健康状态来源，状态为 `ok|needs_repair|unknown`。修复独立成行的 `Game\tcsgo/plugin` 或 `Game csgo/plugin` 残留，不依赖会话备份。

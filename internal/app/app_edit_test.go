@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -318,12 +319,12 @@ func TestProbeVideoStreamInfo_StreamDurationPriorityAndFormatFallback(t *testing
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := ffmpegCommand
-			ffmpegCommand = fakeFFProbeCommandJSON
-			t.Cleanup(func() { ffmpegCommand = old })
+			old := ffmpegCommandContext
+			ffmpegCommandContext = fakeFFProbeCommandJSON
+			t.Cleanup(func() { ffmpegCommandContext = old })
 			t.Setenv("EDIT_FFPROBE_JSON", tt.payload)
 
-			got, err := probeVideoStreamInfo("ffprobe", "clip.mp4")
+			got, err := probeVideoStreamInfo(context.Background(), "ffprobe", "clip.mp4")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected probe error")
@@ -355,13 +356,13 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 		t.Fatalf("write clip: %v", err)
 	}
 
-	old := ffmpegCommand
-	ffmpegCommand = fakeFFProbeCommandJSON
-	t.Cleanup(func() { ffmpegCommand = old })
+	old := ffmpegCommandContext
+	ffmpegCommandContext = fakeFFProbeCommandJSON
+	t.Cleanup(func() { ffmpegCommandContext = old })
 	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900,"sample_aspect_ratio":"1:1","display_aspect_ratio":"16:9"}],"format":{"duration":"8.000"}}`)
 
 	app := &App{exeDir: exeDir}
-	got, err := app.resolveEditClips([]EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
+	got, err := app.resolveEditClips(context.Background(), []EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
 	if err != nil {
 		t.Fatalf("resolveEditClips: %v", err)
 	}
@@ -372,7 +373,7 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 		t.Fatalf("resolved clip=%+v; probe result should override request duration", got[0])
 	}
 	start, end := 1.25, 3.75
-	trimmed, err := app.resolveEditClips([]EditConcatClip{{
+	trimmed, err := app.resolveEditClips(context.Background(), []EditConcatClip{{
 		VideoPath:    clipPath,
 		Duration:     99,
 		StartSeconds: &start,
@@ -385,7 +386,7 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 		t.Fatalf("resolved trim=%+v; trim should use probed source duration", trimmed)
 	}
 	invalidEnd := 4.5
-	if _, err := app.resolveEditClips([]EditConcatClip{{VideoPath: clipPath, StartSeconds: &start, EndSeconds: &invalidEnd}}, true); err == nil {
+	if _, err := app.resolveEditClips(context.Background(), []EditConcatClip{{VideoPath: clipPath, StartSeconds: &start, EndSeconds: &invalidEnd}}, true); err == nil {
 		t.Fatal("trim past probed source duration should be rejected")
 	}
 }
@@ -422,8 +423,8 @@ func TestEditClipSampleAspectRatio(t *testing.T) {
 	}
 }
 
-func fakeFFProbeCommandJSON(_ string, _ ...string) *exec.Cmd {
-	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcessEditFFProbe", "--")
+func fakeFFProbeCommandJSON(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperProcessEditFFProbe", "--")
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS_EDIT_FFPROBE=1")
 	return cmd
 }
@@ -437,10 +438,10 @@ func TestHelperProcessEditFFProbe(t *testing.T) {
 }
 
 func TestConcatEditClips_AddsEditedHistoryEntry(t *testing.T) {
-	old := ffmpegCommand
-	ffmpegCommand = fakeFFmpegCommandSuccess
+	old := ffmpegCommandContext
+	ffmpegCommandContext = fakeFFmpegCommandSuccessContext
 	t.Cleanup(func() {
-		ffmpegCommand = old
+		ffmpegCommandContext = old
 	})
 
 	exeDir := t.TempDir()
