@@ -153,5 +153,6 @@ func newStartupState(cfg *config.Config, currentVersion string) StartupState {
 func (s StartupState) clone() StartupState {
 	s.Steps = append([]ComponentStatus(nil), s.Steps...)
 	s.Ads = append([]StartupAd(nil), s.Ads...)
+	s.Config = *config.Clone(&s.Config)
 	return s
 }

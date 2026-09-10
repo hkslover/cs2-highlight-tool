@@ -6,7 +6,7 @@
 
 - `app/` 承担 Wails 边界和跨模块编排，公开请求/响应在此定义；不要让低层包依赖 UI。
 - 启动状态模型与通知入口：`envsetup/state.go`、`envsetup/events.go`；检查/动作/状态逻辑按 `service_*.go` 分工。
-- 配置默认值、归一化和兼容处理集中在 `config/config.go`；应用层设置映射在 `app/clip_settings.go`。
+- 配置默认值、归一化和兼容处理集中在 `config/config.go`；同一工作目录的读改写事务由 `config.Store` 统一串行化并由 App 注入 `envsetup.Service`；应用层设置映射在 `app/clip_settings.go`。
 - Demo 事实与整局 POV 解析在 `demo/`，片段归一化与生成编排在 `app/plugin_generate.go`，插件命令构建在 `clipsjson/`。
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
@@ -22,7 +22,7 @@
 
 ## 并发、进程与收尾
 
-- `Service.state`、`Service.logs`、`Service.config` 遵循现有 `mu/configMu` 锁策略；应用 service 的访问遵循 `serviceMu`。
+- `Service.state`、`Service.logs`、已提交的 `Service.config` 快照由 `Service.mu` 保护；配置文件的最新读取、归一化、mutate 和保存只走工作目录共享的 `config.Store`，不再为 App/Service 各自维护文件锁。工作目录准入后再进入 Store，保存成功后才更新 Service 快照，事件必须在 Store 解锁后发射；应用 service 的访问遵循 `serviceMu`。
 - `app/workspace_session.go` 的私有 `workspaceSession` 持有不可变 root/generation/service 与生命周期 context；任务须在启动前登记。切换/退出先关闭准入，再取消并等待，不得在 service/state 锁内等待、做 I/O 或发射事件。`envsetup.Service` 的 `BindLifecycleContext`、`CloseIfIdle`、`Stop` 仅由 App 的 session 生命周期调用，旧实例关闭后不得重新接收任务。
 - 避免锁内执行阻塞 I/O、网络或 runtime 事件发射，不引入锁顺序反转。启动状态更新后通过 `emitState()` 通知前端；制作事件复用现有队列。
 - `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。

@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"cs2-highlight-tool-v2/internal/appdata"
+	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/envsetup"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -118,7 +119,8 @@ func (a *App) SetWorkspaceDir(path string) error {
 
 	// 构造 service 并启动。先提交不可变 workspace session，再登记所有
 	// 即将启动的后台任务；整个过程仍在生命周期排他资格内。
-	svc := envsetup.NewWithDataDir(a.exeDir, path, a.version)
+	store := config.NewStore(filepath.Join(path, "config.json"), path)
+	svc := envsetup.NewWithDataDirAndStore(a.exeDir, path, a.version, store)
 	a.serviceMu.Lock()
 	session := a.installWorkspaceLocked(path, svc)
 	a.serviceMu.Unlock()
@@ -210,6 +212,7 @@ func (a *App) ResetWorkspace() error {
 	a.serviceMu.Lock()
 	a.service = nil
 	a.dataDir = ""
+	a.configStore = nil
 	a.workspace = nil
 	a.workspaceGeneration++
 	a.workspaceResetPendingPath = ""
@@ -231,6 +234,7 @@ func (a *App) detachWorkspaceForReset(dataDir string) {
 	a.serviceMu.Lock()
 	a.service = nil
 	a.dataDir = ""
+	a.configStore = nil
 	a.workspace = nil
 	a.workspaceGeneration++
 	a.workspaceResetPendingPath = dataDir

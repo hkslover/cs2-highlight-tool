@@ -18,12 +18,14 @@ type Service struct {
 	exeDir     string
 	dataDir    string
 	configPath string
+	store      *config.Store
 	config     *config.Config
 	version    string
 
-	state    StartupState
-	mu       sync.Mutex
-	configMu sync.Mutex
+	state          StartupState
+	mu             sync.Mutex
+	configRevision uint64
+	storeMu        sync.Mutex
 
 	runTasksFn      func(source DownloadSource)
 	logger          logging.Logger
@@ -69,12 +71,28 @@ func NewWithDataDir(exeDir string, dataDir string, version string) *Service {
 	if dataDir == "" {
 		dataDir = exeDir
 	}
+	store := config.NewStore(filepath.Join(dataDir, "config.json"), dataDir)
+	return NewWithDataDirAndStore(exeDir, dataDir, version, store)
+}
+
+// NewWithDataDirAndStore constructs a service with the workspace's shared
+// configuration store. NewWithDataDir remains the compatibility constructor
+// for focused tests and development callers; production workspace creation
+// constructs the Store once and injects it here.
+func NewWithDataDirAndStore(exeDir string, dataDir string, version string, store *config.Store) *Service {
+	if dataDir == "" {
+		dataDir = exeDir
+	}
+	if store == nil {
+		store = config.NewStore(filepath.Join(dataDir, "config.json"), dataDir)
+	}
 	cfg := config.Default(dataDir)
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 	s := &Service{
 		exeDir:          exeDir,
 		dataDir:         dataDir,
-		configPath:      filepath.Join(dataDir, "config.json"),
+		configPath:      store.Path(),
+		store:           store,
 		config:          cfg,
 		version:         version,
 		state:           newStartupState(cfg, version),
@@ -87,6 +105,19 @@ func NewWithDataDir(exeDir string, dataDir string, version string) *Service {
 	})
 	s.runTasksFn = s.runTasksDefault
 	return s
+}
+
+// ConfigStore exposes the immutable store identity to the owning App
+// workspace. It is not a Wails method; callers must use Store's Snapshot or
+// Update methods rather than retaining mutable Config pointers.
+func (s *Service) ConfigStore() *config.Store {
+	if s == nil {
+		return nil
+	}
+	s.storeMu.Lock()
+	store := s.store
+	s.storeMu.Unlock()
+	return store
 }
 
 // BindLifecycleContext attaches a workspace-owned parent context to this
@@ -208,6 +239,9 @@ func (s *Service) CloseIfIdle() bool {
 	if cancel != nil {
 		cancel()
 	}
+	if store := s.ConfigStore(); store != nil {
+		store.Close()
+	}
 	return true
 }
 
@@ -234,6 +268,12 @@ func (s *Service) Stop(contexts ...context.Context) error {
 	s.tasksClosed = true
 	cancelLifecycle := s.lifecycleCancel
 	s.taskMu.Unlock()
+	// Close the config boundary as soon as admission closes. Tasks already in
+	// flight may finish their cancellation path, but a timed-out Stop must not
+	// leave a closed workspace able to publish another config write.
+	if store := s.ConfigStore(); store != nil {
+		store.Close()
+	}
 	if cancelLifecycle != nil {
 		cancelLifecycle()
 	}
@@ -264,7 +304,15 @@ func (s *Service) Startup(ctx context.Context) {
 	if s.exeDir == "" {
 		return
 	}
-	cfg, err := config.LoadOrCreate(s.configPath, s.dataDir)
+	store := s.ConfigStore()
+	var cfg *config.Config
+	var revision uint64
+	var err error
+	if store != nil {
+		cfg, revision, err = store.SnapshotWithRevision()
+	} else {
+		err = fmt.Errorf("配置存储未初始化")
+	}
 	if err != nil {
 		cfg = config.Default(s.dataDir)
 		s.emitLog("error", fmt.Sprintf("加载配置失败: %v", err))
@@ -273,7 +321,16 @@ func (s *Service) Startup(ctx context.Context) {
 		return
 	}
 	s.mu.Lock()
+	if revision != 0 && revision < s.configRevision && s.config != nil {
+		// An App transaction may have committed and published a newer snapshot
+		// while Startup was reading the file. Keep the newer in-memory fact
+		// source instead of restoring the older read result.
+		cfg = config.Clone(s.config)
+		revision = s.configRevision
+	}
+	cfg = config.Clone(cfg)
 	s.config = cfg
+	s.configRevision = revision
 	s.state = newStartupState(cfg, s.version)
 	s.logs = nil
 	s.releaseSnapshot = nil

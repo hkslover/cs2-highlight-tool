@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/envsetup"
 )
 
@@ -19,6 +21,7 @@ type workspaceSession struct {
 	root       string
 	generation uint64
 	service    *envsetup.Service
+	store      *config.Store
 	ctx        context.Context
 	cancel     context.CancelFunc
 
@@ -34,6 +37,7 @@ func newWorkspaceSession(root string, generation uint64, service *envsetup.Servi
 		root:       root,
 		generation: generation,
 		service:    service,
+		store:      serviceStore(service),
 		ctx:        ctx,
 		cancel:     cancel,
 	}
@@ -41,6 +45,13 @@ func newWorkspaceSession(root string, generation uint64, service *envsetup.Servi
 		service.BindLifecycleContext(ctx)
 	}
 	return session
+}
+
+func serviceStore(service *envsetup.Service) *config.Store {
+	if service == nil {
+		return nil
+	}
+	return service.ConfigStore()
 }
 
 func (s *workspaceSession) isClosed() bool {
@@ -169,6 +180,7 @@ func (s *workspaceSession) close(ctx context.Context) error {
 type workspaceSnapshot struct {
 	session       *workspaceSession
 	service       *envsetup.Service
+	store         *config.Store
 	root          string
 	generation    uint64
 	exeDir        string
@@ -187,6 +199,7 @@ func (a *App) workspaceSnapshot() workspaceSnapshot {
 	snapshot := workspaceSnapshot{
 		session:       a.workspace,
 		service:       a.service,
+		store:         a.configStore,
 		root:          a.dataDir,
 		generation:    a.workspaceGeneration,
 		exeDir:        a.exeDir,
@@ -197,7 +210,11 @@ func (a *App) workspaceSnapshot() workspaceSnapshot {
 	if snapshot.session != nil {
 		snapshot.root = snapshot.session.root
 		snapshot.service = snapshot.session.service
+		snapshot.store = snapshot.session.store
 		snapshot.generation = snapshot.session.generation
+	}
+	if snapshot.store == nil {
+		snapshot.store = serviceStore(snapshot.service)
 	}
 	return snapshot
 }
@@ -214,6 +231,7 @@ func (a *App) ensureWorkspaceSessionLocked() *workspaceSession {
 	}
 	a.workspaceGeneration++
 	a.workspace = newWorkspaceSession(a.dataDir, a.workspaceGeneration, a.service)
+	a.configStore = a.workspace.store
 	return a.workspace
 }
 
@@ -235,10 +253,59 @@ func (a *App) installWorkspaceLocked(root string, service *envsetup.Service) *wo
 	a.workspace = session
 	a.dataDir = root
 	a.service = service
+	a.configStore = session.store
+	if a.configStore == nil && root != "" {
+		a.configStore = config.NewStore(filepath.Join(root, "config.json"), root)
+	}
 	a.workspaceResetPendingPath = ""
 	a.workspaceResetRegistryPending = false
 	a.workspaceResetCompleted = false
 	return session
+}
+
+// configStoreForWorkspace returns the store fixed to one workspace. Production
+// callers use the store injected into Service; manually constructed test/dev
+// Apps lazily create one mirror so their read-modify-write operations still
+// serialize. A live workspace never permits a different root to replace its
+// store.
+func (a *App) configStoreForWorkspace(dataDir string, service *envsetup.Service) *config.Store {
+	if a == nil || dataDir == "" {
+		return nil
+	}
+	root := filepath.Clean(dataDir)
+	if service != nil {
+		store := serviceStore(service)
+		if store == nil {
+			return nil
+		}
+		if store.DataRoot() != "" && filepath.Clean(store.DataRoot()) != root {
+			return nil
+		}
+		a.serviceMu.Lock()
+		a.configStore = store
+		a.serviceMu.Unlock()
+		return store
+	}
+
+	a.serviceMu.Lock()
+	defer a.serviceMu.Unlock()
+	if a.workspace != nil {
+		if filepath.Clean(a.workspace.root) != root || a.workspace.isClosed() {
+			return nil
+		}
+		if a.workspace.store != nil {
+			return a.workspace.store
+		}
+	}
+	if a.configStore != nil {
+		if a.configStore.DataRoot() == "" || filepath.Clean(a.configStore.DataRoot()) == root {
+			return a.configStore
+		}
+		return nil
+	}
+	store := config.NewStore(filepath.Join(root, "config.json"), root)
+	a.configStore = store
+	return store
 }
 
 // clearProduceWorkspaceState drops in-memory take/history indexes that belong
