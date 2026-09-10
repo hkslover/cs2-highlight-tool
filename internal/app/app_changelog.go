@@ -24,8 +24,8 @@ type PendingChangelog struct {
 //   - LastChangelogVersion != 当前版本（含老用户首次升级到带本功能版本的情况，此时为空字符串）→ 尝试读 embed 文件
 //   - embed 文件缺失 → 不展示（容错跳过，不写回 LastChangelogVersion）
 //
-// 全新安装的"首装静默"语义在 App 初始化阶段通过 config.EnsureFirstInstallChangelogSeed 实现，
-// 这里不再区分"首装"与"老用户"。
+// 全新安装的"首装静默"语义在 App 初始化阶段通过工作目录共享 Store
+// 的 EnsureFirstInstallChangelogSeed 实现，这里不再区分"首装"与"老用户"。
 func (a *App) GetPendingChangelog() (*PendingChangelog, error) {
 	currentVersion := strings.TrimSpace(a.version)
 	if currentVersion == "" {

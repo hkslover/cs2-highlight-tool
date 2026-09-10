@@ -198,25 +198,48 @@ func (s *Service) updateStep(componentID string, mutate func(*ComponentStatus)) 
 }
 
 func (s *Service) updateConfig(cfg *config.Config) {
-	if cfg == nil || s.isStopped() {
-		return
+	if s.applyConfigSnapshot(cfg, 0) {
+		s.emitState()
 	}
+}
+
+// ApplyConfigSnapshot updates the service's derived startup state after an
+// App transaction commits through the shared Store. The method is internal to
+// the App/envsetup boundary (not a Wails API) and intentionally emits no event;
+// settings writes historically did not emit startup_state_changed.
+func (s *Service) ApplyConfigSnapshot(cfg *config.Config, revision uint64) {
+	s.applyConfigSnapshot(cfg, revision)
+}
+
+func (s *Service) applyConfigSnapshot(cfg *config.Config, revision uint64) bool {
+	if cfg == nil || s.isStopped() {
+		return false
+	}
+	snapshot := config.Clone(cfg)
 	s.mu.Lock()
-	s.state.Config = *cfg
+	if revision != 0 && revision < s.configRevision {
+		s.mu.Unlock()
+		return false
+	}
+	if revision > s.configRevision {
+		s.configRevision = revision
+	}
+	s.config = snapshot
+	s.state.Config = *config.Clone(snapshot)
 	for i := range s.state.Steps {
 		switch s.state.Steps[i].ID {
 		case componentHLAE:
-			s.state.Steps[i].Path = cfg.HLAEExe
+			s.state.Steps[i].Path = snapshot.HLAEExe
 		case componentPlugin:
-			s.state.Steps[i].Path = cfg.PluginDLL
+			s.state.Steps[i].Path = snapshot.PluginDLL
 		case componentFFmpeg:
-			s.state.Steps[i].Path = filepath.Join(cfg.FFmpegDir, "ffmpeg.exe")
+			s.state.Steps[i].Path = filepath.Join(snapshot.FFmpegDir, "ffmpeg.exe")
 		case componentCS2:
-			s.state.Steps[i].Path = cfg.CS2Exe
+			s.state.Steps[i].Path = snapshot.CS2Exe
 		}
 	}
 	s.mu.Unlock()
-	s.emitState()
+	return true
 }
 
 func (s *Service) currentConfig() config.Config {
@@ -225,38 +248,30 @@ func (s *Service) currentConfig() config.Config {
 	if s.config == nil {
 		return *config.Default(s.dataDir)
 	}
-	return *s.config
+	return *config.Clone(s.config)
 }
 
 func (s *Service) persistConfig(mutate func(*config.Config) error) (*config.Config, error) {
 	if s.isStopped() {
 		return nil, errServiceStopped
 	}
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
-	if s.isStopped() {
-		return nil, errServiceStopped
+	store := s.ConfigStore()
+	if store == nil {
+		return nil, fmt.Errorf("配置存储未初始化")
 	}
-
-	cfg, err := config.LoadOrCreate(s.configPath, s.dataDir)
+	cfg, revision, err := store.UpdateWithRevision(mutate)
 	if err != nil {
-		return nil, err
-	}
-	if mutate != nil {
-		if err := mutate(cfg); err != nil {
-			return nil, err
+		if errors.Is(err, config.ErrStoreClosed) {
+			return nil, errServiceStopped
 		}
-	}
-	if err := config.Save(s.configPath, cfg); err != nil {
 		return nil, err
 	}
 	if s.isStopped() {
 		return nil, errServiceStopped
 	}
-	s.mu.Lock()
-	s.config = cfg
-	s.mu.Unlock()
-	s.updateConfig(cfg)
+	if s.applyConfigSnapshot(cfg, revision) {
+		s.emitState()
+	}
 	return cfg, nil
 }
 

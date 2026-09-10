@@ -79,7 +79,15 @@ func (s *Service) RunStartupChecks() StartupState {
 	loadConfigStart := s.logStepStart("startup", "load_config", "read", "", 0, map[string]string{
 		"config_path": s.configPath,
 	})
-	cfg, err := config.LoadOrCreate(s.configPath, s.dataDir)
+	store := s.ConfigStore()
+	var cfg *config.Config
+	var revision uint64
+	var err error
+	if store != nil {
+		cfg, revision, err = store.SnapshotWithRevision()
+	} else {
+		err = fmt.Errorf("配置存储未初始化")
+	}
 	if err != nil {
 		s.logStepFail("startup", "load_config", "read", "", 0, loadConfigStart, err, map[string]string{
 			"config_path": s.configPath,
@@ -90,10 +98,9 @@ func (s *Service) RunStartupChecks() StartupState {
 	s.logStepDone("startup", "load_config", "read", "", 0, loadConfigStart, map[string]string{
 		"config_path": s.configPath,
 	})
-	s.mu.Lock()
-	s.config = cfg
-	s.mu.Unlock()
-	s.updateConfig(cfg)
+	if s.applyConfigSnapshot(cfg, revision) {
+		s.emitState()
+	}
 	if s.isStopped() {
 		return s.GetStartupState()
 	}

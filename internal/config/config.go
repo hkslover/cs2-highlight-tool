@@ -120,6 +120,10 @@ func Default(dataDir string) *Config {
 // 必须在任何 LoadOrCreate 调用之前调用，否则会失去"首装"判定语义。
 // 返回 seeded=true 仅用于调用方日志或测试。
 func EnsureFirstInstallChangelogSeed(path, dataDir, currentVersion string) (bool, error) {
+	return ensureFirstInstallChangelogSeed(path, dataDir, currentVersion, Save)
+}
+
+func ensureFirstInstallChangelogSeed(path, dataDir, currentVersion string, save func(string, *Config) error) (bool, error) {
 	currentVersion = strings.TrimSpace(currentVersion)
 	if currentVersion == "" {
 		return false, nil
@@ -131,18 +135,28 @@ func EnsureFirstInstallChangelogSeed(path, dataDir, currentVersion string) (bool
 	}
 	cfg := Default(dataDir)
 	cfg.LastChangelogVersion = currentVersion
-	if err := Save(path, cfg); err != nil {
+	if save == nil {
+		save = Save
+	}
+	if err := save(path, cfg); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
 func LoadOrCreate(path, dataDir string) (*Config, error) {
+	return loadOrCreate(path, dataDir, Save)
+}
+
+func loadOrCreate(path, dataDir string, save func(string, *Config) error) (*Config, error) {
+	if save == nil {
+		save = Save
+	}
 	cfg := Default(dataDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := Save(path, cfg); err != nil {
+			if err := save(path, cfg); err != nil {
 				return nil, err
 			}
 			return cfg, nil
@@ -173,7 +187,7 @@ func LoadOrCreate(path, dataDir string) (*Config, error) {
 	}
 	ApplyDefaults(cfg, dataDir)
 	if configNeedsSave(data, &before, cfg) {
-		if err := Save(path, cfg); err != nil {
+		if err := save(path, cfg); err != nil {
 			return nil, err
 		}
 	}

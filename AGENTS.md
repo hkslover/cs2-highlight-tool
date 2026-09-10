@@ -14,7 +14,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/app/` | Wails 暴露边界、业务流程编排、制作会话与文件使用权管理 |
 | `internal/appdata/` | 工作目录校验、Windows 注册表读写、旧数据清理 |
 | `internal/envsetup/` | 启动状态机、自更新、组件检查安装、启动日志导出 |
-| `internal/config/` | 配置读写、默认值、兼容处理与路径规范化 |
+| `internal/config/` | 配置读写、默认值、兼容处理、路径规范化与工作目录级 `Store` 事务 |
 | `internal/release/`、`internal/endpoints/`、`internal/download/` | Release 快照、下载地址策略、下载与解压 |
 | `internal/demo/` | Demo 解析、击杀事实、整局 POV 计划 |
 | `internal/wanmei/`、`internal/fivee/` | 对战平台查询与 Demo 下载 |
@@ -67,6 +67,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - `<dataDir>` 是已选工作目录，配置、组件、Demo、输出、临时文件和日志均以此为根；不可再假设 Windows 固定使用 `%LOCALAPPDATA%/CS2 Highlight Tool`。非 Windows 开发回退见 `fallbackDataDirForDev`。
 - `<exeDir>` 与 `<dataDir>` 必须区分：前者定位程序和自更新替换目标。`ResetWorkspace` 会删除当前整个工作目录并清除注册表记录，不等同于清理 Demo 或 outputs。
 - `internal/app/workspace_session.go` 的私有工作目录实例固定 root、generation、envsetup service 与生命周期 context；后台任务须先登记，Reset/Shutdown 先关闭准入并按既有制作/文件占用规则取消、等待或拒绝，旧实例不得在新工作目录提交后写文件或发射启动事件。
+- 每个工作目录实例只创建一个 `internal/config.Store`，由 App 与 `envsetup.Service` 共享；Store 锁覆盖最新配置读取、默认/兼容归一化、mutate 和原子保存，网络、探测与事件不得进入 Store 锁。工作目录关闭时 Store 永久关闭，旧实例不得重新落盘；锁顺序保持为工作目录准入 → Store，事件在 Store 解锁后发射。
 - `GetStartupState`、`RunStartupChecks`、`RetryStartupComponent`、`ReinstallStartupComponent`、`CancelStartupDownload`、`OpenManualDownload`、`ImportManualDownload`、`PickCS2Path`、`EnterMainApp`、`OpenExternalURL`、`ExportStartupLogs` 的入口为 `internal/app/app_startup.go`。
 - 状态源为 `GetStartupState` 和 `startup_state_changed`，模型见 `internal/envsetup/state.go`。`mode` 为 `workspace_init|startup|main`；`phase` 为 `detecting_source|waiting_source|running_tasks|ready`；二者不可混用。
 - 组件 ID：`hlae`、`plugin`、`ffmpeg`、`cs2`。组件/启动状态：`pending`、`checking`、`downloading`、`installing`、`ready`、`warning`、`failed`、`needs_action`。

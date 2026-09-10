@@ -27,13 +27,11 @@ type App struct {
 
 	serviceMu sync.Mutex
 	// workspace is the immutable identity used by new operations. service and
-	// dataDir remain mirrors for compatibility with existing App consumers.
+	// dataDir/configStore remain mirrors for compatibility with existing App
+	// consumers and are always replaced together with the workspace identity.
 	workspace           *workspaceSession
 	workspaceGeneration uint64
-	// configMu serializes App-level read-modify-write operations on config.json.
-	// It intentionally does not cover external work; callers load or persist
-	// through the helpers below and release the lock before doing other I/O.
-	configMu sync.Mutex
+	configStore         *config.Store
 
 	produceStateMu sync.Mutex
 	produceState   produceSessionState
@@ -114,7 +112,8 @@ func (a *App) initWorkspaceLocked() {
 			_ = appdata.DeleteDataDirFromRegistry()
 			return
 		}
-		svc := envsetup.NewWithDataDir(a.exeDir, stored, a.version)
+		store := config.NewStore(filepath.Join(stored, "config.json"), stored)
+		svc := envsetup.NewWithDataDirAndStore(a.exeDir, stored, a.version, store)
 		a.serviceMu.Lock()
 		a.installWorkspaceLocked(stored, svc)
 		a.serviceMu.Unlock()
@@ -126,7 +125,8 @@ func (a *App) initWorkspaceLocked() {
 	fallback := fallbackDataDirForDev(a.exeDir)
 	if fallback != "" {
 		_ = os.MkdirAll(fallback, 0o755)
-		svc := envsetup.NewWithDataDir(a.exeDir, fallback, a.version)
+		store := config.NewStore(filepath.Join(fallback, "config.json"), fallback)
+		svc := envsetup.NewWithDataDirAndStore(a.exeDir, fallback, a.version, store)
 		a.serviceMu.Lock()
 		a.installWorkspaceLocked(fallback, svc)
 		a.serviceMu.Unlock()
@@ -153,7 +153,11 @@ func (a *App) seedFirstInstallChangelogAt(dataDir string, version string) {
 	if a == nil || dataDir == "" || version == "" {
 		return
 	}
-	_, _ = config.EnsureFirstInstallChangelogSeed(filepath.Join(dataDir, "config.json"), dataDir, version)
+	store := a.configStoreForWorkspace(dataDir, nil)
+	if store == nil {
+		return
+	}
+	_, _ = store.EnsureFirstInstallChangelogSeed(version)
 }
 
 // isUsableDataDir 用于"已初始化"分支：目录存在 + 字符白名单 + 非磁盘根 + 长度合规。
@@ -298,10 +302,12 @@ func (a *App) loadConfig() (*config.Config, error) {
 		return nil, err
 	}
 	defer release()
-
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	return config.LoadOrCreate(filepath.Join(dataDir, "config.json"), dataDir)
+	snapshot := a.workspaceSnapshot()
+	store := a.configStoreForWorkspace(dataDir, snapshot.service)
+	if store == nil {
+		return nil, fmt.Errorf("配置存储未初始化")
+	}
+	return store.Snapshot()
 }
 
 func (a *App) updateConfig(mutate func(*config.Config) error) (*config.Config, error) {
@@ -310,22 +316,17 @@ func (a *App) updateConfig(mutate func(*config.Config) error) (*config.Config, e
 		return nil, err
 	}
 	defer release()
-
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-
-	path := filepath.Join(dataDir, "config.json")
-	cfg, err := config.LoadOrCreate(path, dataDir)
+	snapshot := a.workspaceSnapshot()
+	store := a.configStoreForWorkspace(dataDir, snapshot.service)
+	if store == nil {
+		return nil, fmt.Errorf("配置存储未初始化")
+	}
+	cfg, revision, err := store.UpdateWithRevision(mutate)
 	if err != nil {
 		return nil, err
 	}
-	if mutate != nil {
-		if err := mutate(cfg); err != nil {
-			return nil, err
-		}
-	}
-	if err := config.Save(path, cfg); err != nil {
-		return nil, err
+	if snapshot.service != nil {
+		snapshot.service.ApplyConfigSnapshot(cfg, revision)
 	}
 	return cfg, nil
 }
