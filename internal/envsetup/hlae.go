@@ -123,11 +123,35 @@ func (s *Service) installHLAEFromArchive(archivePath string) error {
 		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
 		return err
 	}
-	root := filepath.Dir(hlaeExe)
-	targetDir := filepath.Join(s.dataDir, "hlae")
-	if err := download.ReplaceDirWithContents(root, targetDir); err != nil {
+	// Validate the extracted component before moving the existing installation
+	// out of the way.  ReplaceDirWithContentsWithReport deliberately protects
+	// filesystem commit boundaries, while component-specific requirements stay
+	// here in envsetup.
+	if err := validateHLAE(hlaeExe); err != nil {
 		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
 		return err
+	}
+	if _, err := resolveInstalledHLAEVersion(hlaeExe); err != nil {
+		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
+		return err
+	}
+	root := filepath.Dir(hlaeExe)
+	targetDir := filepath.Join(s.dataDir, "hlae")
+	replaceReport, err := download.ReplaceDirWithContentsWithReport(root, targetDir)
+	if err != nil {
+		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
+		return err
+	}
+	if replaceReport.BackupCleanupError != nil {
+		s.emitLogWithFields("warning", "HLAE 旧版本备份清理失败，已保留供恢复", logFields{
+			Component: componentHLAE,
+			Stage:     "commit",
+			Action:    "cleanup_backup",
+			Error:     replaceReport.BackupCleanupError.Error(),
+			Meta: map[string]string{
+				"backup_path": replaceReport.BackupPath,
+			},
+		})
 	}
 	targetExe := filepath.Join(targetDir, "HLAE.exe")
 	if err := validateHLAE(targetExe); err != nil {

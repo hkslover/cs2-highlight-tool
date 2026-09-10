@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -133,7 +134,7 @@ func TestImportFiveEMatch_CleansUpLegacyRawDemo(t *testing.T) {
 	fivee.DownloadFileFn = func(url string, targetPath string, emitProgress download.ProgressFunc) error {
 		return os.WriteFile(targetPath, []byte("zip"), 0644)
 	}
-	fivee.UnzipFn = func(archivePath string, destDir string) error {
+	fivee.UnzipFn = func(ctx context.Context, archivePath string, destDir string) error {
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
 		}

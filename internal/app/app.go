@@ -32,6 +32,11 @@ type App struct {
 	workspace           *workspaceSession
 	workspaceGeneration uint64
 	configStore         *config.Store
+	// platformImports coordinates same-key platform demo imports for the
+	// installed workspace identity. It is replaced together with that identity
+	// (guarded by serviceMu) so tasks from a removed workspace can never be
+	// joined by a new one.
+	platformImports *platformImportCoordinator
 
 	produceStateMu sync.Mutex
 	produceState   produceSessionState

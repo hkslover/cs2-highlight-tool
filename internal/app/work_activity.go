@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sync"
@@ -128,15 +129,27 @@ func (a *App) managedWorkspaceRoot() string {
 // of one operation. The reservation prevents ResetWorkspace from changing
 // dataDir while the caller is doing I/O.
 func (a *App) beginManagedWorkspaceUse() (func(), string, error) {
+	_, release, dataDir, err := a.beginManagedWorkspaceTaskUse()
+	return release, dataDir, err
+}
+
+// beginManagedWorkspaceTaskUse is beginManagedWorkspaceUse plus the lifecycle
+// context of the workspace the reservation belongs to. Work that several
+// callers await (for example one shared platform demo import) must run under
+// this context instead of a caller context: one caller leaving must not cancel
+// a task the other callers still expect a result from. The context is only
+// canceled when the workspace session closes, and the reservation itself is
+// held until the real task exits.
+func (a *App) beginManagedWorkspaceTaskUse() (context.Context, func(), string, error) {
 	if a == nil {
-		return nil, "", workspaceNotInitializedErr()
+		return nil, nil, "", workspaceNotInitializedErr()
 	}
 	session := a.ensureWorkspaceSession()
 	snapshot := a.workspaceSnapshot()
 	a.managedFilesMu.Lock()
 	if a.managedFilesClearing {
 		a.managedFilesMu.Unlock()
-		return nil, "", fmt.Errorf("正在清理目录，请完成后再试")
+		return nil, nil, "", fmt.Errorf("正在清理目录，请完成后再试")
 	}
 	dataDir := snapshot.root
 	if session != nil {
@@ -146,25 +159,28 @@ func (a *App) beginManagedWorkspaceUse() (func(), string, error) {
 	}
 	if dataDir == "" {
 		a.managedFilesMu.Unlock()
-		return nil, "", workspaceNotInitializedErr()
+		return nil, nil, "", workspaceNotInitializedErr()
 	}
+	workCtx := context.Background()
 	var releaseSession func()
 	if session != nil {
-		var ok bool
-		_, releaseSession, ok = session.beginTask()
+		sessionCtx, release, ok := session.beginTask()
 		if !ok {
 			a.managedFilesMu.Unlock()
-			return nil, "", fmt.Errorf("工作目录正在关闭，请完成后再试")
+			return nil, nil, "", fmt.Errorf("工作目录正在关闭，请完成后再试")
 		}
+		workCtx = sessionCtx
+		releaseSession = release
 	}
 	releaseManaged := a.reserveManagedResourceLocked()
 	a.managedFilesMu.Unlock()
-	return func() {
+	release := func() {
 		if releaseSession != nil {
 			releaseSession()
 		}
 		releaseManaged()
-	}, dataDir, nil
+	}
+	return workCtx, release, dataDir, nil
 }
 
 // Reserve file use without holding a state mutex over I/O. Imports, parsing,

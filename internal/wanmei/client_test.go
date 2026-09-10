@@ -1,6 +1,7 @@
 package wanmei
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -231,12 +232,12 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 		}
 		return os.WriteFile(targetPath, []byte("zip"), 0644)
 	}
-	UnzipFn = func(archivePath string, destDir string) error {
+	UnzipFn = func(ctx context.Context, archivePath string, destDir string) error {
 		unzipCalls++
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
 		}
-		content := fmt.Sprintf("dem-%d", unzipCalls)
+		content := fmt.Sprintf("PBDEMS2\x00dem-%d", unzipCalls)
 		return os.WriteFile(filepath.Join(destDir, fmt.Sprintf("inner-%d.dem", unzipCalls)), []byte(content), 0644)
 	}
 	FindFirstByExtFn = download.FindFirstByExt
@@ -288,8 +289,8 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read managed demo failed: %v", err)
 	}
-	if string(content) != "dem-1" {
-		t.Fatalf("managed demo content = %q, want %q", string(content), "dem-1")
+	if string(content) != "PBDEMS2\x00dem-1" {
+		t.Fatalf("managed demo content = %q, want %q", string(content), "PBDEMS2\\x00dem-1")
 	}
 }
 
@@ -330,7 +331,7 @@ func TestImportDemo_EmptyCachedDemoTriggersRedownload(t *testing.T) {
 		downloadCalls++
 		return os.WriteFile(targetPath, []byte("zip"), 0644)
 	}
-	UnzipFn = func(archivePath string, destDir string) error {
+	UnzipFn = func(ctx context.Context, archivePath string, destDir string) error {
 		unzipCalls++
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err

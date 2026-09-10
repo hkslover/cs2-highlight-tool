@@ -3,6 +3,7 @@ package fivee
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,14 +78,25 @@ const (
 )
 
 var (
-	HTTPRequestFn    = defaultHTTPRequest
-	DownloadFileFn   = download.File
-	UnzipFn          = download.Unzip
-	FindFirstByExtFn = download.FindFirstByExt
-	CopyFileFn       = download.CopyFile
-	matchIDPattern   = regexp.MustCompile(`(?i)g\d+(?:-[a-z0-9]+)+`)
-	playerDomainRE   = regexp.MustCompile(`(?i)(?:[?&]|^)domain=([^&#\s]+)`)
-	ErrDemoExpired   = errors.New("5E DEM 已过期，无法下载")
+	HTTPRequestFn = defaultHTTPRequest
+
+	// Transfer seams. They stay exported as compatibility hooks for tests and
+	// callers that must substitute the transport, but a nil function selects
+	// the built-in context-aware implementation so a workspace close can abort
+	// an in-flight transfer. Production never assigns them.
+	//
+	// UnzipFn receives the workspace context because extraction is the long
+	// phase that cannot be interrupted from outside; DownloadFileFn and
+	// CopyFileFn keep the legacy signature and are only re-checked after they
+	// return (their built-in implementations do honor the context).
+	DownloadFileFn   func(url string, targetPath string, emitProgress download.ProgressFunc) error
+	UnzipFn          func(ctx context.Context, zipPath string, destDir string) error
+	FindFirstByExtFn func(root string, ext string) (string, error)
+	CopyFileFn       func(src string, dst string) error
+
+	matchIDPattern = regexp.MustCompile(`(?i)g\d+(?:-[a-z0-9]+)+`)
+	playerDomainRE = regexp.MustCompile(`(?i)(?:[?&]|^)domain=([^&#\s]+)`)
+	ErrDemoExpired = errors.New("5E DEM 已过期，无法下载")
 )
 
 func defaultHTTPRequest(req *http.Request, timeout time.Duration) (*http.Response, error) {
@@ -102,7 +114,7 @@ func ListRecentMatches(playerName string, page int) ([]FiveEMatchItem, error) {
 	if page < 1 {
 		page = 1
 	}
-	return fetchRecentMatches(playerName, page)
+	return fetchRecentMatches(context.Background(), playerName, page)
 }
 
 // NormalizePlayerDomainInput extracts the 5E profile domain from share links.
@@ -127,7 +139,7 @@ func NormalizePlayerDomainInput(raw string) string {
 
 // FetchDemoURL resolves the download URL for a 5E match demo.
 func FetchDemoURL(matchID string) (string, error) {
-	return fetchDemoURL(matchID)
+	return fetchDemoURL(context.Background(), matchID)
 }
 
 // ExtractMatchID parses a raw 5E match ID string into its canonical form.
@@ -135,22 +147,35 @@ func ExtractMatchID(raw string) (string, error) {
 	return extractMatchID(raw)
 }
 
-// ImportDemo downloads and extracts a 5E demo into cacheRoot.
-// Returns the path to the stable .dem file on success.
+// ImportDemo is the compatibility entry point for callers that have no
+// workspace cancellation context. New app code uses ImportDemoContext.
 func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, percent float64, indeterminate bool)) (string, error) {
+	return ImportDemoContext(context.Background(), downloadMatchID, cacheRoot, onProgress)
+}
+
+// ImportDemoContext downloads and extracts a 5E demo into cacheRoot.  The
+// stable .dem path is touched only by the final atomic copy commit.  Each task
+// owns one unique staging directory under cacheRoot and only removes that
+// directory; cancellation is checked before the download, between extraction
+// phases and at the final commit.
+func ImportDemoContext(ctx context.Context, downloadMatchID, cacheRoot string, onProgress func(active bool, percent float64, indeterminate bool)) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(cacheRoot, 0755); err != nil {
 		return "", fmt.Errorf("创建 5E DEM 缓存目录失败: %w", err)
 	}
 	stableSourcePath := filepath.Join(cacheRoot, downloadMatchID+".dem")
-	if info, err := os.Stat(stableSourcePath); err == nil {
-		if info.Mode().IsRegular() && info.Size() > 0 {
-			return stableSourcePath, nil
-		}
-	} else if !os.IsNotExist(err) {
+	if valid, err := download.IsLikelyDemoFile(stableSourcePath); err != nil {
 		return "", fmt.Errorf("检查 5E DEM 缓存文件失败: %w", err)
+	} else if valid {
+		return stableSourcePath, nil
 	}
 
-	demoURL, err := fetchDemoURL(downloadMatchID)
+	demoURL, err := fetchDemoURL(ctx, downloadMatchID)
 	if err != nil {
 		if errors.Is(err, ErrDemoExpired) {
 			return "", err
@@ -158,49 +183,115 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		return "", fmt.Errorf("获取 5E DEM 下载地址失败: %w", err)
 	}
 
-	archiveName := path.Base(demoURL)
-	archiveName = strings.TrimSpace(archiveName)
-	if archiveName == "" || archiveName == "." || archiveName == "/" {
-		archiveName = downloadMatchID + ".zip"
+	stagingDir, err := os.MkdirTemp(cacheRoot, ".5e-import-*")
+	if err != nil {
+		return "", fmt.Errorf("创建 5E DEM 临时目录失败: %w", err)
 	}
-	archivePath := filepath.Join(cacheRoot, archiveName)
-	extractDir := filepath.Join(cacheRoot, "extract")
-	if err := os.RemoveAll(extractDir); err != nil {
-		return "", fmt.Errorf("清理 5E DEM 解压目录失败: %w", err)
-	}
+	defer os.RemoveAll(stagingDir)
+
+	archiveName := safeArchiveName(demoURL, downloadMatchID)
+	archivePath := filepath.Join(stagingDir, archiveName)
+	extractDir := filepath.Join(stagingDir, "extract")
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return "", fmt.Errorf("创建 5E DEM 解压目录失败: %w", err)
 	}
-	defer func() {
-		_ = os.RemoveAll(extractDir)
-		_ = os.Remove(archivePath)
-	}()
 
-	if err := DownloadFileFn(demoURL, archivePath, func(active bool, percent float64, indeterminate bool) {
-		if onProgress != nil {
-			onProgress(active, percent, indeterminate)
-		}
-	}); err != nil {
+	if err := downloadDemoArchive(ctx, demoURL, archivePath, onProgress); err != nil {
 		return "", fmt.Errorf("下载 5E DEM 失败: %w", err)
 	}
-	if err := UnzipFn(archivePath, extractDir); err != nil {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := unzipDemoArchive(ctx, archivePath, extractDir); err != nil {
 		return "", fmt.Errorf("解压 5E DEM 失败: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
-	extractedDemPath, err := FindFirstByExtFn(extractDir, ".dem")
+	extractedDemPath, err := findDemoByExt(ctx, extractDir, ".dem")
 	if err != nil {
 		return "", fmt.Errorf("未在 5E DEM 压缩包中找到 .dem 文件: %w", err)
 	}
-
 	if extractedDemPath != stableSourcePath {
-		if err := CopyFileFn(extractedDemPath, stableSourcePath); err != nil {
+		if err := copyDemoFile(ctx, extractedDemPath, stableSourcePath); err != nil {
 			return "", fmt.Errorf("写入 5E DEM 缓存文件失败: %w", err)
 		}
 	}
 	return stableSourcePath, nil
 }
 
-func fetchRecentMatches(playerName string, page int) ([]FiveEMatchItem, error) {
+func downloadDemoArchive(ctx context.Context, url, targetPath string, onProgress func(active bool, percent float64, indeterminate bool)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if DownloadFileFn != nil {
+		if err := DownloadFileFn(url, targetPath, download.ProgressFunc(onProgress)); err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	return download.FileWithContext(ctx, url, targetPath, download.ProgressFunc(onProgress))
+}
+
+func unzipDemoArchive(ctx context.Context, archivePath, destDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if UnzipFn != nil {
+		return UnzipFn(ctx, archivePath, destDir)
+	}
+	return download.UnzipWithContext(ctx, archivePath, destDir)
+}
+
+func findDemoByExt(ctx context.Context, root, ext string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if FindFirstByExtFn != nil {
+		return FindFirstByExtFn(root, ext)
+	}
+	return download.FindFirstByExt(root, ext)
+}
+
+func copyDemoFile(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if CopyFileFn != nil {
+		if err := CopyFileFn(src, dst); err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	return download.CopyFileAtomicWithContext(ctx, src, dst)
+}
+
+func safeArchiveName(rawURL, fallbackID string) string {
+	archiveName := ""
+	if parsed, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
+		archivePath := strings.TrimSpace(parsed.Path)
+		if decoded, decodeErr := url.PathUnescape(archivePath); decodeErr == nil {
+			archivePath = decoded
+		}
+		archiveName = path.Base(archivePath)
+	}
+	archiveName = strings.TrimSpace(archiveName)
+	if archiveName == "" || archiveName == "." || archiveName == "/" || archiveName == `\` {
+		archiveName = strings.TrimSpace(fallbackID) + ".zip"
+	}
+	// URL query parameters are intentionally excluded above.  Keep the local
+	// name conservative for Windows and reject path traversal even if a server
+	// returns an unusual path segment.
+	archiveName = strings.NewReplacer("<", "_", ">", "_", ":", "_", `"`, "_", "/", "_", `\`, "_", "|", "_", "?", "_", "*", "_").Replace(archiveName)
+	archiveName = strings.Trim(archiveName, " .")
+	if archiveName == "" || strings.EqualFold(archiveName, strings.TrimSpace(fallbackID)+".dem") {
+		archiveName = strings.TrimSpace(fallbackID) + ".zip"
+	}
+	return archiveName
+}
+
+func fetchRecentMatches(ctx context.Context, playerName string, page int) ([]FiveEMatchItem, error) {
 	endpoint, err := url.Parse(matchListURL)
 	if err != nil {
 		return nil, fmt.Errorf("构建 5E 战绩请求地址失败: %w", err)
@@ -218,6 +309,7 @@ func fetchRecentMatches(playerName string, page int) ([]FiveEMatchItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 5E 战绩请求失败: %w", err)
 	}
+	req = req.WithContext(ctx)
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "zh-CN,zh-Hans;q=0.9")
 	req.Header.Set("Connection", "keep-alive")
@@ -287,12 +379,13 @@ func parseMatchList(raw []matchRaw) []FiveEMatchItem {
 	return result
 }
 
-func fetchDemoURL(matchID string) (string, error) {
+func fetchDemoURL(ctx context.Context, matchID string) (string, error) {
 	requestURL := strings.TrimRight(matchDetailBaseURL, "/") + "/" + url.PathEscape(strings.TrimSpace(matchID))
 	req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("创建 5E 下载地址请求失败: %w", err)
 	}
+	req = req.WithContext(ctx)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := HTTPRequestFn(req, 15*time.Second)

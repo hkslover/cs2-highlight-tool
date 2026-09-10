@@ -2,6 +2,7 @@ package wanmei
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
@@ -94,11 +95,11 @@ type matchRaw struct {
 }
 
 const (
-	localLoginURL       = "http://127.0.0.1:55555/"
-	allowedOrigin       = "https://esports.wanmei.com"
-	matchListURL        = "https://api.wmpvp.com/api/csgo/home/match/list"
-	matchPageSize       = 11
-	ProgressPrefix      = "wanmei_import_"
+	localLoginURL  = "http://127.0.0.1:55555/"
+	allowedOrigin  = "https://esports.wanmei.com"
+	matchListURL   = "https://api.wmpvp.com/api/csgo/home/match/list"
+	matchPageSize  = 11
+	ProgressPrefix = "wanmei_import_"
 
 	demoAppID      = "20000"
 	demoSecret     = "969c1bcfdc527c319157cc48f83b1d106ebdeca3e8d9763f1ae6b88dde9b3ea9"
@@ -111,10 +112,20 @@ const (
 var (
 	HTTPRequestFn      = defaultHTTPRequest
 	OSSResolveHTTPDoFn = defaultOSSResolveHTTPDo
-	DownloadFileFn     = download.File
-	UnzipFn            = download.Unzip
-	FindFirstByExtFn   = download.FindFirstByExt
-	CopyFileFn         = download.CopyFile
+
+	// Transfer seams. They stay exported as compatibility hooks for tests and
+	// callers that must substitute the transport, but a nil function selects
+	// the built-in context-aware implementation so a workspace close can abort
+	// an in-flight transfer. Production never assigns them.
+	//
+	// UnzipFn receives the workspace context because extraction is the long
+	// phase that cannot be interrupted from outside; DownloadFileFn and
+	// CopyFileFn keep the legacy signature and are only re-checked after they
+	// return (their built-in implementations do honor the context).
+	DownloadFileFn   func(url string, targetPath string, emitProgress download.ProgressFunc) error
+	UnzipFn          func(ctx context.Context, zipPath string, destDir string) error
+	FindFirstByExtFn func(root string, ext string) (string, error)
+	CopyFileFn       func(src string, dst string) error
 )
 
 func defaultOSSResolveHTTPDo(req *http.Request, timeout time.Duration) (*http.Response, error) {
@@ -145,7 +156,7 @@ func ListRecentMatches(page int) (*WanmeiMatchListResult, error) {
 
 	result := &WanmeiMatchListResult{Matches: make([]WanmeiMatchItem, 0)}
 
-	loginInfo, status, err := fetchLocalLoginInfo()
+	loginInfo, status, err := fetchLocalLoginInfoContext(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +167,7 @@ func ListRecentMatches(page int) (*WanmeiMatchListResult, error) {
 
 	result.Nickname = loginInfo.Nickname
 	result.SteamID = loginInfo.SteamID
-	matches, err := fetchRecentMatches(loginInfo.Token, loginInfo.SteamID, page)
+	matches, err := fetchRecentMatchesContext(context.Background(), loginInfo.Token, loginInfo.SteamID, page)
 	if err != nil {
 		return nil, err
 	}
@@ -164,35 +175,35 @@ func ListRecentMatches(page int) (*WanmeiMatchListResult, error) {
 	return result, nil
 }
 
-// ImportDemo downloads and extracts a Wanmei demo into cacheRoot.
-// Returns the path to the stable .dem file on success.
+// ImportDemo is the compatibility entry point for callers that have no
+// workspace cancellation context. New app code uses ImportDemoContext.
 func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, percent float64, indeterminate bool)) (string, error) {
+	return ImportDemoContext(context.Background(), downloadMatchID, cacheRoot, onProgress)
+}
+
+// ImportDemoContext downloads and extracts a Wanmei demo into cacheRoot.  The
+// stable .dem path is touched only by the final atomic copy commit.  Each task
+// owns one unique staging directory under cacheRoot and only removes that
+// directory; cancellation is checked before the download, between extraction
+// phases and at the final commit.
+func ImportDemoContext(ctx context.Context, downloadMatchID, cacheRoot string, onProgress func(active bool, percent float64, indeterminate bool)) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(cacheRoot, 0755); err != nil {
 		return "", fmt.Errorf("创建完美 DEM 缓存目录失败: %w", err)
 	}
 	stableSourcePath := filepath.Join(cacheRoot, downloadMatchID+".dem")
-	if info, err := os.Stat(stableSourcePath); err == nil {
-		if info.Mode().IsRegular() && info.Size() > 0 {
-			return stableSourcePath, nil
-		}
-	} else if !os.IsNotExist(err) {
+	if valid, err := download.IsLikelyDemoFile(stableSourcePath); err != nil {
 		return "", fmt.Errorf("检查完美 DEM 缓存文件失败: %w", err)
+	} else if valid {
+		return stableSourcePath, nil
 	}
 
-	archivePath := filepath.Join(cacheRoot, downloadMatchID+"_0.zip")
-	extractDir := filepath.Join(cacheRoot, "extract")
-	if err := os.RemoveAll(extractDir); err != nil {
-		return "", fmt.Errorf("清理完美 DEM 解压目录失败: %w", err)
-	}
-	if err := os.MkdirAll(extractDir, 0755); err != nil {
-		return "", fmt.Errorf("创建完美 DEM 解压目录失败: %w", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(extractDir)
-		_ = os.Remove(archivePath)
-	}()
-
-	loginInfo, status, err := fetchLocalLoginInfo()
+	loginInfo, status, err := fetchLocalLoginInfoContext(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -200,45 +211,103 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		return "", fmt.Errorf("完美客户端未登录，无法下载 DEM")
 	}
 
-	ipAddr, ipErr := fetchPublicIPv4(publicIPAPI, time.Duration(defaultTimeout)*time.Second)
-	if ipErr != nil {
-		return "", fmt.Errorf("获取公网 IP 失败: %w", ipErr)
+	ipAddr, err := fetchPublicIPv4Context(ctx, publicIPAPI, time.Duration(defaultTimeout)*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("获取公网 IP 失败: %w", err)
 	}
 
 	signedURL := buildSignedDemoURL(downloadMatchID, "0", loginInfo.Token)
-
 	pwaHeaders, err := buildPWAHeaders(loginInfo.SteamID, ipAddr, loginInfo.ServerTime)
 	if err != nil {
 		return "", fmt.Errorf("构建 PWA 请求头失败: %w", err)
 	}
 
-	ossURL, err := resolveOSSURL(signedURL, pwaHeaders, time.Duration(defaultTimeout)*time.Second)
+	ossURL, err := resolveOSSURLContext(ctx, signedURL, pwaHeaders, time.Duration(defaultTimeout)*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("解析 DEM 下载地址失败: %w", err)
 	}
 
-	if err := DownloadFileFn(ossURL, archivePath, func(active bool, percent float64, indeterminate bool) {
-		if onProgress != nil {
-			onProgress(active, percent, indeterminate)
-		}
-	}); err != nil {
-		return "", fmt.Errorf("下载完美 DEM 失败: %w", err)
+	stagingDir, err := os.MkdirTemp(cacheRoot, ".wanmei-import-*")
+	if err != nil {
+		return "", fmt.Errorf("创建完美 DEM 临时目录失败: %w", err)
 	}
-	if err := UnzipFn(archivePath, extractDir); err != nil {
-		return "", fmt.Errorf("解压完美 DEM 失败: %w", err)
+	defer os.RemoveAll(stagingDir)
+
+	archivePath := filepath.Join(stagingDir, downloadMatchID+"_0.zip")
+	extractDir := filepath.Join(stagingDir, "extract")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return "", fmt.Errorf("创建完美 DEM 解压目录失败: %w", err)
 	}
 
-	extractedDemPath, err := FindFirstByExtFn(extractDir, ".dem")
+	if err := downloadDemoArchive(ctx, ossURL, archivePath, onProgress); err != nil {
+		return "", fmt.Errorf("下载完美 DEM 失败: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := unzipDemoArchive(ctx, archivePath, extractDir); err != nil {
+		return "", fmt.Errorf("解压完美 DEM 失败: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	extractedDemPath, err := findDemoByExt(ctx, extractDir, ".dem")
 	if err != nil {
 		return "", fmt.Errorf("未在完美 DEM 压缩包中找到 .dem 文件: %w", err)
 	}
-
 	if extractedDemPath != stableSourcePath {
-		if err := CopyFileFn(extractedDemPath, stableSourcePath); err != nil {
+		if err := copyDemoFile(ctx, extractedDemPath, stableSourcePath); err != nil {
 			return "", fmt.Errorf("写入完美 DEM 缓存文件失败: %w", err)
 		}
 	}
 	return stableSourcePath, nil
+}
+
+func downloadDemoArchive(ctx context.Context, url, targetPath string, onProgress func(active bool, percent float64, indeterminate bool)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if DownloadFileFn != nil {
+		if err := DownloadFileFn(url, targetPath, download.ProgressFunc(onProgress)); err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	return download.FileWithContext(ctx, url, targetPath, download.ProgressFunc(onProgress))
+}
+
+func unzipDemoArchive(ctx context.Context, archivePath, destDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if UnzipFn != nil {
+		return UnzipFn(ctx, archivePath, destDir)
+	}
+	return download.UnzipWithContext(ctx, archivePath, destDir)
+}
+
+func findDemoByExt(ctx context.Context, root, ext string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if FindFirstByExtFn != nil {
+		return FindFirstByExtFn(root, ext)
+	}
+	return download.FindFirstByExt(root, ext)
+}
+
+func copyDemoFile(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if CopyFileFn != nil {
+		if err := CopyFileFn(src, dst); err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	return download.CopyFileAtomicWithContext(ctx, src, dst)
 }
 
 // ExtractNumericMatchID parses a raw Wanmei match ID string into its numeric form.
@@ -273,10 +342,15 @@ func ExtractNumericMatchID(raw string) (string, error) {
 }
 
 func fetchLocalLoginInfo() (*localLoginInfo, ClientStatus, error) {
+	return fetchLocalLoginInfoContext(context.Background())
+}
+
+func fetchLocalLoginInfoContext(ctx context.Context) (*localLoginInfo, ClientStatus, error) {
 	req, err := http.NewRequest(http.MethodGet, localLoginURL, nil)
 	if err != nil {
 		return nil, ClientNotRunning, fmt.Errorf("创建完美本地登录请求失败: %w", err)
 	}
+	req = req.WithContext(ctx)
 	req.Header.Set("Origin", allowedOrigin)
 	req.Header.Set("Referer", allowedOrigin+"/")
 
@@ -324,6 +398,10 @@ func fetchLocalLoginInfo() (*localLoginInfo, ClientStatus, error) {
 }
 
 func fetchRecentMatches(token string, steamID string, page int) ([]WanmeiMatchItem, error) {
+	return fetchRecentMatchesContext(context.Background(), token, steamID, page)
+}
+
+func fetchRecentMatchesContext(ctx context.Context, token string, steamID string, page int) ([]WanmeiMatchItem, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -351,6 +429,7 @@ func fetchRecentMatches(token string, steamID string, page int) ([]WanmeiMatchIt
 	if err != nil {
 		return nil, fmt.Errorf("创建完美战绩请求失败: %w", err)
 	}
+	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("token", token)
@@ -584,11 +663,16 @@ func parseDecodedToken(decoded string) (string, string, string, error) {
 }
 
 func fetchPublicIPv4(ipAPI string, timeout time.Duration) (string, error) {
+	return fetchPublicIPv4Context(context.Background(), ipAPI, timeout)
+}
+
+func fetchPublicIPv4Context(ctx context.Context, ipAPI string, timeout time.Duration) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, ipAPI, nil)
 	if err != nil {
 		return "", fmt.Errorf("创建 IP 查询请求失败: %w", err)
 	}
 
+	req = req.WithContext(ctx)
 	resp, err := HTTPRequestFn(req, timeout)
 	if err != nil {
 		return "", fmt.Errorf("请求公网 IP 失败: %w", err)
@@ -653,6 +737,10 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 }
 
 func resolveOSSURL(signedURL string, headers map[string]string, timeout time.Duration) (string, error) {
+	return resolveOSSURLContext(context.Background(), signedURL, headers, timeout)
+}
+
+func resolveOSSURLContext(ctx context.Context, signedURL string, headers map[string]string, timeout time.Duration) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, signedURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("创建签名请求失败: %w", err)
@@ -660,6 +748,7 @@ func resolveOSSURL(signedURL string, headers map[string]string, timeout time.Dur
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	req = req.WithContext(ctx)
 
 	resp, err := OSSResolveHTTPDoFn(req, timeout)
 	if err != nil {
