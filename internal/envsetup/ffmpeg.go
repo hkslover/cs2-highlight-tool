@@ -108,8 +108,16 @@ func (s *Service) installFFmpegFromArchive(path string) error {
 		s.logStepFail(componentFFmpeg, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
 		return err
 	}
-	binDir := filepath.Dir(ffmpegExe)
-	root := filepath.Dir(binDir)
+	// Validate the exact installed layout before the transactional replacement
+	// moves the existing <dataDir>/ffmpeg aside.  An archive that nests
+	// ffmpeg.exe somewhere else (for example release/tools/ffmpeg.exe) would
+	// otherwise destroy the old working installation and only fail the
+	// post-commit existence check afterwards.
+	root, err := ffmpegArchiveRoot(ffmpegExe)
+	if err != nil {
+		s.logStepFail(componentFFmpeg, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
+		return err
+	}
 	targetRoot := filepath.Join(s.dataDir, "ffmpeg")
 	replaceReport, err := download.ReplaceDirWithContentsWithReport(root, targetRoot)
 	if err != nil {
@@ -165,6 +173,24 @@ func (s *Service) installFFmpegFromArchive(path string) error {
 	s.tryWriteHLAEFfmpegIni(filepath.Join(cfg.FFmpegDir, "ffmpeg.exe"))
 	s.scheduleFFmpegCapabilityDetection(filepath.Join(cfg.FFmpegDir, "ffmpeg.exe"))
 	return nil
+}
+
+// ffmpegArchiveRoot resolves the directory whose contents are committed into
+// <dataDir>/ffmpeg and verifies the layout the rest of the application relies
+// on: ffmpeg.exe must be directly inside a bin/ directory so that, after the
+// directory replacement, it exists at <dataDir>/ffmpeg/bin/ffmpeg.exe (the
+// path stored in config.FFmpegDir and written to HLAE's ffmpeg.ini).
+func ffmpegArchiveRoot(ffmpegExe string) (string, error) {
+	binDir := filepath.Dir(ffmpegExe)
+	root := filepath.Dir(binDir)
+	relative, err := filepath.Rel(root, ffmpegExe)
+	if err != nil {
+		return "", fmt.Errorf("计算 ffmpeg 归档相对路径失败: %w", err)
+	}
+	if !strings.EqualFold(filepath.ToSlash(relative), "bin/ffmpeg.exe") {
+		return "", fmt.Errorf("ffmpeg 压缩包布局不符合预期: 需要 bin/ffmpeg.exe，实际为 %s", filepath.ToSlash(relative))
+	}
+	return root, nil
 }
 
 func (s *Service) scheduleFFmpegCapabilityDetection(ffmpegExe string) {

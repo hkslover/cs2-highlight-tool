@@ -214,6 +214,58 @@ func TestCopyReaderAtomicCommitFailureLeavesNewTargetAbsent(t *testing.T) {
 	assertNoAtomicCopyTemps(t, root, "match.dem")
 }
 
+func TestCopyFileRejectsExistingEmptyDirectoryTarget(t *testing.T) {
+	root := t.TempDir()
+	sourcePath := filepath.Join(root, "source.dem")
+	if err := os.WriteFile(sourcePath, []byte("new-demo"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	targetPath := filepath.Join(root, "match.dem")
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatalf("create directory target: %v", err)
+	}
+
+	err := CopyFile(sourcePath, targetPath)
+	if err == nil {
+		t.Fatal("CopyFile succeeded, want directory target rejection")
+	}
+	if !strings.Contains(err.Error(), "目录") {
+		t.Fatalf("CopyFile error = %v, want directory rejection", err)
+	}
+	info, statErr := os.Stat(targetPath)
+	if statErr != nil {
+		t.Fatalf("empty directory target was moved or removed: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatalf("target mode = %v, want directory", info.Mode())
+	}
+	assertNoAtomicCopyTemps(t, root, "match.dem")
+	assertNoAtomicCopyBackups(t, root, "match.dem")
+}
+
+func TestCopyReaderAtomicRejectsNonEmptyDirectoryTarget(t *testing.T) {
+	root := t.TempDir()
+	targetPath := filepath.Join(root, "match.dem")
+	if err := os.MkdirAll(filepath.Join(targetPath, "nested"), 0755); err != nil {
+		t.Fatalf("create directory target: %v", err)
+	}
+	markerPath := filepath.Join(targetPath, "nested", "keep.txt")
+	if err := os.WriteFile(markerPath, []byte("keep-me"), 0644); err != nil {
+		t.Fatalf("write directory marker: %v", err)
+	}
+
+	err := CopyReaderAtomic(context.Background(), bytes.NewReader([]byte("new-demo")), targetPath)
+	if err == nil {
+		t.Fatal("CopyReaderAtomic succeeded, want directory target rejection")
+	}
+	if _, statErr := os.Stat(targetPath); statErr != nil {
+		t.Fatalf("non-empty directory target was moved or removed: %v", statErr)
+	}
+	assertFileContent(t, markerPath, "keep-me")
+	assertNoAtomicCopyTemps(t, root, "match.dem")
+	assertNoAtomicCopyBackups(t, root, "match.dem")
+}
+
 func TestIsLikelyDemoFileRejectsObviousCorruption(t *testing.T) {
 	root := t.TempDir()
 	validPath := filepath.Join(root, "valid.dem")
@@ -281,5 +333,16 @@ func assertNoAtomicCopyTemps(t *testing.T, dir, base string) {
 	}
 	if len(matches) != 0 {
 		t.Fatalf("atomic copy temp files remain: %v", matches)
+	}
+}
+
+func assertNoAtomicCopyBackups(t *testing.T, dir, base string) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, "."+base+".backup-*.tmp"))
+	if err != nil {
+		t.Fatalf("glob atomic copy backups: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("atomic copy backups remain: %v", matches)
 	}
 }

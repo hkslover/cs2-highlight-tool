@@ -224,10 +224,19 @@ func copyReaderAtomicWithOps(ctx context.Context, reader io.Reader, dst string, 
 
 	// Re-check at commit time so a destination created while the copy was in
 	// progress is protected by the same restore path as an existing cache.
-	_, statErr := ops.stat(target)
+	// The type is checked as well: moving an existing directory to the backup
+	// path and committing a regular file over it would silently destroy the
+	// directory (the previous stream-copy implementation refused to open it).
+	targetInfo, statErr := ops.stat(target)
 	targetExists := statErr == nil
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return errors.Join(fmt.Errorf("检查目标文件失败: %w", statErr), removeTemp())
+	}
+	if targetExists && targetInfo != nil && !targetInfo.Mode().IsRegular() {
+		if targetInfo.IsDir() {
+			return errors.Join(fmt.Errorf("目标路径是目录，拒绝用文件覆盖: %s", target), removeTemp())
+		}
+		return errors.Join(fmt.Errorf("目标路径不是普通文件，拒绝覆盖: %s", target), removeTemp())
 	}
 
 	var backupPath string
