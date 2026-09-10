@@ -19,6 +19,9 @@ var (
 )
 
 func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error {
+	if s.isStopped() {
+		return errServiceStopped
+	}
 	source = normalizeDownloadSource(string(source))
 	s.mu.Lock()
 	cached := s.releaseSnapshot
@@ -30,6 +33,9 @@ func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error
 	snapshot, err := release.FetchUnifiedLatest(apiURL)
 	if err != nil {
 		return err
+	}
+	if s.isStopped() {
+		return errServiceStopped
 	}
 	validationErrors := append([]string(nil), snapshot.AdValidationErrors...)
 	mappedAds := mapReleaseAds(snapshot.Ads.Items)
@@ -66,6 +72,9 @@ func (s *Service) ensureReleaseSnapshot(source DownloadSource, force bool) error
 }
 
 func (s *Service) componentReleaseInfo(source DownloadSource, componentID string) (*release.Info, error) {
+	if s.isStopped() {
+		return nil, errServiceStopped
+	}
 	if err := s.ensureReleaseSnapshot(source, false); err != nil {
 		return nil, err
 	}
@@ -105,12 +114,18 @@ func (s *Service) resetTaskStepsLocked() {
 }
 
 func (s *Service) runComponent(componentID string, fn func() error) {
+	if s.isStopped() {
+		return
+	}
 	stepStarted := s.logStepStart(componentID, "check", "run_component", string(s.currentSource()), 0, nil)
 	s.updateStep(componentID, func(step *ComponentStatus) {
 		step.Status = statusChecking
 		step.Error = ""
 	})
 	if err := fn(); err != nil {
+		if s.isStopped() {
+			return
+		}
 		source := s.currentSource()
 		s.logStepFail(componentID, "check", "run_component", string(source), 0, stepStarted, err, nil)
 		s.failStep(componentID, err, endpoints.ManualURLFor(componentID, string(source)))
@@ -132,6 +147,9 @@ func (s *Service) currentCountryCode() string {
 }
 
 func (s *Service) setFatalError(err error) {
+	if err == nil || s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	s.state.FatalError = err.Error()
 	s.state.CanEnterMain = false
@@ -146,6 +164,9 @@ func (s *Service) setFatalError(err error) {
 }
 
 func (s *Service) failStep(componentID string, err error, manualURL string) {
+	if err == nil || s.isStopped() {
+		return
+	}
 	s.updateStep(componentID, func(step *ComponentStatus) {
 		step.Status = statusFailed
 		step.Error = err.Error()
@@ -165,6 +186,9 @@ func (s *Service) failStep(componentID string, err error, manualURL string) {
 }
 
 func (s *Service) updateStep(componentID string, mutate func(*ComponentStatus)) {
+	if s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	if step := s.findStepLocked(componentID); step != nil {
 		mutate(step)
@@ -174,6 +198,9 @@ func (s *Service) updateStep(componentID string, mutate func(*ComponentStatus)) 
 }
 
 func (s *Service) updateConfig(cfg *config.Config) {
+	if cfg == nil || s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	s.state.Config = *cfg
 	for i := range s.state.Steps {
@@ -202,8 +229,14 @@ func (s *Service) currentConfig() config.Config {
 }
 
 func (s *Service) persistConfig(mutate func(*config.Config) error) (*config.Config, error) {
+	if s.isStopped() {
+		return nil, errServiceStopped
+	}
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
+	if s.isStopped() {
+		return nil, errServiceStopped
+	}
 
 	cfg, err := config.LoadOrCreate(s.configPath, s.dataDir)
 	if err != nil {
@@ -216,6 +249,9 @@ func (s *Service) persistConfig(mutate func(*config.Config) error) (*config.Conf
 	}
 	if err := config.Save(s.configPath, cfg); err != nil {
 		return nil, err
+	}
+	if s.isStopped() {
+		return nil, errServiceStopped
 	}
 	s.mu.Lock()
 	s.config = cfg
@@ -242,6 +278,9 @@ func (s *Service) updateManualURLsLocked(source DownloadSource) {
 }
 
 func (s *Service) refreshCanEnterMain() {
+	if s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	ready := s.state.FatalError == "" && !s.state.SelfUpdate.Available
 	warnings := make([]string, 0, 2)
@@ -281,6 +320,9 @@ func (s *Service) isFullyReadyLocked() bool {
 }
 
 func (s *Service) updatePhaseByReadiness() {
+	if s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	if s.state.CanEnterMain {
 		s.state.Phase = phaseReady
@@ -292,7 +334,7 @@ func (s *Service) updatePhaseByReadiness() {
 }
 
 func (s *Service) beginDownloadGroup(componentID string) (*activeDownloadCancel, context.Context, context.CancelCauseFunc) {
-	ctx, cancelCause := context.WithCancelCause(context.Background())
+	ctx, cancelCause := context.WithCancelCause(s.lifecycleContext())
 	active := &activeDownloadCancel{
 		cancel: func() { cancelCause(errDownloadCanceledByUser) },
 		ctx:    ctx,
@@ -342,6 +384,9 @@ func (s *Service) downloadFile(componentID string, url string, targetPath string
 		err = download.ErrCanceled
 	}
 	s.endDownloadGroup(componentID, active)
+	if err == nil && s.isStopped() {
+		err = errServiceStopped
+	}
 
 	if err != nil {
 		s.logStepFail(componentID, "download", "download_asset", string(s.currentSource()), 0, started, err, map[string]string{

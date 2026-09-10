@@ -50,11 +50,10 @@ type WorkspaceState struct {
 
 // GetWorkspaceState 返回当前工作目录初始化状态。
 func (a *App) GetWorkspaceState() WorkspaceState {
-	a.serviceMu.Lock()
-	defer a.serviceMu.Unlock()
+	snapshot := a.workspaceSnapshot()
 	ws := WorkspaceState{
-		Initialized: a.service != nil,
-		DataDir:     a.dataDir,
+		Initialized: snapshot.service != nil && snapshot.root != "",
+		DataDir:     snapshot.root,
 	}
 	return ws
 }
@@ -95,10 +94,9 @@ func (a *App) SetWorkspaceDir(path string) error {
 	}
 	defer releaseTransition()
 
-	a.serviceMu.Lock()
-	pendingReset := a.workspaceResetPendingPath != "" || a.workspaceResetRegistryPending
-	initialized := a.service != nil || a.dataDir != ""
-	a.serviceMu.Unlock()
+	snapshot := a.workspaceSnapshot()
+	pendingReset := snapshot.pendingReset
+	initialized := snapshot.service != nil || snapshot.root != ""
 	if pendingReset {
 		return fmt.Errorf("工作目录重置尚未完成，请先重试重置")
 	}
@@ -118,34 +116,33 @@ func (a *App) SetWorkspaceDir(path string) error {
 		}
 	}
 
+	// 构造 service 并启动。先提交不可变 workspace session，再登记所有
+	// 即将启动的后台任务；整个过程仍在生命周期排他资格内。
+	svc := envsetup.NewWithDataDir(a.exeDir, path, a.version)
+	a.serviceMu.Lock()
+	session := a.installWorkspaceLocked(path, svc)
+	a.serviceMu.Unlock()
+	a.seedFirstInstallChangelogAt(path, a.version)
+	a.configureProduceDiagnostics(path)
+
 	// 后台清理 legacy 数据，失败仅 log，不阻塞主流程。
 	exeDir := a.exeDir
-	legacyRelease := a.reserveManagedWorkspaceTask()
+	legacyRelease := a.reserveManagedWorkspaceTaskForSession(session)
 	go func() {
 		defer legacyRelease()
-		if err := appdata.CleanupLegacyData(exeDir); err != nil {
+		if err := appdata.CleanupLegacyData(exeDir); err != nil && !session.isClosed() {
 			if a.ctx != nil {
 				wruntime.LogWarning(a.ctx, fmt.Sprintf("cleanup legacy app data failed: %v", err))
 			}
 		}
 	}()
 
-	// 构造 service 并启动
-	a.serviceMu.Lock()
-	a.dataDir = path
-	a.workspaceResetCompleted = false
-	a.service = envsetup.NewWithDataDir(a.exeDir, path, a.version)
-	svc := a.service
-	a.serviceMu.Unlock()
-	a.seedFirstInstallChangelogAt(path, a.version)
-	a.configureProduceDiagnostics(path)
-
 	if a.ctx != nil {
 		svc.Startup(a.ctx)
 	}
 
 	// 触发启动检查（异步）
-	startupRelease := a.reserveManagedWorkspaceTask()
+	startupRelease := a.reserveManagedWorkspaceTaskForSession(session)
 	go func() {
 		defer startupRelease()
 		svc.RunStartupChecks()
@@ -166,8 +163,13 @@ func (a *App) ResetWorkspace() error {
 	configuredDataDir := a.dataDir
 	pendingDataDir := a.workspaceResetPendingPath
 	service := a.service
+	session := a.workspace
 	registryPending := a.workspaceResetRegistryPending
 	a.serviceMu.Unlock()
+	if session != nil {
+		configuredDataDir = session.root
+		service = session.service
+	}
 	if configuredDataDir == "" && pendingDataDir == "" && service == nil && !registryPending {
 		// Already uninitialized: keep reset idempotent without repeating
 		// registry/diagnostics side effects.
@@ -180,6 +182,12 @@ func (a *App) ResetWorkspace() error {
 	}
 
 	if service != nil && service.HasActiveTasks() {
+		return fmt.Errorf("启动检查或后台组件任务仍在运行，请完成后再试")
+	}
+	if session != nil && !session.closeIfIdle() {
+		return fmt.Errorf("启动检查或后台组件任务仍在运行，请完成后再试")
+	}
+	if session == nil && service != nil && !service.CloseIfIdle() {
 		return fmt.Errorf("启动检查或后台组件任务仍在运行，请完成后再试")
 	}
 
@@ -202,11 +210,14 @@ func (a *App) ResetWorkspace() error {
 	a.serviceMu.Lock()
 	a.service = nil
 	a.dataDir = ""
+	a.workspace = nil
+	a.workspaceGeneration++
 	a.workspaceResetPendingPath = ""
 	a.workspaceResetRegistryPending = false
 	a.workspaceResetCompleted = true
 	a.serviceMu.Unlock()
 	a.configureProduceDiagnostics(a.exeDir)
+	a.clearProduceWorkspaceState()
 
 	a.emitWorkspaceInitState()
 	return nil
@@ -220,8 +231,10 @@ func (a *App) detachWorkspaceForReset(dataDir string) {
 	a.serviceMu.Lock()
 	a.service = nil
 	a.dataDir = ""
+	a.workspace = nil
+	a.workspaceGeneration++
 	a.workspaceResetPendingPath = dataDir
-	a.workspaceResetRegistryPending = true
+	a.workspaceResetRegistryPending = runtime.GOOS == "windows"
 	a.serviceMu.Unlock()
 	a.configureProduceDiagnostics(a.exeDir)
 }

@@ -96,6 +96,12 @@ func (a *App) getProduceHistorySnapshot() ProduceHistorySnapshot {
 }
 
 func (a *App) OpenProducedClipInFolder(videoPath string) error {
+	release, fileErr := a.beginManagedExternalUse()
+	if fileErr != nil {
+		return fileErr
+	}
+	defer release()
+
 	target := strings.TrimSpace(videoPath)
 	if target == "" {
 		return fmt.Errorf("视频路径为空")

@@ -14,7 +14,10 @@ import (
 )
 
 func (s *Service) RunStartupChecks() StartupState {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState()
+	}
 	defer releaseTask()
 
 	s.emitLogWithFields("info", "用户触发启动检查", logFields{
@@ -23,6 +26,10 @@ func (s *Service) RunStartupChecks() StartupState {
 	})
 
 	s.mu.Lock()
+	if s.isStopped() {
+		s.mu.Unlock()
+		return s.GetStartupState()
+	}
 	if s.state.Running {
 		state := s.state.clone()
 		s.mu.Unlock()
@@ -49,6 +56,9 @@ func (s *Service) RunStartupChecks() StartupState {
 	s.emitState()
 
 	defer func() {
+		if s.isStopped() {
+			return
+		}
 		s.mu.Lock()
 		s.state.Running = false
 		s.mu.Unlock()
@@ -62,6 +72,9 @@ func (s *Service) RunStartupChecks() StartupState {
 		return s.GetStartupState()
 	}
 	s.logStepDone("startup", "prepare_dirs", "ensure", "", 0, ensureDirsStart, nil)
+	if s.isStopped() {
+		return s.GetStartupState()
+	}
 
 	loadConfigStart := s.logStepStart("startup", "load_config", "read", "", 0, map[string]string{
 		"config_path": s.configPath,
@@ -81,6 +94,9 @@ func (s *Service) RunStartupChecks() StartupState {
 	s.config = cfg
 	s.mu.Unlock()
 	s.updateConfig(cfg)
+	if s.isStopped() {
+		return s.GetStartupState()
+	}
 
 	sourceDetectStart := s.logStepStart("source", "detect", "unified_source", "", 1, nil)
 	source, countryCode, message, detectErr := s.resolveStartupSource()
@@ -92,6 +108,9 @@ func (s *Service) RunStartupChecks() StartupState {
 	s.logStepDone("source", "detect", "unified_source", string(source), 1, sourceDetectStart, map[string]string{
 		"message": message,
 	})
+	if s.isStopped() {
+		return s.GetStartupState()
+	}
 
 	releaseFetchStart := s.logStepStart("source", "fetch_release", "request_unified", string(source), 1, map[string]string{
 		"api_url": endpoints.APIURLFor("app", string(source)),
@@ -101,6 +120,9 @@ func (s *Service) RunStartupChecks() StartupState {
 		s.logStepFail("source", "fetch_release", "request_unified", string(source), 1, releaseFetchStart, releaseErr, nil)
 	} else {
 		s.logStepDone("source", "fetch_release", "request_unified", string(source), 1, releaseFetchStart, nil)
+	}
+	if s.isStopped() {
+		return s.GetStartupState()
 	}
 
 	sourceMessage := message
@@ -142,6 +164,9 @@ func (s *Service) RunStartupChecks() StartupState {
 
 func (s *Service) ensureWorkDirs() error {
 	for _, dir := range []string{"temp", "hlae", "plugin", "ffmpeg", "updates", filepath.Join("demo", "raw")} {
+		if s.isStopped() {
+			return errServiceStopped
+		}
 		if err := os.MkdirAll(filepath.Join(s.dataDir, dir), 0755); err != nil {
 			return fmt.Errorf("创建目录失败 %s: %w", dir, err)
 		}
@@ -150,9 +175,15 @@ func (s *Service) ensureWorkDirs() error {
 }
 
 func (s *Service) resolveStartupSource() (DownloadSource, string, string, error) {
+	if s.isStopped() {
+		return "", "", "", errServiceStopped
+	}
 	resolved, err := resolveDownloadSource(nil)
 	if err != nil {
 		return "", "", "", err
+	}
+	if s.isStopped() {
+		return "", "", "", errServiceStopped
 	}
 	source := normalizeDownloadSource(string(resolved.Source))
 	countryCode := strings.ToUpper(strings.TrimSpace(resolved.CountryCode))
@@ -174,6 +205,9 @@ func normalizeDownloadSource(source string) DownloadSource {
 }
 
 func (s *Service) runTasksDefault(source DownloadSource) {
+	if s.isStopped() {
+		return
+	}
 	source = normalizeDownloadSource(string(source))
 	s.emitLogWithFields("info", "开始执行组件检查任务", logFields{
 		Component: "startup",
@@ -192,6 +226,9 @@ func (s *Service) runTasksDefault(source DownloadSource) {
 	s.emitState()
 
 	s.checkSelfUpdate(source)
+	if s.isStopped() {
+		return
+	}
 	s.mu.Lock()
 	selfUpdateAvailable := s.state.SelfUpdate.Available && s.state.SelfUpdate.Status == statusNeedsAction
 	s.mu.Unlock()

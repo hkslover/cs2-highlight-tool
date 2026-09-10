@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"strings"
 
 	"cs2-highlight-tool-v2/internal/envsetup"
@@ -14,7 +15,7 @@ func (a *App) ListWanmeiRecentMatches(page int) (*wanmei.WanmeiMatchListResult, 
 }
 
 func (a *App) ImportWanmeiMatch(matchID string) ([]string, error) {
-	releaseFiles, fileErr := a.beginManagedFileUse()
+	releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceUse()
 	if fileErr != nil {
 		return nil, fileErr
 	}
@@ -24,7 +25,7 @@ func (a *App) ImportWanmeiMatch(matchID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	cacheRoot := a.dataPath("demo", "wanmei", downloadMatchID)
+	cacheRoot := filepath.Join(dataDir, "demo", "wanmei", downloadMatchID)
 	progressID := wanmei.ProgressComponentID(downloadMatchID)
 
 	stablePath, err := wanmei.ImportDemo(downloadMatchID, cacheRoot, func(active bool, percent float64, indeterminate bool) {
@@ -33,12 +34,15 @@ func (a *App) ImportWanmeiMatch(matchID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.cleanupLegacyRawDemoCopy(stablePath)
+	a.cleanupLegacyRawDemoCopyAt(stablePath, dataDir)
 	return []string{stablePath}, nil
 }
 
 func (a *App) emitWanmeiDownloadProgress(componentID string, active bool, percent float64, indeterminate bool) {
 	if a == nil || a.ctx == nil || strings.TrimSpace(componentID) == "" {
+		return
+	}
+	if session := a.workspaceSnapshot().session; session != nil && session.isClosed() {
 		return
 	}
 	wailsruntime.EventsEmit(a.ctx, "download_progress", envsetup.ProgressMessage{

@@ -34,7 +34,16 @@ func (a *App) GetGameInfoHealth() (*GameInfoHealth, error) {
 }
 
 func (a *App) RepairGameInfo() (*GameInfoHealth, error) {
-	health, err := a.readGameInfoHealth()
+	if a == nil {
+		return unknownGameInfoHealth("", fmt.Errorf("工作目录尚未初始化")), nil
+	}
+	release, _, fileErr := a.beginManagedWorkspaceUse()
+	if fileErr != nil {
+		return unknownGameInfoHealth("", fileErr), nil
+	}
+	defer release()
+
+	health, err := a.readGameInfoHealthAtCurrentWorkspace()
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +83,25 @@ func (a *App) RepairGameInfo() (*GameInfoHealth, error) {
 }
 
 func (a *App) readGameInfoHealth() (*GameInfoHealth, error) {
-	if a == nil || (a.dataDir == "" && a.service == nil) {
+	if a == nil {
 		return unknownGameInfoHealth("", fmt.Errorf("工作目录尚未初始化")), nil
 	}
+	snapshot := a.workspaceSnapshot()
+	if snapshot.root == "" && snapshot.service == nil {
+		return unknownGameInfoHealth("", fmt.Errorf("工作目录尚未初始化")), nil
+	}
+	release, _, fileErr := a.beginManagedWorkspaceUse()
+	if fileErr != nil {
+		return unknownGameInfoHealth("", fileErr), nil
+	}
+	defer release()
+	return a.readGameInfoHealthAtCurrentWorkspace()
+}
+
+// readGameInfoHealthAtCurrentWorkspace must run under one workspace lease.
+// Callers that will use the returned path for a subsequent write (notably
+// RepairGameInfo) must keep that same lease until the write completes.
+func (a *App) readGameInfoHealthAtCurrentWorkspace() (*GameInfoHealth, error) {
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return unknownGameInfoHealth("", fmt.Errorf("读取配置失败: %w", err)), nil

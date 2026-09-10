@@ -12,9 +12,13 @@ func workspaceNotInitializedErr() error {
 }
 
 func (a *App) GetStartupState() envsetup.StartupState {
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
+	release, _, err := a.beginManagedWorkspaceUse()
+	if err != nil {
+		return envsetup.StartupState{Mode: envsetup.ModeWorkspaceInit}
+	}
+	defer release()
+	snapshot := a.workspaceSnapshot()
+	svc := snapshot.service
 	if svc == nil {
 		return envsetup.StartupState{Mode: envsetup.ModeWorkspaceInit}
 	}
@@ -58,32 +62,29 @@ func (a *App) RetryStartupComponent(componentID string) envsetup.StartupState {
 }
 
 func (a *App) CancelStartupDownload(componentID string) envsetup.StartupState {
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
-	if svc == nil {
+	release, svc, ok := a.beginStartupTask()
+	if !ok {
 		return envsetup.StartupState{Mode: envsetup.ModeWorkspaceInit}
 	}
+	defer release()
 	return svc.CancelStartupDownload(componentID)
 }
 
 func (a *App) OpenManualDownload(componentID string) error {
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
-	if svc == nil {
+	release, svc, ok := a.beginStartupTask()
+	if !ok {
 		return workspaceNotInitializedErr()
 	}
+	defer release()
 	return svc.OpenManualDownload(componentID)
 }
 
 func (a *App) OpenExternalURL(rawURL string) error {
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
-	if svc == nil {
+	release, svc, ok := a.beginStartupTask()
+	if !ok {
 		return workspaceNotInitializedErr()
 	}
+	defer release()
 	return svc.OpenExternalURL(rawURL)
 }
 
@@ -106,12 +107,11 @@ func (a *App) PickCS2Path() envsetup.StartupState {
 }
 
 func (a *App) EnterMainApp() error {
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
-	if svc == nil {
+	release, svc, ok := a.beginStartupTask()
+	if !ok {
 		return workspaceNotInitializedErr()
 	}
+	defer release()
 	return svc.EnterMainApp()
 }
 

@@ -95,6 +95,9 @@ func (s *Service) logStepFail(component, stage, action, source string, attempt i
 }
 
 func (s *Service) appendLogEntry(entry logging.Entry) {
+	if s == nil || s.isStopped() {
+		return
+	}
 	logEntry := LogMessage{
 		Level:     strings.TrimSpace(entry.Level),
 		Message:   strings.TrimSpace(entry.Message),

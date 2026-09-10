@@ -174,11 +174,17 @@ func (s *Service) scheduleFFmpegCapabilityDetection(ffmpegExe string) {
 		})
 		return
 	}
-	detectCtx, cancel := context.WithCancel(context.Background())
-	releaseTask := s.beginTask()
+	detectCtx, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		s.ffmpegDetectMu.Unlock()
+		return
+	}
 	s.ffmpegDetectRunning = true
-	s.ffmpegDetectCancel = cancel
+	// Keep a dedicated cancel for reinstall while deriving the task from the
+	// service lifecycle context. The probe exits when either one is canceled.
+	probeCtx, probeCancel := context.WithCancel(detectCtx)
 	s.ffmpegDetectWG.Add(1)
+	s.ffmpegDetectCancel = probeCancel
 	s.ffmpegDetectMu.Unlock()
 
 	ffmpegDetectAsyncRunner(func() {
@@ -190,7 +196,7 @@ func (s *Service) scheduleFFmpegCapabilityDetection(ffmpegExe string) {
 			s.ffmpegDetectMu.Unlock()
 			s.ffmpegDetectWG.Done()
 		}()
-		s.detectAndCacheFFmpegCapabilities(detectCtx, ffmpegExe)
+		s.detectAndCacheFFmpegCapabilities(probeCtx, ffmpegExe)
 	})
 }
 
@@ -213,12 +219,18 @@ func (s *Service) stopFFmpegCapabilityDetection() {
 
 func (s *Service) detectAndCacheFFmpegCapabilities(ctx context.Context, ffmpegExe string) {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = s.lifecycleContext()
+	}
+	if s.isStopped() {
+		return
 	}
 	started := s.logStepStart(componentFFmpeg, "detect_profile", "probe_encoders", string(s.currentSource()), 0, map[string]string{
 		"ffmpeg_exe": ffmpegExe,
 	})
 	caps, err := ffmpegprofile.DetectCapabilities(ctx, ffmpegExe, ffmpegDetectCommandContext)
+	if s.isStopped() {
+		return
+	}
 	if errors.Is(err, context.Canceled) {
 		s.logStepDone(componentFFmpeg, "detect_profile", "probe_encoders", string(s.currentSource()), 0, started, map[string]string{
 			"canceled": "true",

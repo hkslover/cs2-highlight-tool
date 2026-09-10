@@ -12,7 +12,10 @@ import (
 )
 
 func (s *Service) RetryStartupComponent(componentID string) StartupState {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState()
+	}
 	defer releaseTask()
 
 	componentID = strings.TrimSpace(componentID)
@@ -50,7 +53,10 @@ func (s *Service) RetryStartupComponent(componentID string) StartupState {
 }
 
 func (s *Service) ReinstallStartupComponent(componentID string) (StartupState, error) {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState(), errServiceStopped
+	}
 	defer releaseTask()
 
 	componentID = strings.TrimSpace(componentID)
@@ -77,6 +83,9 @@ func (s *Service) ReinstallStartupComponent(componentID string) (StartupState, e
 	}
 	s.emitState()
 	defer func() {
+		if s.isStopped() {
+			return
+		}
 		s.mu.Lock()
 		s.state.Running = false
 		s.mu.Unlock()
@@ -97,7 +106,10 @@ func (s *Service) ReinstallStartupComponent(componentID string) (StartupState, e
 }
 
 func (s *Service) CancelStartupDownload(componentID string) StartupState {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState()
+	}
 	defer releaseTask()
 
 	componentID = strings.TrimSpace(componentID)
@@ -155,6 +167,9 @@ func isCancelableDownloadComponent(componentID string) bool {
 }
 
 func (s *Service) OpenManualDownload(componentID string) error {
+	if s == nil || s.isStopped() {
+		return errServiceStopped
+	}
 	s.emitLogWithFields("info", "用户打开手动下载页", logFields{
 		Component: componentID,
 		Action:    "open_manual_download",
@@ -182,6 +197,9 @@ func (s *Service) OpenManualDownload(componentID string) error {
 }
 
 func (s *Service) OpenExternalURL(rawURL string) error {
+	if s == nil || s.isStopped() {
+		return errServiceStopped
+	}
 	url, ok := normalizeExternalOpenURL(rawURL)
 	if !ok {
 		return fmt.Errorf("无效外部链接")
@@ -198,7 +216,10 @@ func (s *Service) OpenExternalURL(rawURL string) error {
 }
 
 func (s *Service) ImportManualDownload(componentID string) StartupState {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState()
+	}
 	defer releaseTask()
 
 	s.emitLogWithFields("info", "用户触发手动导入", logFields{
@@ -207,6 +228,9 @@ func (s *Service) ImportManualDownload(componentID string) StartupState {
 	})
 	path, err := s.pickManualFile(componentID)
 	if err != nil {
+		if s.isStopped() {
+			return s.GetStartupState()
+		}
 		s.failStep(componentID, err, "")
 		return s.GetStartupState()
 	}
@@ -215,6 +239,9 @@ func (s *Service) ImportManualDownload(componentID string) StartupState {
 			Component: componentID,
 			Action:    "manual_import",
 		})
+		return s.GetStartupState()
+	}
+	if s.isStopped() {
 		return s.GetStartupState()
 	}
 	s.emitLogWithFields("info", "手动导入文件已选择", logFields{
@@ -248,7 +275,10 @@ func (s *Service) ImportManualDownload(componentID string) StartupState {
 }
 
 func (s *Service) PickCS2Path() StartupState {
-	releaseTask := s.beginTask()
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return s.GetStartupState()
+	}
 	defer releaseTask()
 
 	s.emitLogWithFields("info", "用户触发选择 CS2 路径", logFields{
@@ -260,6 +290,9 @@ func (s *Service) PickCS2Path() StartupState {
 		CanCreateDirectories: false,
 	})
 	if err != nil {
+		if s.isStopped() {
+			return s.GetStartupState()
+		}
 		s.failStep(componentCS2, err, "")
 		return s.GetStartupState()
 	}
@@ -268,6 +301,9 @@ func (s *Service) PickCS2Path() StartupState {
 			Component: componentCS2,
 			Action:    "pick_path",
 		})
+		return s.GetStartupState()
+	}
+	if s.isStopped() {
 		return s.GetStartupState()
 	}
 	s.emitLogWithFields("info", "用户已选择 CS2 目录", logFields{
@@ -296,6 +332,9 @@ func (s *Service) PickCS2Path() StartupState {
 }
 
 func (s *Service) EnterMainApp() error {
+	if s == nil || s.isStopped() {
+		return errServiceStopped
+	}
 	s.emitLogWithFields("info", "用户尝试进入主页面", logFields{
 		Component: "startup",
 		Action:    "enter_main_app",

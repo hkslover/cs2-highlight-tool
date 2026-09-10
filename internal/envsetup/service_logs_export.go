@@ -13,6 +13,12 @@ import (
 )
 
 func (s *Service) ExportStartupLogs() (string, error) {
+	_, releaseTask, ok := s.beginTaskIfOpen()
+	if !ok {
+		return "", errServiceStopped
+	}
+	defer releaseTask()
+
 	s.emitLogWithFields("info", "用户触发导出启动日志", logFields{
 		Component: "startup",
 		Action:    "export_logs",

@@ -28,7 +28,9 @@ func (a *App) GetWorkActivity() WorkActivity {
 	a.managedFilesMu.Lock()
 	storageBusy := a.managedFileUsers > 0 || a.managedFilesClearing
 	a.managedFilesMu.Unlock()
-	return WorkActivity{ProduceBusy: busy, StorageBusy: busy || retained || storageBusy}
+	session := a.workspaceSnapshot().session
+	closing := session != nil && session.isClosed()
+	return WorkActivity{ProduceBusy: busy, StorageBusy: busy || retained || storageBusy || closing}
 }
 
 // Caller holds produceLaunchMu. Never cancel an active runtime to make room
@@ -68,10 +70,32 @@ func (a *App) reserveManagedResourceLocked() func() {
 // the transition owner must register the goroutine it is about to launch
 // before releasing the exclusive reservation.
 func (a *App) reserveManagedWorkspaceTask() func() {
+	return a.reserveManagedWorkspaceTaskForSession(a.workspaceSnapshot().session)
+}
+
+// reserveManagedWorkspaceTaskForSession registers an app-owned background
+// task before its goroutine is started. The managed-file count keeps Reset's
+// existing rejection semantics while the session task gate lets Shutdown
+// cancel and wait without losing the immutable workspace root.
+func (a *App) reserveManagedWorkspaceTaskForSession(session *workspaceSession) func() {
 	a.managedFilesMu.Lock()
-	release := a.reserveManagedResourceLocked()
+	var releaseSession func()
+	if session != nil {
+		var ok bool
+		_, releaseSession, ok = session.beginTask()
+		if !ok {
+			a.managedFilesMu.Unlock()
+			return func() {}
+		}
+	}
+	releaseManaged := a.reserveManagedResourceLocked()
 	a.managedFilesMu.Unlock()
-	return release
+	return func() {
+		if releaseSession != nil {
+			releaseSession()
+		}
+		releaseManaged()
+	}
 }
 
 // managedWorkspaceRoot keeps the explicit non-Windows development fallback
@@ -81,20 +105,21 @@ func (a *App) managedWorkspaceRoot() string {
 	if a == nil {
 		return ""
 	}
-	a.serviceMu.Lock()
-	dataDir := a.dataDir
-	exeDir := a.exeDir
-	pending := a.workspaceResetPendingPath != "" || a.workspaceResetRegistryPending
-	resetCompleted := a.workspaceResetCompleted
-	a.serviceMu.Unlock()
-	if dataDir != "" {
-		return dataDir
+	snapshot := a.workspaceSnapshot()
+	if snapshot.session != nil {
+		if snapshot.session.isClosed() {
+			return ""
+		}
+		return snapshot.root
 	}
-	if pending || resetCompleted {
+	if snapshot.root != "" {
+		return snapshot.root
+	}
+	if snapshot.pendingReset || snapshot.resetComplete {
 		return ""
 	}
 	if runtime.GOOS != "windows" {
-		return exeDir
+		return snapshot.exeDir
 	}
 	return ""
 }
@@ -106,16 +131,40 @@ func (a *App) beginManagedWorkspaceUse() (func(), string, error) {
 	if a == nil {
 		return nil, "", workspaceNotInitializedErr()
 	}
+	session := a.ensureWorkspaceSession()
+	snapshot := a.workspaceSnapshot()
 	a.managedFilesMu.Lock()
-	defer a.managedFilesMu.Unlock()
 	if a.managedFilesClearing {
+		a.managedFilesMu.Unlock()
 		return nil, "", fmt.Errorf("正在清理目录，请完成后再试")
 	}
-	dataDir := a.managedWorkspaceRoot()
+	dataDir := snapshot.root
+	if session != nil {
+		dataDir = session.root
+	} else if dataDir == "" && !snapshot.pendingReset && !snapshot.resetComplete && runtime.GOOS != "windows" {
+		dataDir = snapshot.exeDir
+	}
 	if dataDir == "" {
+		a.managedFilesMu.Unlock()
 		return nil, "", workspaceNotInitializedErr()
 	}
-	return a.reserveManagedResourceLocked(), dataDir, nil
+	var releaseSession func()
+	if session != nil {
+		var ok bool
+		_, releaseSession, ok = session.beginTask()
+		if !ok {
+			a.managedFilesMu.Unlock()
+			return nil, "", fmt.Errorf("工作目录正在关闭，请完成后再试")
+		}
+	}
+	releaseManaged := a.reserveManagedResourceLocked()
+	a.managedFilesMu.Unlock()
+	return func() {
+		if releaseSession != nil {
+			releaseSession()
+		}
+		releaseManaged()
+	}, dataDir, nil
 }
 
 // Reserve file use without holding a state mutex over I/O. Imports, parsing,
@@ -132,12 +181,27 @@ func (a *App) beginManagedExternalUse() (func(), error) {
 	if a == nil {
 		return nil, workspaceNotInitializedErr()
 	}
+	session := a.ensureWorkspaceSession()
 	a.managedFilesMu.Lock()
 	defer a.managedFilesMu.Unlock()
 	if a.managedFilesClearing {
 		return nil, fmt.Errorf("正在清理目录，请完成后再试")
 	}
-	return a.reserveManagedResourceLocked(), nil
+	var releaseSession func()
+	if session != nil {
+		var ok bool
+		_, releaseSession, ok = session.beginTask()
+		if !ok {
+			return nil, fmt.Errorf("工作目录正在关闭，请完成后再试")
+		}
+	}
+	releaseManaged := a.reserveManagedResourceLocked()
+	return func() {
+		if releaseSession != nil {
+			releaseSession()
+		}
+		releaseManaged()
+	}, nil
 }
 
 func (a *App) beginManagedDirectoryClear() (func(), error) {
@@ -160,6 +224,7 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 		a.produceLaunchMu.Unlock()
 		return nil, err
 	}
+	snapshot := a.workspaceSnapshot()
 	a.produceStateMu.Lock()
 	runtime := a.produceState.runtime
 	a.produceStateMu.Unlock()
@@ -168,7 +233,10 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 		return nil, fmt.Errorf("制作会话收尾尚未成功，请先重试制作以恢复环境")
 	}
 	if requireWorkspace {
-		dataDir := a.managedWorkspaceRoot()
+		dataDir := snapshot.root
+		if snapshot.session != nil && snapshot.session.isClosed() {
+			dataDir = ""
+		}
 		if dataDir == "" {
 			a.produceLaunchMu.Unlock()
 			return nil, workspaceNotInitializedErr()
@@ -186,9 +254,7 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 	// App-owned startup calls are counted in managedFileUsers. This check also
 	// covers a Service task started directly by a test or another internal
 	// caller, so a reset cannot delete its data directory underneath it.
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
+	svc := snapshot.service
 	if svc != nil && svc.HasActiveTasks() {
 		a.managedFilesMu.Lock()
 		a.managedFilesClearing = false
@@ -203,4 +269,23 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 		a.managedFilesMu.Unlock()
 		a.produceLaunchMu.Unlock()
 	}, nil
+}
+
+// beginWorkspaceShutdown blocks new launch/file admission but intentionally
+// does not reject existing users. Shutdown needs those users to drain while
+// the workspace session cancels and waits for its own background work.
+func (a *App) beginWorkspaceShutdown() func() {
+	if a == nil {
+		return nil
+	}
+	a.produceLaunchMu.Lock()
+	a.managedFilesMu.Lock()
+	a.managedFilesClearing = true
+	a.managedFilesMu.Unlock()
+	return func() {
+		a.managedFilesMu.Lock()
+		a.managedFilesClearing = false
+		a.managedFilesMu.Unlock()
+		a.produceLaunchMu.Unlock()
+	}
 }

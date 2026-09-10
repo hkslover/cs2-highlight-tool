@@ -12,7 +12,7 @@ import (
 )
 
 func (a *App) prepareRawDemoFiles(paths []string) ([]string, error) {
-	releaseFiles, fileErr := a.beginManagedFileUse()
+	releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceUse()
 	if fileErr != nil {
 		return nil, fileErr
 	}
@@ -21,7 +21,7 @@ func (a *App) prepareRawDemoFiles(paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	rawRoot := a.dataPath("demo", "raw")
+	rawRoot := filepath.Join(dataDir, "demo", "raw")
 	if err := os.MkdirAll(rawRoot, 0755); err != nil {
 		return nil, fmt.Errorf("创建 demo raw 目录失败: %w", err)
 	}
@@ -108,14 +108,18 @@ func copyDemoToRaw(sourcePath string, rawRoot string) (string, error) {
 }
 
 func (a *App) cleanupLegacyRawDemoCopy(sourcePath string) {
-	if a == nil || strings.TrimSpace(sourcePath) == "" {
+	a.cleanupLegacyRawDemoCopyAt(sourcePath, a.dataRoot())
+}
+
+func (a *App) cleanupLegacyRawDemoCopyAt(sourcePath string, dataDir string) {
+	if a == nil || strings.TrimSpace(sourcePath) == "" || strings.TrimSpace(dataDir) == "" {
 		return
 	}
 	normalizedPath, err := normalizeSourcePath(sourcePath)
 	if err != nil {
 		return
 	}
-	rawRoot := a.dataPath("demo", "raw")
+	rawRoot := filepath.Join(strings.TrimSpace(dataDir), "demo", "raw")
 	legacyPath := filepath.Join(rawRoot, hashSourcePath(normalizedPath), filepath.Base(normalizedPath))
 	if samePath(normalizedPath, legacyPath) {
 		return

@@ -66,6 +66,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - Windows 从 `HKCU\Software\CS2HighlightTool` 的 `DataDir` 读取工作目录；未配置或目录不可用时进入 `workspace_init`。选择父目录时自动追加 `cs2HighLightTool`；目录校验由 `internal/appdata/validate.go` 负责。
 - `<dataDir>` 是已选工作目录，配置、组件、Demo、输出、临时文件和日志均以此为根；不可再假设 Windows 固定使用 `%LOCALAPPDATA%/CS2 Highlight Tool`。非 Windows 开发回退见 `fallbackDataDirForDev`。
 - `<exeDir>` 与 `<dataDir>` 必须区分：前者定位程序和自更新替换目标。`ResetWorkspace` 会删除当前整个工作目录并清除注册表记录，不等同于清理 Demo 或 outputs。
+- `internal/app/workspace_session.go` 的私有工作目录实例固定 root、generation、envsetup service 与生命周期 context；后台任务须先登记，Reset/Shutdown 先关闭准入并按既有制作/文件占用规则取消、等待或拒绝，旧实例不得在新工作目录提交后写文件或发射启动事件。
 - `GetStartupState`、`RunStartupChecks`、`RetryStartupComponent`、`ReinstallStartupComponent`、`CancelStartupDownload`、`OpenManualDownload`、`ImportManualDownload`、`PickCS2Path`、`EnterMainApp`、`OpenExternalURL`、`ExportStartupLogs` 的入口为 `internal/app/app_startup.go`。
 - 状态源为 `GetStartupState` 和 `startup_state_changed`，模型见 `internal/envsetup/state.go`。`mode` 为 `workspace_init|startup|main`；`phase` 为 `detecting_source|waiting_source|running_tasks|ready`；二者不可混用。
 - 组件 ID：`hlae`、`plugin`、`ffmpeg`、`cs2`。组件/启动状态：`pending`、`checking`、`downloading`、`installing`、`ready`、`warning`、`failed`、`needs_action`。
