@@ -111,9 +111,21 @@ func (s *Service) installFFmpegFromArchive(path string) error {
 	binDir := filepath.Dir(ffmpegExe)
 	root := filepath.Dir(binDir)
 	targetRoot := filepath.Join(s.dataDir, "ffmpeg")
-	if err := download.ReplaceDirWithContents(root, targetRoot); err != nil {
+	replaceReport, err := download.ReplaceDirWithContentsWithReport(root, targetRoot)
+	if err != nil {
 		s.logStepFail(componentFFmpeg, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
 		return err
+	}
+	if replaceReport.BackupCleanupError != nil {
+		s.emitLogWithFields("warning", "ffmpeg 旧版本备份清理失败，已保留供恢复", logFields{
+			Component: componentFFmpeg,
+			Stage:     "commit",
+			Action:    "cleanup_backup",
+			Error:     replaceReport.BackupCleanupError.Error(),
+			Meta: map[string]string{
+				"backup_path": replaceReport.BackupPath,
+			},
+		})
 	}
 	ffmpegDir := filepath.Join(targetRoot, "bin")
 	if _, err := os.Stat(filepath.Join(ffmpegDir, "ffmpeg.exe")); err != nil {
