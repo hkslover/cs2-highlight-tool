@@ -3,14 +3,14 @@ package envsetup
 import "github.com/wailsapp/wails/v2/pkg/runtime"
 
 func (s *Service) emitState() {
-	if s.ctx == nil {
+	if s == nil || s.isStopped() || s.ctx == nil {
 		return
 	}
 	runtime.EventsEmit(s.ctx, "startup_state_changed", s.GetStartupState())
 }
 
 func (s *Service) emitProgress(componentID string, active bool, percent float64, indeterminate bool) {
-	if s.ctx == nil {
+	if s == nil || s.isStopped() || s.ctx == nil {
 		return
 	}
 	runtime.EventsEmit(s.ctx, "download_progress", ProgressMessage{

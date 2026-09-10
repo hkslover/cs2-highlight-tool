@@ -82,6 +82,12 @@ type ClipItemOverrides struct {
 }
 
 func (a *App) GetClipSettings() (*ClipSettings, error) {
+	release, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer release()
+
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, err
@@ -117,6 +123,12 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 }
 
 func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
+	release, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer release()
+
 	settings := normalizeClipSettings(input)
 	settings.RecordOutputDir = a.fixedRecordOutputDir()
 	updatedCfg, err := a.updateConfig(func(cfg *config.Config) error {
@@ -177,6 +189,12 @@ func (a *App) PickRecordOutputDir() (string, error) {
 }
 
 func (a *App) GetClipActionSettings() (*ClipActionSettings, error) {
+	release, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer release()
+
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return nil, err
@@ -192,6 +210,12 @@ func (a *App) GetClipActionSettings() (*ClipActionSettings, error) {
 }
 
 func (a *App) SaveClipActionSettings(input ClipActionSettings) (*ClipActionSettings, error) {
+	release, fileErr := a.beginManagedFileUse()
+	if fileErr != nil {
+		return nil, fileErr
+	}
+	defer release()
+
 	settings := normalizeClipActionSettings(input)
 	if _, err := a.updateConfig(func(cfg *config.Config) error {
 		config.SetClipActionSettings(cfg, config.ClipActionSettings{

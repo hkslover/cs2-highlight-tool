@@ -133,6 +133,10 @@ func (a *App) GetProduceTakeSnapshot() producews.TakeStatusSnapshot {
 	if a.produceW == nil {
 		return producews.TakeStatusSnapshot{}
 	}
+	snapshot := a.workspaceSnapshot()
+	if snapshot.pendingReset || snapshot.resetComplete || (snapshot.session != nil && snapshot.session.isClosed()) {
+		return producews.TakeStatusSnapshot{}
+	}
 	return a.produceW.GetTakeSnapshot()
 }
 
@@ -145,6 +149,11 @@ func (a *App) GeneratePluginJSONBatch(req GeneratePluginJSONBatchRequest) (*Gene
 	// state during setup.
 	a.produceLaunchMu.Lock()
 	defer a.produceLaunchMu.Unlock()
+	releaseWorkspace, _, workspaceErr := a.beginManagedWorkspaceUse()
+	if workspaceErr != nil {
+		return nil, workspaceErr
+	}
+	defer releaseWorkspace()
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
 	}
@@ -208,6 +217,11 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 	// environment.
 	a.produceLaunchMu.Lock()
 	defer a.produceLaunchMu.Unlock()
+	releaseWorkspace, _, workspaceErr := a.beginManagedWorkspaceUse()
+	if workspaceErr != nil {
+		return nil, workspaceErr
+	}
+	defer releaseWorkspace()
 	if len(req.Jobs) == 0 {
 		return nil, fmt.Errorf("没有可生成的 demo 任务")
 	}
@@ -487,6 +501,11 @@ func normalizeGeneratePluginBatchJobs(input []GeneratePluginJSONRequest) ([]Gene
 func (a *App) GeneratePluginJSON(req GeneratePluginJSONRequest) (*GeneratePluginJSONResult, error) {
 	a.produceLaunchMu.Lock()
 	defer a.produceLaunchMu.Unlock()
+	releaseWorkspace, _, workspaceErr := a.beginManagedWorkspaceUse()
+	if workspaceErr != nil {
+		return nil, workspaceErr
+	}
+	defer releaseWorkspace()
 	if err := a.produceBusyError(); err != nil {
 		return nil, err
 	}

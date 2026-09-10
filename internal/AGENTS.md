@@ -23,6 +23,7 @@
 ## 并发、进程与收尾
 
 - `Service.state`、`Service.logs`、`Service.config` 遵循现有 `mu/configMu` 锁策略；应用 service 的访问遵循 `serviceMu`。
+- `app/workspace_session.go` 的私有 `workspaceSession` 持有不可变 root/generation/service 与生命周期 context；任务须在启动前登记。切换/退出先关闭准入，再取消并等待，不得在 service/state 锁内等待、做 I/O 或发射事件。`envsetup.Service` 的 `BindLifecycleContext`、`CloseIfIdle`、`Stop` 仅由 App 的 session 生命周期调用，旧实例关闭后不得重新接收任务。
 - 避免锁内执行阻塞 I/O、网络或 runtime 事件发射，不引入锁顺序反转。启动状态更新后通过 `emitState()` 通知前端；制作事件复用现有队列。
 - `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。
 - 制作生命周期遵循根文件“制作、剪辑与清理”：活跃会话禁止重复生成，失败收尾保留重试所需状态；未确认进程退出、环境恢复前不得提前释放备份和占用。

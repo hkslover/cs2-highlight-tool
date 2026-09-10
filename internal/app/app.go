@@ -26,6 +26,10 @@ type App struct {
 	produceW *producews.Service
 
 	serviceMu sync.Mutex
+	// workspace is the immutable identity used by new operations. service and
+	// dataDir remain mirrors for compatibility with existing App consumers.
+	workspace           *workspaceSession
+	workspaceGeneration uint64
 	// configMu serializes App-level read-modify-write operations on config.json.
 	// It intentionally does not cover external work; callers load or persist
 	// through the helpers below and release the lock before doing other I/O.
@@ -40,9 +44,19 @@ type App struct {
 	// never interleave and corrupt each other's environment or take state.
 	produceLaunchMu sync.Mutex
 
-	managedFilesMu       sync.Mutex
+	managedFilesMu sync.Mutex
+	// managedFileUsers counts every operation that may touch the managed
+	// workspace, including startup tasks registered by the App. The name is
+	// retained for compatibility with the existing file-use tests.
 	managedFileUsers     int
 	managedFilesClearing bool
+
+	// A failed reset detaches the old service so it cannot write into a
+	// partially removed directory. Keep enough state to make ResetWorkspace
+	// retryable without allowing a new workspace to be installed in between.
+	workspaceResetPendingPath     string
+	workspaceResetRegistryPending bool
+	workspaceResetCompleted       bool
 
 	// produceEnvEpoch is the monotonically increasing produce-environment
 	// generation counter (see beginProduceEnvironmentPrep). Guarded by
@@ -100,9 +114,11 @@ func (a *App) initWorkspaceLocked() {
 			_ = appdata.DeleteDataDirFromRegistry()
 			return
 		}
-		a.dataDir = stored
-		a.seedFirstInstallChangelog()
-		a.service = envsetup.NewWithDataDir(a.exeDir, stored, a.version)
+		svc := envsetup.NewWithDataDir(a.exeDir, stored, a.version)
+		a.serviceMu.Lock()
+		a.installWorkspaceLocked(stored, svc)
+		a.serviceMu.Unlock()
+		a.seedFirstInstallChangelogAt(stored, a.version)
 		return
 	}
 
@@ -110,9 +126,11 @@ func (a *App) initWorkspaceLocked() {
 	fallback := fallbackDataDirForDev(a.exeDir)
 	if fallback != "" {
 		_ = os.MkdirAll(fallback, 0o755)
-		a.dataDir = fallback
-		a.seedFirstInstallChangelog()
-		a.service = envsetup.NewWithDataDir(a.exeDir, fallback, a.version)
+		svc := envsetup.NewWithDataDir(a.exeDir, fallback, a.version)
+		a.serviceMu.Lock()
+		a.installWorkspaceLocked(fallback, svc)
+		a.serviceMu.Unlock()
+		a.seedFirstInstallChangelogAt(fallback, a.version)
 	}
 }
 
@@ -121,10 +139,21 @@ func (a *App) initWorkspaceLocked() {
 // 必须在 dataDir 已设置、任何 LoadOrCreate 之前调用。失败仅吞噬：下一次
 // LoadOrCreate 会以同等原因再次失败并自然把错误带回前端。
 func (a *App) seedFirstInstallChangelog() {
-	if a.dataDir == "" || a.version == "" {
+	if a == nil {
 		return
 	}
-	_, _ = config.EnsureFirstInstallChangelogSeed(a.configPath(), a.dataDir, a.version)
+	a.serviceMu.Lock()
+	dataDir := a.dataDir
+	version := a.version
+	a.serviceMu.Unlock()
+	a.seedFirstInstallChangelogAt(dataDir, version)
+}
+
+func (a *App) seedFirstInstallChangelogAt(dataDir string, version string) {
+	if a == nil || dataDir == "" || version == "" {
+		return
+	}
+	_, _ = config.EnsureFirstInstallChangelogSeed(filepath.Join(dataDir, "config.json"), dataDir, version)
 }
 
 // isUsableDataDir 用于"已初始化"分支：目录存在 + 字符白名单 + 非磁盘根 + 长度合规。
@@ -180,13 +209,17 @@ func (a *App) Startup(ctx context.Context) {
 		wruntime.LogError(ctx, fmt.Sprintf("start produce websocket server failed: %v", err))
 	}
 
-	a.serviceMu.Lock()
-	svc := a.service
-	a.serviceMu.Unlock()
-
-	if svc != nil {
-		svc.Startup(ctx)
-		return
+	a.ensureWorkspaceSession()
+	releaseWorkspace, _, workspaceErr := a.beginManagedWorkspaceUse()
+	if workspaceErr == nil {
+		defer releaseWorkspace()
+		svc := a.workspaceSnapshot().service
+		if svc != nil {
+			svc.Startup(ctx)
+			return
+		}
+	} else if snapshot := a.workspaceSnapshot(); snapshot.service != nil && a.ctx != nil {
+		wruntime.LogError(a.ctx, fmt.Sprintf("启动工作目录服务失败: %v", workspaceErr))
 	}
 
 	// service 为空：未初始化工作目录，发出 workspace_init mode 状态。
@@ -194,10 +227,13 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) Shutdown(ctx context.Context) {
-	// Serialize shutdown with the launch pipeline so environment preparation,
-	// runtime installation, and teardown cannot interleave while the app exits.
-	a.produceLaunchMu.Lock()
-	defer a.produceLaunchMu.Unlock()
+	// Serialize shutdown with the launch pipeline and stop admitting new managed
+	// workspace work. Existing file users are allowed to finish; the session
+	// close below cancels/waits for app-owned background tasks.
+	releaseShutdown := a.beginWorkspaceShutdown()
+	if releaseShutdown != nil {
+		defer releaseShutdown()
+	}
 
 	// Never restore game files while an owned CS2 process may still be alive.
 	// A failed stop retains the runtime and its backups for next-start recovery.
@@ -207,6 +243,11 @@ func (a *App) Shutdown(ctx context.Context) {
 		}
 	} else if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("restore produce environment failed: %v", err))
+	}
+	if session := a.workspaceSnapshot().session; session != nil {
+		if err := session.close(ctx); err != nil && ctx != nil {
+			wruntime.LogError(ctx, fmt.Sprintf("stop workspace session failed: %v", err))
+		}
 	}
 	if err := a.produceW.Stop(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("stop produce websocket server failed: %v", err))
@@ -223,13 +264,23 @@ func resolveExecutableDir() string {
 }
 
 func (a *App) dataRoot() string {
-	if a != nil && a.dataDir != "" {
-		return a.dataDir
+	if a == nil {
+		return ""
 	}
-	if a != nil {
-		return a.exeDir
+	snapshot := a.workspaceSnapshot()
+	if snapshot.session != nil {
+		if snapshot.session.isClosed() {
+			return ""
+		}
+		return snapshot.root
 	}
-	return ""
+	if snapshot.root != "" {
+		return snapshot.root
+	}
+	if snapshot.pendingReset || snapshot.resetComplete {
+		return ""
+	}
+	return snapshot.exeDir
 }
 
 func (a *App) dataPath(elem ...string) string {
@@ -242,17 +293,29 @@ func (a *App) configPath() string {
 }
 
 func (a *App) loadConfig() (*config.Config, error) {
+	release, dataDir, err := a.beginManagedWorkspaceUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
-	return config.LoadOrCreate(a.configPath(), a.dataRoot())
+	return config.LoadOrCreate(filepath.Join(dataDir, "config.json"), dataDir)
 }
 
 func (a *App) updateConfig(mutate func(*config.Config) error) (*config.Config, error) {
+	release, dataDir, err := a.beginManagedWorkspaceUse()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
 
-	path := a.configPath()
-	cfg, err := config.LoadOrCreate(path, a.dataRoot())
+	path := filepath.Join(dataDir, "config.json")
+	cfg, err := config.LoadOrCreate(path, dataDir)
 	if err != nil {
 		return nil, err
 	}
