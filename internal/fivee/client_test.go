@@ -226,6 +226,21 @@ func TestNormalizePlayerDomainInput(t *testing.T) {
 	}
 }
 
+func TestSafeArchiveNameStripsURLQueryAndUnsafeCharacters(t *testing.T) {
+	got := safeArchiveName("https://example.com/path/demo.zip?signature=secret&expires=123", "g161-20260427162329954189731")
+	if got != "demo.zip" {
+		t.Fatalf("safeArchiveName() = %q, want %q", got, "demo.zip")
+	}
+
+	got = safeArchiveName("https://example.com/download?name=demo.zip", "g161-20260427162329954189731")
+	if strings.ContainsAny(got, `?\/:*<>|"`) {
+		t.Fatalf("safeArchiveName() returned unsafe name %q", got)
+	}
+	if got == "" {
+		t.Fatal("safeArchiveName() returned empty name")
+	}
+}
+
 func TestImportDemo_ExpiredDemoURL(t *testing.T) {
 	oldReq := HTTPRequestFn
 	oldDownload := DownloadFileFn
@@ -278,7 +293,7 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(destDir, "inner.dem"), []byte("fivee-dem"), 0644)
+		return os.WriteFile(filepath.Join(destDir, "inner.dem"), []byte("PBDEMS2\x00fivee-dem"), 0644)
 	}
 	FindFirstByExtFn = download.FindFirstByExt
 	CopyFileFn = download.CopyFile
@@ -331,8 +346,8 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read managed demo failed: %v", err)
 	}
-	if string(content) != "fivee-dem" {
-		t.Fatalf("managed demo content = %q, want %q", string(content), "fivee-dem")
+	if string(content) != "PBDEMS2\x00fivee-dem" {
+		t.Fatalf("managed demo content = %q, want %q", string(content), "PBDEMS2\\x00fivee-dem")
 	}
 }
 

@@ -142,12 +142,10 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		return "", fmt.Errorf("创建 5E DEM 缓存目录失败: %w", err)
 	}
 	stableSourcePath := filepath.Join(cacheRoot, downloadMatchID+".dem")
-	if info, err := os.Stat(stableSourcePath); err == nil {
-		if info.Mode().IsRegular() && info.Size() > 0 {
-			return stableSourcePath, nil
-		}
-	} else if !os.IsNotExist(err) {
+	if valid, err := download.IsLikelyDemoFile(stableSourcePath); err != nil {
 		return "", fmt.Errorf("检查 5E DEM 缓存文件失败: %w", err)
+	} else if valid {
+		return stableSourcePath, nil
 	}
 
 	demoURL, err := fetchDemoURL(downloadMatchID)
@@ -158,11 +156,7 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		return "", fmt.Errorf("获取 5E DEM 下载地址失败: %w", err)
 	}
 
-	archiveName := path.Base(demoURL)
-	archiveName = strings.TrimSpace(archiveName)
-	if archiveName == "" || archiveName == "." || archiveName == "/" {
-		archiveName = downloadMatchID + ".zip"
-	}
+	archiveName := safeArchiveName(demoURL, downloadMatchID)
 	archivePath := filepath.Join(cacheRoot, archiveName)
 	extractDir := filepath.Join(cacheRoot, "extract")
 	if err := os.RemoveAll(extractDir); err != nil {
@@ -198,6 +192,30 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		}
 	}
 	return stableSourcePath, nil
+}
+
+func safeArchiveName(rawURL, fallbackID string) string {
+	archiveName := ""
+	if parsed, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
+		archivePath := strings.TrimSpace(parsed.Path)
+		if decoded, decodeErr := url.PathUnescape(archivePath); decodeErr == nil {
+			archivePath = decoded
+		}
+		archiveName = path.Base(archivePath)
+	}
+	archiveName = strings.TrimSpace(archiveName)
+	if archiveName == "" || archiveName == "." || archiveName == "/" || archiveName == `\` {
+		archiveName = strings.TrimSpace(fallbackID) + ".zip"
+	}
+	// URL query parameters are intentionally excluded above.  Keep the local
+	// name conservative for Windows and reject path traversal even if a server
+	// returns an unusual path segment.
+	archiveName = strings.NewReplacer("<", "_", ">", "_", ":", "_", `"`, "_", "/", "_", `\`, "_", "|", "_", "?", "_", "*", "_").Replace(archiveName)
+	archiveName = strings.Trim(archiveName, " .")
+	if archiveName == "" || strings.EqualFold(archiveName, strings.TrimSpace(fallbackID)+".dem") {
+		archiveName = strings.TrimSpace(fallbackID) + ".zip"
+	}
+	return archiveName
 }
 
 func fetchRecentMatches(playerName string, page int) ([]FiveEMatchItem, error) {

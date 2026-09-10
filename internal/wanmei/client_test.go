@@ -236,7 +236,7 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
 		}
-		content := fmt.Sprintf("dem-%d", unzipCalls)
+		content := fmt.Sprintf("PBDEMS2\x00dem-%d", unzipCalls)
 		return os.WriteFile(filepath.Join(destDir, fmt.Sprintf("inner-%d.dem", unzipCalls)), []byte(content), 0644)
 	}
 	FindFirstByExtFn = download.FindFirstByExt
@@ -288,8 +288,8 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read managed demo failed: %v", err)
 	}
-	if string(content) != "dem-1" {
-		t.Fatalf("managed demo content = %q, want %q", string(content), "dem-1")
+	if string(content) != "PBDEMS2\x00dem-1" {
+		t.Fatalf("managed demo content = %q, want %q", string(content), "PBDEMS2\\x00dem-1")
 	}
 }
 

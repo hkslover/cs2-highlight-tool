@@ -11,6 +11,7 @@
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
 - `download.ReplaceDirWithContents` 只承担目录文件系统提交，不包含 HLAE/FFmpeg 组件判断。实现必须使用本次实例创建且可确认归属的唯一 staging/backup；准备或备份失败保持旧 target，提交失败先尝试恢复，恢复失败保留两条恢复路径并返回主/恢复双重错误。提交成功但旧 backup 清理失败通过 `ReplaceDirWithContentsWithReport` 暴露为告警，不得回报为安装失败；不触碰既有 `.old` 或未知事务残留。文件系统故障注入使用实例依赖，不增加包级可写 seam。
+- `download.CopyFile` 是兼容入口，但使用同目录临时文件完成 Copy、Close 检查和提交 rename；缓存导入通过 `IsLikelyDemoFile` 只做基本文件戳校验，不能把命中结果当作完整性证明。原子复制的故障注入通过实例 `atomicCopyOps`，不得引入包级可写 seam。
 
 ## 工作目录与启动状态机
 

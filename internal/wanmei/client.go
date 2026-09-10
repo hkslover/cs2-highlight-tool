@@ -94,11 +94,11 @@ type matchRaw struct {
 }
 
 const (
-	localLoginURL       = "http://127.0.0.1:55555/"
-	allowedOrigin       = "https://esports.wanmei.com"
-	matchListURL        = "https://api.wmpvp.com/api/csgo/home/match/list"
-	matchPageSize       = 11
-	ProgressPrefix      = "wanmei_import_"
+	localLoginURL  = "http://127.0.0.1:55555/"
+	allowedOrigin  = "https://esports.wanmei.com"
+	matchListURL   = "https://api.wmpvp.com/api/csgo/home/match/list"
+	matchPageSize  = 11
+	ProgressPrefix = "wanmei_import_"
 
 	demoAppID      = "20000"
 	demoSecret     = "969c1bcfdc527c319157cc48f83b1d106ebdeca3e8d9763f1ae6b88dde9b3ea9"
@@ -171,12 +171,10 @@ func ImportDemo(downloadMatchID, cacheRoot string, onProgress func(active bool, 
 		return "", fmt.Errorf("创建完美 DEM 缓存目录失败: %w", err)
 	}
 	stableSourcePath := filepath.Join(cacheRoot, downloadMatchID+".dem")
-	if info, err := os.Stat(stableSourcePath); err == nil {
-		if info.Mode().IsRegular() && info.Size() > 0 {
-			return stableSourcePath, nil
-		}
-	} else if !os.IsNotExist(err) {
+	if valid, err := download.IsLikelyDemoFile(stableSourcePath); err != nil {
 		return "", fmt.Errorf("检查完美 DEM 缓存文件失败: %w", err)
+	} else if valid {
+		return stableSourcePath, nil
 	}
 
 	archivePath := filepath.Join(cacheRoot, downloadMatchID+"_0.zip")
