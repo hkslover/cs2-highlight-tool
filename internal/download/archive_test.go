@@ -1,12 +1,17 @@
 package download
 
 import (
+	"archive/zip"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func writeTestFile(t *testing.T, root, name, contents string) string {
@@ -300,5 +305,97 @@ func TestReplaceDirErrorUnwrapsPrimaryAndRecovery(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), report.StagingPath) || !strings.Contains(err.Error(), report.BackupPath) {
 		t.Fatalf("error %q does not include paths", err)
+	}
+}
+
+// writeTestZip writes a small archive used by the extraction tests.
+func writeTestZip(t *testing.T, path string, entries map[string]string) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create zip %s: %v", path, err)
+	}
+	writer := zip.NewWriter(file)
+	for name, contents := range entries {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry %s: %v", name, err)
+		}
+		if _, err := entry.Write([]byte(contents)); err != nil {
+			t.Fatalf("write zip entry %s: %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close zip writer: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close zip file: %v", err)
+	}
+}
+
+func TestUnzipWithContextRejectsCanceledContextBeforeExtraction(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "demo.zip")
+	writeTestZip(t, archivePath, map[string]string{"inner.dem": "payload"})
+	destDir := filepath.Join(root, "extract")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := UnzipWithContext(ctx, archivePath, destDir)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("UnzipWithContext error = %v, want context.Canceled", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(destDir, "inner.dem")); !os.IsNotExist(statErr) {
+		t.Fatalf("canceled extraction created an entry, stat err=%v", statErr)
+	}
+}
+
+// endlessReader never returns io.EOF. The only way the extraction can finish
+// is its own context check between copy chunks, which makes the cancellation
+// assertion independent of file size or timing.
+type endlessReader struct {
+	started chan struct{}
+	once    *sync.Once
+}
+
+func (r *endlessReader) Read(p []byte) (int, error) {
+	r.once.Do(func() { close(r.started) })
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
+func TestUnzipWithContextStopsEntryCopyWhenCanceled(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "demo.zip")
+	writeTestZip(t, archivePath, map[string]string{"inner.dem": "payload"})
+	destDir := filepath.Join(root, "extract")
+
+	started := make(chan struct{})
+	var startOnce sync.Once
+	ops := defaultUnzipOps()
+	ops.openEntry = func(*zip.File) (io.ReadCloser, error) {
+		return io.NopCloser(&endlessReader{started: started, once: &startOnce}), nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- unzipWithContext(ctx, archivePath, destDir, ops) }()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("entry copy never started")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("UnzipWithContext error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("extraction did not observe cancellation during the entry copy")
 	}
 }

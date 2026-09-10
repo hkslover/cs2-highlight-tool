@@ -260,6 +260,9 @@ func (a *App) installWorkspaceLocked(root string, service *envsetup.Service) *wo
 	a.workspaceResetPendingPath = ""
 	a.workspaceResetRegistryPending = false
 	a.workspaceResetCompleted = false
+	// A new workspace identity must not reuse in-flight import tasks from the
+	// previous one; the coordinator is recreated lazily on the next import.
+	a.platformImports = nil
 	return session
 }
 

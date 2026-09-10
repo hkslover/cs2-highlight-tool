@@ -83,6 +83,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - `ListWanmeiRecentMatches(page)` 将小于 1 的页码归一为 1；状态为 `client_not_running|client_not_logged_in|ready`，战绩包含 `download_match_id/k4/k5/rating`。`ImportWanmeiMatch` 接受 `PVP@...`，产物为 `<dataDir>/demo/wanmei/<matchID>/<matchID>.dem`。
 - `GetFiveEPlayerName` 读取持久化 `fivee_player_name`；`ListFiveERecentMatches(playerName, page)` 接受 ID 或含 `domain=<id>` 的分享链接，先规范化并保存 domain ID，页码最小为 1，战绩包含 `match_id/download_match_id/rating`。`ImportFiveEMatch` 接受 ID/URL/zip 名，产物为 `<dataDir>/demo/5e/<matchID>/<matchID>.dem`。
 - 平台导入仅在解压文件经 `internal/download.CopyFile` 的同目录临时文件、Copy/Close 检查和 rename 提交完成后返回成功；失败只清理本次临时文件并保留旧目标。旧缓存命中前仅做 regular、长度和 `PBDEMS2`/`HL2DEMO` 文件戳的基本校验，不能据此证明尾部未截断；校验失败会重新获取，不默认引入版本化提交标记或强制全量重下。
+- 同一工作目录内按 `(平台, 规范化 matchID)` 共享在途导入任务（`internal/app/import_coordinator.go`）：同键并发只执行一次真实下载/解压/提交并返回同一路径，不同键继续并行，5e 与 wanmei 的同文本 ID 不得合并。失败不缓存，重试会重新执行真实任务；等待者退出只退出自己的等待。共享任务运行在工作目录生命周期 context 下并持有文件使用权直到真实任务退出，工作目录关闭会取消下载与解压（`download.UnzipWithContext` 在遍历和复制过程中检查 ctx）且不提交缓存；`download_progress` 只由真实任务发出。
 - `ParseDemoFile` 的 `players[]` 包含 `name/steam_id/steam_id_text/kills/deaths/assists`，不包含 `team`；`clip_players[]` 按玩家、回合、击杀组织。前端请求必须使用字符串 SteamID，不能将 JS number 的 `steam_id` 转回字符串使用。
 
 ### 设置与插件计划

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -15,7 +16,9 @@ func (a *App) ListWanmeiRecentMatches(page int) (*wanmei.WanmeiMatchListResult, 
 }
 
 func (a *App) ImportWanmeiMatch(matchID string) ([]string, error) {
-	releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceUse()
+	// See ImportFiveEMatch: the workspace reservation precedes normalization so
+	// a directory clear cannot be bypassed, and it covers the whole shared task.
+	workCtx, releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceTaskUse()
 	if fileErr != nil {
 		return nil, fileErr
 	}
@@ -28,13 +31,22 @@ func (a *App) ImportWanmeiMatch(matchID string) ([]string, error) {
 	cacheRoot := filepath.Join(dataDir, "demo", "wanmei", downloadMatchID)
 	progressID := wanmei.ProgressComponentID(downloadMatchID)
 
-	stablePath, err := wanmei.ImportDemo(downloadMatchID, cacheRoot, func(active bool, percent float64, indeterminate bool) {
-		a.emitWanmeiDownloadProgress(progressID, active, percent, indeterminate)
-	})
+	stablePath, ranImport, err := a.importCoordinator().do(
+		workCtx,
+		workCtx,
+		platformImportKey{platform: platformImportWanmei, matchID: downloadMatchID},
+		func(runCtx context.Context) (string, error) {
+			return wanmei.ImportDemoContext(runCtx, downloadMatchID, cacheRoot, func(active bool, percent float64, indeterminate bool) {
+				a.emitWanmeiDownloadProgress(progressID, active, percent, indeterminate)
+			})
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
-	a.cleanupLegacyRawDemoCopyAt(stablePath, dataDir)
+	if ranImport {
+		a.cleanupLegacyRawDemoCopyAt(stablePath, dataDir)
+	}
 	return []string{stablePath}, nil
 }
 

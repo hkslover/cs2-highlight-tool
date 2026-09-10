@@ -1,6 +1,7 @@
 package wanmei
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -231,7 +232,7 @@ func TestImportDemo_ReuseCachedDemoWithoutRedownload(t *testing.T) {
 		}
 		return os.WriteFile(targetPath, []byte("zip"), 0644)
 	}
-	UnzipFn = func(archivePath string, destDir string) error {
+	UnzipFn = func(ctx context.Context, archivePath string, destDir string) error {
 		unzipCalls++
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
@@ -330,7 +331,7 @@ func TestImportDemo_EmptyCachedDemoTriggersRedownload(t *testing.T) {
 		downloadCalls++
 		return os.WriteFile(targetPath, []byte("zip"), 0644)
 	}
-	UnzipFn = func(archivePath string, destDir string) error {
+	UnzipFn = func(ctx context.Context, archivePath string, destDir string) error {
 		unzipCalls++
 		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err

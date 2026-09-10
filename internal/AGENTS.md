@@ -8,10 +8,12 @@
 - 启动状态模型与通知入口：`envsetup/state.go`、`envsetup/events.go`；检查/动作/状态逻辑按 `service_*.go` 分工。
 - 配置默认值、归一化和兼容处理集中在 `config/config.go`；同一工作目录的读改写事务由 `config.Store` 统一串行化并由 App 注入 `envsetup.Service`；应用层设置映射在 `app/clip_settings.go`。
 - Demo 事实与整局 POV 解析在 `demo/`，片段归一化与生成编排在 `app/plugin_generate.go`，插件命令构建在 `clipsjson/`。
+- 平台导入协调（同键去重、等待者、结果固定与清理）在 `app/import_coordinator.go`，由工作目录身份持有并在切换/重置时替换；`fivee`、`wanmei` 只负责来源解析、下载解压与缓存提交，不互相依赖。
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
 - `download.ReplaceDirWithContents` 只承担目录文件系统提交，不包含 HLAE/FFmpeg 组件判断。实现必须使用本次实例创建且可确认归属的唯一 staging/backup；准备或备份失败保持旧 target，提交失败先尝试恢复，恢复失败保留两条恢复路径并返回主/恢复双重错误。提交成功但旧 backup 清理失败通过 `ReplaceDirWithContentsWithReport` 暴露为告警，不得回报为安装失败；不触碰既有 `.old` 或未知事务残留。文件系统故障注入使用实例依赖，不增加包级可写 seam。
 - `download.CopyFile` 是兼容入口，但使用同目录临时文件完成 Copy、Close 检查和提交 rename；缓存导入通过 `IsLikelyDemoFile` 只做基本文件戳校验，不能把命中结果当作完整性证明。原子复制的故障注入通过实例 `atomicCopyOps`，不得引入包级可写 seam。
+- `download.UnzipWithContext` 在打开归档、每个条目和每次复制之间检查 ctx，长解压可被工作目录关闭打断；`download.Unzip` 是无取消的兼容入口，故障注入通过实例 `unzipOps`。平台导入解压 seam 因此接收 ctx，组件安装等旧调用者继续使用兼容入口。
 
 ## 工作目录与启动状态机
 
@@ -27,7 +29,7 @@
 - `Service.state`、`Service.logs`、已提交的 `Service.config` 快照由 `Service.mu` 保护；配置文件的最新读取、归一化、mutate 和保存只走工作目录共享的 `config.Store`，不再为 App/Service 各自维护文件锁。工作目录准入后再进入 Store，保存成功后才更新 Service 快照，事件必须在 Store 解锁后发射；应用 service 的访问遵循 `serviceMu`。
 - `app/workspace_session.go` 的私有 `workspaceSession` 持有不可变 root/generation/service 与生命周期 context；任务须在启动前登记。切换/退出先关闭准入，再取消并等待，不得在 service/state 锁内等待、做 I/O 或发射事件。`envsetup.Service` 的 `BindLifecycleContext`、`CloseIfIdle`、`Stop` 仅由 App 的 session 生命周期调用，旧实例关闭后不得重新接收任务。
 - 避免锁内执行阻塞 I/O、网络或 runtime 事件发射，不引入锁顺序反转。启动状态更新后通过 `emitState()` 通知前端；制作事件复用现有队列。
-- `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。
+- `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。多个调用者共享的长任务（如平台导入）必须用 `beginManagedWorkspaceTaskUse` 的工作目录 context 运行并持有所属准入直到真实任务退出；等待者取消不得取消共享任务，进度与提交等副作用只由真实任务执行。
 - 制作生命周期遵循根文件“制作、剪辑与清理”：活跃会话禁止重复生成，失败收尾保留重试所需状态；未确认进程退出、环境恢复前不得提前释放备份和占用。
 - HLAE 启动成功但 CS2 PID 未知时，保留启动器句柄并核对进程枚举；不能因 PID 为空直接恢复环境，也不能关闭归属不明的游戏进程。
 - 涉及会话退出、取消和 FFmpeg 合并时，检查等待、探测及子进程是否遵循现有取消/超时机制，避免收尾后旧任务继续写文件。

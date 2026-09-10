@@ -2,6 +2,7 @@ package download
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,7 +13,51 @@ import (
 	"github.com/bodgit/sevenzip"
 )
 
+// unzipOps is an instance dependency for deterministic cancellation tests.
+// It deliberately mirrors the replaceDirFS pattern instead of adding a
+// package-level writable seam.
+type unzipOps struct {
+	openEntry func(*zip.File) (io.ReadCloser, error)
+}
+
+func defaultUnzipOps() unzipOps {
+	return unzipOps{
+		openEntry: func(f *zip.File) (io.ReadCloser, error) { return f.Open() },
+	}
+}
+
+func (ops unzipOps) withDefaults() unzipOps {
+	if ops.openEntry == nil {
+		ops.openEntry = defaultUnzipOps().openEntry
+	}
+	return ops
+}
+
+// Unzip is the compatibility entry point for callers without a cancellation
+// context. Callers that own a workspace lifecycle use UnzipWithContext.
 func Unzip(zipPath, destDir string) error {
+	return unzipWithContext(context.Background(), zipPath, destDir, defaultUnzipOps())
+}
+
+// UnzipWithContext extracts zipPath into destDir and honors ctx. Cancellation
+// is checked before the archive is opened, before every entry, and during
+// every file copy, so closing a workspace stops a large extraction instead of
+// waiting for the whole archive to be written into staging. A canceled
+// extraction may leave partial files inside destDir; callers that own a
+// private staging directory remove it themselves.
+func UnzipWithContext(ctx context.Context, zipPath, destDir string) error {
+	return unzipWithContext(ctx, zipPath, destDir, defaultUnzipOps())
+}
+
+func unzipWithContext(ctx context.Context, zipPath, destDir string, ops unzipOps) error {
+	ops = ops.withDefaults()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := contextErr(ctx); err != nil {
+		return err
+	}
+
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -20,6 +65,9 @@ func Unzip(zipPath, destDir string) error {
 	defer r.Close()
 	destClean := filepath.Clean(destDir) + string(os.PathSeparator)
 	for _, f := range r.File {
+		if err := contextErr(ctx); err != nil {
+			return err
+		}
 		target := filepath.Join(destDir, f.Name)
 		if !strings.HasPrefix(filepath.Clean(target)+pathSuffix(f.FileInfo().IsDir()), destClean) {
 			return fmt.Errorf("压缩包包含非法路径: %s", f.Name)
@@ -37,19 +85,19 @@ func Unzip(zipPath, destDir string) error {
 		if err != nil {
 			return err
 		}
-		rc, err := f.Open()
+		rc, err := ops.openEntry(f)
 		if err != nil {
 			out.Close()
 			return err
 		}
-		_, copyErr := io.Copy(out, rc)
+		_, copyErr := io.Copy(out, contextReader{ctx: ctx, reader: rc})
 		rc.Close()
 		out.Close()
 		if copyErr != nil {
 			return copyErr
 		}
 	}
-	return nil
+	return contextErr(ctx)
 }
 
 func Extract7z(archivePath, destDir string) error {

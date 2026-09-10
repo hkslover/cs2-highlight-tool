@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,10 @@ func (a *App) saveFiveEPlayerName(playerName string) error {
 }
 
 func (a *App) ImportFiveEMatch(matchID string) ([]string, error) {
-	releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceUse()
+	// The admission comes before match-ID validation so a rejected directory
+	// operation can never be bypassed by an import; the same reservation is
+	// held until the shared import task really exits.
+	workCtx, releaseFiles, dataDir, fileErr := a.beginManagedWorkspaceTaskUse()
 	if fileErr != nil {
 		return nil, fileErr
 	}
@@ -67,13 +71,24 @@ func (a *App) ImportFiveEMatch(matchID string) ([]string, error) {
 	cacheRoot := filepath.Join(dataDir, "demo", "5e", downloadMatchID)
 	progressID := fivee.ProgressComponentID(downloadMatchID)
 
-	stablePath, err := fivee.ImportDemo(downloadMatchID, cacheRoot, func(active bool, percent float64, indeterminate bool) {
-		a.emitFiveEDownloadProgress(progressID, active, percent, indeterminate)
-	})
+	stablePath, ranImport, err := a.importCoordinator().do(
+		workCtx,
+		workCtx,
+		platformImportKey{platform: platformImportFiveE, matchID: downloadMatchID},
+		func(runCtx context.Context) (string, error) {
+			return fivee.ImportDemoContext(runCtx, downloadMatchID, cacheRoot, func(active bool, percent float64, indeterminate bool) {
+				a.emitFiveEDownloadProgress(progressID, active, percent, indeterminate)
+			})
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
-	a.cleanupLegacyRawDemoCopyAt(stablePath, dataDir)
+	// Only the caller that performed the real import owns one-time
+	// post-processing; waiters reuse the prepared result without repeating it.
+	if ranImport {
+		a.cleanupLegacyRawDemoCopyAt(stablePath, dataDir)
+	}
 	return []string{stablePath}, nil
 }
 
