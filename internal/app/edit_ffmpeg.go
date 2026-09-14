@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,8 +19,18 @@ import (
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 )
 
-var ffmpegCommand = exec.Command
+// ffmpegCommandContext builds every edit FFmpeg/FFprobe command so the task
+// context reaches exec.CommandContext. It is a package-level variable so tests
+// can substitute a fake; the probe and concat paths both go through
+// newFFmpegCommandContext.
 var ffmpegCommandContext = exec.CommandContext
+
+func newFFmpegCommandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return ffmpegCommandContext(ctx, name, args...)
+}
 
 type probedVideoInfo struct {
 	Duration           float64
@@ -32,7 +43,10 @@ type probedVideoInfo struct {
 }
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
-	release, fileErr := a.beginManagedFileUse()
+	// A probe only needs shared file use: it may coexist with other read-only
+	// work and does not take the single-compose slot. The workspace context
+	// plus a finite timeout bound the command without killing normal work.
+	workCtx, release, _, fileErr := a.beginManagedWorkspaceTaskUse()
 	if fileErr != nil {
 		return 0, fileErr
 	}
@@ -54,11 +68,20 @@ func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
 		return 0, fmt.Errorf("ffprobe not found at %s", ffprobeExe)
 	}
 
-	return probeDurationByFFprobe(ffprobeExe, videoPath)
+	probeCtx, cancel := context.WithTimeout(workCtx, editProbeTimeout)
+	defer cancel()
+	return probeDurationByFFprobe(probeCtx, ffprobeExe, videoPath)
 }
 
-func probeDurationByFFprobe(ffprobeExe string, videoPath string) (float64, error) {
-	cmd := ffmpegCommand(
+func probeDurationByFFprobe(ctx context.Context, ffprobeExe string, videoPath string) (float64, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, editProbeFailure(ctx, err, "")
+	}
+	cmd := newFFmpegCommandContext(
+		ctx,
 		ffprobeExe,
 		"-v", "error",
 		"-show_entries", "format=duration",
@@ -69,7 +92,7 @@ func probeDurationByFFprobe(ffprobeExe string, videoPath string) (float64, error
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return 0, editProbeFailure(ctx, err, string(out))
 	}
 
 	raw := strings.TrimSpace(string(out))
@@ -84,8 +107,15 @@ func probeDurationByFFprobe(ffprobeExe string, videoPath string) (float64, error
 	return math.Round(duration*1000) / 1000, nil
 }
 
-func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error) {
-	cmd := ffmpegCommand(
+func probeVideoStreamInfo(ctx context.Context, ffprobeExe, videoPath string) (probedVideoInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return probedVideoInfo{}, editProbeFailure(ctx, err, "")
+	}
+	cmd := newFFmpegCommandContext(
+		ctx,
 		ffprobeExe,
 		"-v", "error",
 		"-show_entries", "stream=codec_type,duration,width,height,sample_aspect_ratio,display_aspect_ratio",
@@ -97,7 +127,7 @@ func probeVideoStreamInfo(ffprobeExe, videoPath string) (probedVideoInfo, error)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return probedVideoInfo{}, fmt.Errorf("ffprobe video stream failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return probedVideoInfo{}, editProbeFailure(ctx, err, string(out))
 	}
 
 	var payload struct {

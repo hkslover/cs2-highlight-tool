@@ -47,6 +47,11 @@ type App struct {
 	// never interleave and corrupt each other's environment or take state.
 	produceLaunchMu sync.Mutex
 
+	// editTasks admits one ConcatEditClips run at a time. It never queues, so
+	// a second request is rejected instead of interleaving progress events,
+	// temp files and output reservations with the active task.
+	editTasks editTaskAdmission
+
 	managedFilesMu sync.Mutex
 	// managedFileUsers counts every operation that may touch the managed
 	// workspace, including startup tasks registered by the App. The name is

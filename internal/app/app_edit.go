@@ -1,13 +1,14 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 )
@@ -64,26 +65,32 @@ const (
 // ConcatEditClips merges edit clips. The transition path uses one filter graph
 // and one encode; request clip durations are retained for UI compatibility but
 // are not trusted for transition timing.
+//
+// One compose runs at a time: the workspace file-use reservation and the
+// single-compose admission are acquired first, then the task owns a private
+// temp directory and an atomically reserved output path. Only a verified
+// intermediate video is renamed to the final artifact and only that artifact
+// is recorded in history; a failed, canceled or timed-out task never publishes
+// and never removes a previous video.
 func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
-	releaseFiles, fileErr := a.beginManagedFileUse()
+	workCtx, releaseFiles, workspaceRoot, fileErr := a.beginManagedWorkspaceTaskUse()
 	if fileErr != nil {
 		return "", fileErr
 	}
 	defer releaseFiles()
 
-	transitionByIndex, err := normalizeEditTransitions(len(request.Clips), request.Transitions)
+	task, err := a.beginEditComposeTask(workCtx, workspaceRoot)
 	if err != nil {
 		return "", err
 	}
+	// Deferred order is LIFO: task cleanup runs first, then the slot is
+	// released, and only then is the workspace file use released. The old task
+	// therefore finishes its final events and files before a new task or a
+	// directory clear can enter.
+	defer a.finishEditComposeTask(task)
+	defer task.cleanup()
 
-	needsTrimProbe := false
-	for _, clip := range request.Clips {
-		if clip.StartSeconds != nil || clip.EndSeconds != nil {
-			needsTrimProbe = true
-			break
-		}
-	}
-	resolvedClips, err := a.resolveEditClips(request.Clips, len(transitionByIndex) > 0 || needsTrimProbe)
+	transitionByIndex, err := normalizeEditTransitions(len(request.Clips), request.Transitions)
 	if err != nil {
 		return "", err
 	}
@@ -95,36 +102,62 @@ func (a *App) ConcatEditClips(request EditConcatRequest) (string, error) {
 	if _, err := os.Stat(ffmpegExe); err != nil {
 		return "", fmt.Errorf("ffmpeg not found at %s", ffmpegExe)
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return "", fmt.Errorf("create output directory failed: %w", err)
+	if err := task.prepare(outputDir); err != nil {
+		return "", err
 	}
 
-	outputPath := filepath.Join(outputDir, fmt.Sprintf("edit_%s.mp4", time.Now().Format("20060102_150405")))
-	tracker := newComposeProgressTracker(a, editComposeStageCount(len(resolvedClips), len(transitionByIndex) > 0))
+	needsTrimProbe := false
+	for _, clip := range request.Clips {
+		if clip.StartSeconds != nil || clip.EndSeconds != nil {
+			needsTrimProbe = true
+			break
+		}
+	}
+	resolvedClips, err := a.resolveEditClips(task.ctx, request.Clips, len(transitionByIndex) > 0 || needsTrimProbe)
+	if err != nil {
+		return "", err
+	}
 
+	tracker := newComposeProgressTracker(a, editComposeStageCount(len(resolvedClips), len(transitionByIndex) > 0))
 	if len(transitionByIndex) == 0 && !hasEditTrim(resolvedClips) {
-		if _, err := concatSimple(ffmpegExe, resolvedClips, outputPath, encode, tracker); err != nil {
+		if _, err := concatSimple(task.ctx, ffmpegExe, resolvedClips, filepath.Join(task.tempDir, "concat.txt"), task.tempOutput, encode, tracker); err != nil {
 			tracker.fail(err)
 			return "", err
 		}
 	} else {
-		if _, err := concatWithTransitions(ffmpegExe, resolvedClips, transitionByIndex, outputPath, encode, tracker); err != nil {
+		if _, err := concatWithTransitions(task.ctx, ffmpegExe, resolvedClips, transitionByIndex, task.tempOutput, encode, tracker); err != nil {
 			tracker.fail(err)
 			return "", err
 		}
 	}
 
-	if _, statErr := os.Stat(outputPath); statErr != nil {
-		tracker.fail(statErr)
-		return "", fmt.Errorf("output video not created: %w", statErr)
+	if err := verifyEditTempOutput(task.tempOutput); err != nil {
+		tracker.fail(err)
+		return "", err
+	}
+	// Cancellation wins until this boundary. Once the rename below succeeds
+	// the artifact is published and the task reports success with its history
+	// entry even if the workspace closes while history is being recorded; a
+	// published file is never deleted to pretend the task had not committed.
+	if cancelErr := editTaskCanceledError(task.ctx); cancelErr != nil {
+		tracker.fail(cancelErr)
+		return "", cancelErr
+	}
+	if err := task.commit(); err != nil {
+		tracker.fail(err)
+		return "", err
 	}
 
-	a.addEditedHistoryEntry(outputPath, "edit_timeline")
+	// The artifact exists at its final path before history is told about it.
+	a.addEditedHistoryEntry(task.finalOutput, "edit_timeline")
 	tracker.complete()
-	return outputPath, nil
+	return task.finalOutput, nil
 }
 
-func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]resolvedEditClip, error) {
+func (a *App) resolveEditClips(ctx context.Context, input []EditConcatClip, forceProbe ...bool) ([]resolvedEditClip, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if len(input) == 0 {
 		return nil, fmt.Errorf("no clips provided")
 	}
@@ -142,6 +175,9 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 
 	resolved := make([]resolvedEditClip, 0, len(input))
 	for i, clip := range input {
+		if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+			return nil, cancelErr
+		}
 		p := strings.TrimSpace(clip.VideoPath)
 		if p == "" {
 			return nil, fmt.Errorf("clip %d video path is empty", i+1)
@@ -158,7 +194,9 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 		hasAudio := false
 		audioKnown := false
 		if probeForTransitions {
-			info, err := probeVideoStreamInfo(ffprobeExe, p)
+			probeCtx, cancelProbe := context.WithTimeout(ctx, editProbeTimeout)
+			info, err := probeVideoStreamInfo(probeCtx, ffprobeExe, p)
+			cancelProbe()
 			if err != nil {
 				return nil, fmt.Errorf("clip %d probe video stream failed: %w", i+1, err)
 			}
@@ -179,7 +217,9 @@ func (a *App) resolveEditClips(input []EditConcatClip, forceProbe ...bool) ([]re
 			if _, err := os.Stat(ffprobeExe); err != nil {
 				return nil, fmt.Errorf("ffprobe not found at %s", ffprobeExe)
 			}
-			probed, err := probeDurationByFFprobe(ffprobeExe, p)
+			probeCtx, cancelProbe := context.WithTimeout(ctx, editProbeTimeout)
+			probed, err := probeDurationByFFprobe(probeCtx, ffprobeExe, p)
+			cancelProbe()
 			if err != nil {
 				return nil, fmt.Errorf("clip %d probe duration failed: %w", i+1, err)
 			}
@@ -337,14 +377,25 @@ func normalizeTransition(input EditConcatTransition) (EditConcatTransition, erro
 	return transition, nil
 }
 
+// editAttemptTimeout wraps one retry-profile invocation. The per-attempt
+// context keeps a hung ffmpeg from blocking the compose slot forever while
+// still letting the existing encoder fallback chain run after a timeout.
+func editAttemptTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, editComposeTimeout)
+}
+
 func concatSimple(
+	ctx context.Context,
 	ffmpegExe string,
 	clips []resolvedEditClip,
+	listPath string,
 	outputPath string,
 	encode editEncodeSettings,
 	tracker *composeProgressTracker,
 ) ([]byte, error) {
-	listPath := outputPath + ".concat.txt"
+	if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+		return nil, cancelErr
+	}
 	defer os.Remove(listPath)
 
 	var lines []string
@@ -367,6 +418,9 @@ func concatSimple(
 	var lastOut []byte
 	var lastErr error
 	for _, profile := range profiles {
+		if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+			return lastOut, cancelErr
+		}
 		videoArgs, err := ffmpegprofile.BuildEditEncodeArgs(profile.ID, encode.Quality)
 		if err != nil {
 			lastErr = err
@@ -387,22 +441,41 @@ func concatSimple(
 			"-y",
 			outputPath,
 		)
-		cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
+		attemptCtx, cancelAttempt := editAttemptTimeout(ctx)
+		cmd := newFFmpegCommandContext(attemptCtx, ffmpegExe, withFFmpegProgressArgs(args)...)
 		configureNoWindowProcess(cmd)
 		out, err := runFFmpegCommandWithProgress(cmd, stageDuration, tracker)
+		timedOut := errors.Is(attemptCtx.Err(), context.DeadlineExceeded)
+		cancelAttempt()
 		if err == nil {
+			// FFmpeg may have finished while the workspace was closing (for
+			// example during reader teardown). Cancellation wins here: the
+			// caller must not verify, commit or record this attempt.
+			if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+				return out, cancelErr
+			}
 			if tracker != nil {
 				tracker.stageDone()
 			}
 			return out, nil
 		}
 		lastOut = out
+		if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+			// A workspace/app cancellation is terminal: never start the next
+			// encoder profile and never report it as an encoder failure.
+			return lastOut, cancelErr
+		}
+		if timedOut {
+			lastErr = fmt.Errorf("[%s] 剪辑合成超时（超过 %s）", profile.ID, editComposeTimeout)
+			continue
+		}
 		lastErr = fmt.Errorf("[%s] %w", profile.ID, err)
 	}
 	return lastOut, fmt.Errorf("ffmpeg concat failed: %w: %s", lastErr, strings.TrimSpace(string(lastOut)))
 }
 
 func concatWithTransitions(
+	ctx context.Context,
 	ffmpegExe string,
 	clips []resolvedEditClip,
 	transitionByIndex map[int]EditConcatTransition,
@@ -410,6 +483,9 @@ func concatWithTransitions(
 	encode editEncodeSettings,
 	tracker *composeProgressTracker,
 ) ([]byte, error) {
+	if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+		return nil, cancelErr
+	}
 	if len(clips) == 0 {
 		return nil, fmt.Errorf("at least 1 clip is required")
 	}
@@ -426,6 +502,9 @@ func concatWithTransitions(
 	var lastOut []byte
 	var lastErr error
 	for _, profile := range profiles {
+		if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+			return lastOut, cancelErr
+		}
 		videoArgs, buildErr := ffmpegprofile.BuildEditEncodeArgs(profile.ID, encode.Quality)
 		if buildErr != nil {
 			lastErr = buildErr
@@ -449,16 +528,31 @@ func concatWithTransitions(
 			outputPath,
 		)
 
-		cmd := ffmpegCommand(ffmpegExe, withFFmpegProgressArgs(args)...)
+		attemptCtx, cancelAttempt := editAttemptTimeout(ctx)
+		cmd := newFFmpegCommandContext(attemptCtx, ffmpegExe, withFFmpegProgressArgs(args)...)
 		configureNoWindowProcess(cmd)
 		out, runErr := runFFmpegCommandWithProgress(cmd, plan.TotalDuration, tracker)
+		timedOut := errors.Is(attemptCtx.Err(), context.DeadlineExceeded)
+		cancelAttempt()
 		if runErr == nil {
+			// See concatSimple: a finished encoder must not publish after the
+			// task was canceled during reader teardown.
+			if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+				return out, cancelErr
+			}
 			if tracker != nil {
 				tracker.stageDone()
 			}
 			return out, nil
 		}
 		lastOut = out
+		if cancelErr := editTaskCanceledError(ctx); cancelErr != nil {
+			return lastOut, cancelErr
+		}
+		if timedOut {
+			lastErr = fmt.Errorf("[%s] 剪辑合成超时（超过 %s）", profile.ID, editComposeTimeout)
+			continue
+		}
 		lastErr = fmt.Errorf("[%s] %w", profile.ID, runErr)
 	}
 	if lastErr == nil {
