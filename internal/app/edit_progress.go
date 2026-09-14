@@ -19,10 +19,13 @@ type composeProgressPayload struct {
 type composeProgressTracker struct {
 	mu sync.Mutex
 
-	app          *App
-	startedAt    time.Time
-	totalStages  int
-	finished     int
+	app         *App
+	startedAt   time.Time
+	totalStages int
+	finished    int
+	// maxPercent spans encoder retries: each FFmpeg attempt reports progress
+	// from its own zero, while the public compose stream must remain monotonic.
+	maxPercent   float64
 	currentStage string
 	emitHook     func(composeProgressPayload)
 }
@@ -87,9 +90,15 @@ func (t *composeProgressTracker) complete() {
 }
 
 func (t *composeProgressTracker) buildPayloadLocked(active bool, percent float64, step string, errText string) composeProgressPayload {
+	percent = clampProgressPercent(percent)
+	if percent < t.maxPercent {
+		percent = t.maxPercent
+	} else {
+		t.maxPercent = percent
+	}
 	return composeProgressPayload{
 		Active:      active,
-		Percent:     clampProgressPercent(percent),
+		Percent:     percent,
 		CurrentStep: strings.TrimSpace(step),
 		ElapsedMS:   time.Since(t.startedAt).Milliseconds(),
 		Error:       strings.TrimSpace(errText),

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"cs2-highlight-tool-v2/internal/config"
+	editdomain "cs2-highlight-tool-v2/internal/edit"
 )
 
 // newEditSafetyTestApp builds an App whose fallback workspace root is exeDir
@@ -55,11 +56,14 @@ func editSafetyOutputDir(app *App) string {
 	return filepath.Join(app.dataRoot(), "outputs", "edit")
 }
 
-func stubEditFFmpegCommand(t *testing.T, factory func(ctx context.Context, name string, args ...string) *exec.Cmd) {
+func stubEditFFmpegCommand(t *testing.T, app *App, factory func(ctx context.Context, name string, args ...string) *exec.Cmd) {
 	t.Helper()
-	old := ffmpegCommandContext
-	ffmpegCommandContext = factory
-	t.Cleanup(func() { ffmpegCommandContext = old })
+	if app == nil {
+		t.Fatal("stubEditFFmpegCommand requires an app")
+	}
+	old := app.editCommandFactoryOverride
+	app.editCommandFactoryOverride = editdomain.CommandFactory(factory)
+	t.Cleanup(func() { app.editCommandFactoryOverride = old })
 }
 
 func newEditSafetyHelperCommand(ctx context.Context, mode string, extraEnv []string, args []string) *exec.Cmd {
@@ -141,7 +145,7 @@ func TestConcatEditClipsRejectsSecondTaskWhileFirstIsRunning(t *testing.T) {
 	clips := writeEditSafetyClips(t, app.exeDir)
 	started := filepath.Join(app.exeDir, "ffmpeg.started")
 	release := filepath.Join(app.exeDir, "ffmpeg.release")
-	stubEditFFmpegCommand(t, fakeEditSafetyGateCommand(started, release))
+	stubEditFFmpegCommand(t, app, fakeEditSafetyGateCommand(started, release))
 
 	type result struct {
 		path string
@@ -193,7 +197,7 @@ func TestConcatEditClipsSuccessiveTasksKeepDistinctOutputs(t *testing.T) {
 	app := newEditSafetyTestApp(t)
 	clips := writeEditSafetyClips(t, app.exeDir)
 	var counter int32
-	stubEditFFmpegCommand(t, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	stubEditFFmpegCommand(t, app, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
 		n := atomic.AddInt32(&counter, 1)
 		return newEditSafetyHelperCommand(ctx, "echo", []string{"EDIT_SAFETY_OUTPUT=" + strconv.Itoa(int(n))}, args)
 	})
@@ -395,7 +399,7 @@ func TestEditComposeTaskCommitRefusesReplacedSymlink(t *testing.T) {
 func TestConcatEditClipsFailureLeavesNoArtifactOrHistory(t *testing.T) {
 	app := newEditSafetyTestApp(t)
 	clips := writeEditSafetyClips(t, app.exeDir)
-	stubEditFFmpegCommand(t, fakeFFmpegCommandFailContext)
+	stubEditFFmpegCommand(t, app, fakeFFmpegCommandFailContext)
 
 	if _, err := app.ConcatEditClips(EditConcatRequest{Clips: clips}); err == nil {
 		t.Fatal("expected compose failure")
@@ -462,7 +466,7 @@ func TestConcatEditClipsMissingIntermediateIsNotPublished(t *testing.T) {
 func newEditSafetyAppWithoutCommandOutput(t *testing.T) *App {
 	t.Helper()
 	app := newEditSafetyTestApp(t)
-	stubEditFFmpegCommand(t, fakeEditSafetyNoOutputCommand())
+	stubEditFFmpegCommand(t, app, fakeEditSafetyNoOutputCommand())
 	return app
 }
 
@@ -470,7 +474,7 @@ func TestConcatEditClipsTransitionPathPublishesOnce(t *testing.T) {
 	app := newEditSafetyTestApp(t)
 	clips := writeEditSafetyClips(t, app.exeDir)
 	probeJSON := `{"streams":[{"codec_type":"video","duration":"2.500","width":1920,"height":1080,"sample_aspect_ratio":"1:1","display_aspect_ratio":"16:9"}],"format":{"duration":"2.500"}}`
-	stubEditFFmpegCommand(t, func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	stubEditFFmpegCommand(t, app, func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		if strings.Contains(filepath.Base(name), "ffprobe") {
 			return newEditSafetyHelperCommand(ctx, "", []string{
 				"EDIT_SAFETY_STDOUT=" + probeJSON,
@@ -522,7 +526,7 @@ func TestProbeClipDurationBlocksDirectoryClearAndReleasesUse(t *testing.T) {
 	clip := writeEditSafetyClips(t, app.exeDir)[0].VideoPath
 	started := filepath.Join(app.exeDir, "probe.started")
 	release := filepath.Join(app.exeDir, "probe.release")
-	stubEditFFmpegCommand(t, fakeEditSafetyGateCommand(started, release,
+	stubEditFFmpegCommand(t, app, fakeEditSafetyGateCommand(started, release,
 		"EDIT_SAFETY_STDOUT=2.500000", "EDIT_SAFETY_SKIP_OUTPUT=1"))
 
 	probeDone := make(chan error, 1)
@@ -560,7 +564,7 @@ func TestProbeClipDurationTimeoutIsClassifiedAsProbeFailure(t *testing.T) {
 	started := filepath.Join(app.exeDir, "probe.started")
 	release := filepath.Join(app.exeDir, "probe.release") // never created
 	var calls int32
-	stubEditFFmpegCommand(t, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	stubEditFFmpegCommand(t, app, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
 		atomic.AddInt32(&calls, 1)
 		return newEditSafetyHelperCommand(ctx, "gate", []string{
 			"EDIT_SAFETY_STARTED=" + started,
@@ -596,17 +600,17 @@ func TestProbeClipDurationTimeoutIsClassifiedAsProbeFailure(t *testing.T) {
 
 func TestProbeHelpersDoNotStartCommandWithCanceledContext(t *testing.T) {
 	var calls int32
-	stubEditFFmpegCommand(t, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	factory := func(ctx context.Context, _ string, args ...string) *exec.Cmd {
 		atomic.AddInt32(&calls, 1)
 		return newEditSafetyHelperCommand(ctx, "no_output", nil, args)
-	})
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := probeDurationByFFprobe(ctx, "ffprobe", "clip.mp4"); err == nil {
+	if _, err := probeDurationByFFprobeWithFactory(ctx, "ffprobe", "clip.mp4", editdomain.CommandFactory(factory)); err == nil {
 		t.Fatal("canceled duration probe should fail")
 	}
-	if _, err := probeVideoStreamInfo(ctx, "ffprobe", "clip.mp4"); err == nil {
+	if _, err := probeVideoStreamInfoWithFactory(ctx, "ffprobe", "clip.mp4", editdomain.CommandFactory(factory)); err == nil {
 		t.Fatal("canceled stream probe should fail")
 	}
 	if got := atomic.LoadInt32(&calls); got != 0 {
@@ -621,7 +625,7 @@ func TestConcatEditClipsWorkspaceCloseCancelsRunningFFmpeg(t *testing.T) {
 	clips := writeEditSafetyClips(t, dataDir)
 	started := filepath.Join(dataDir, "ffmpeg.started")
 	release := filepath.Join(dataDir, "ffmpeg.release") // never created
-	stubEditFFmpegCommand(t, fakeEditSafetyGateCommand(started, release))
+	stubEditFFmpegCommand(t, app, fakeEditSafetyGateCommand(started, release))
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -672,7 +676,7 @@ func TestConcatEditClipsCancelAfterFFmpegSuccessDoesNotPublish(t *testing.T) {
 			started := filepath.Join(dataDir, "ffmpeg.started")
 			release := filepath.Join(dataDir, "ffmpeg.release")
 			gate := fakeEditSafetyDetachedGateCommand(started, release)
-			stubEditFFmpegCommand(t, func(ctx context.Context, command string, args ...string) *exec.Cmd {
+			stubEditFFmpegCommand(t, app, func(ctx context.Context, command string, args ...string) *exec.Cmd {
 				if strings.Contains(filepath.Base(command), "ffprobe") {
 					return newEditSafetyHelperCommand(ctx, "", []string{
 						"EDIT_SAFETY_STDOUT=" + probeJSON,
@@ -757,7 +761,7 @@ func TestConcatEditClipsCancelDoesNotRetryNextEncoderProfile(t *testing.T) {
 	started := filepath.Join(dataDir, "ffmpeg.started")
 	release := filepath.Join(dataDir, "ffmpeg.release") // never created
 	var calls int32
-	stubEditFFmpegCommand(t, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	stubEditFFmpegCommand(t, app, func(ctx context.Context, _ string, args ...string) *exec.Cmd {
 		atomic.AddInt32(&calls, 1)
 		return newEditSafetyHelperCommand(ctx, "gate", []string{
 			"EDIT_SAFETY_STARTED=" + started,

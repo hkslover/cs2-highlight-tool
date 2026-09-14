@@ -289,17 +289,3 @@ func editTaskCanceledError(ctx context.Context) error {
 	}
 	return nil
 }
-
-// editProbeFailure classifies one failed ffprobe invocation. The command has
-// already exited when this is called, so no child process is left behind.
-func editProbeFailure(ctx context.Context, cmdErr error, output string) error {
-	if ctx != nil {
-		switch {
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			return fmt.Errorf("ffprobe 探测超时（超过 %s）: %w", editProbeTimeout, ctx.Err())
-		case ctx.Err() != nil:
-			return fmt.Errorf("工作目录正在关闭，探测已取消: %w", ctx.Err())
-		}
-	}
-	return fmt.Errorf("ffprobe failed: %w: %s", cmdErr, strings.TrimSpace(output))
-}

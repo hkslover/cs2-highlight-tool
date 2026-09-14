@@ -10,6 +10,7 @@ import (
 
 	"cs2-highlight-tool-v2/internal/appdata"
 	"cs2-highlight-tool-v2/internal/config"
+	editdomain "cs2-highlight-tool-v2/internal/edit"
 	"cs2-highlight-tool-v2/internal/envsetup"
 	"cs2-highlight-tool-v2/internal/producews"
 	"cs2-highlight-tool-v2/internal/release"
@@ -51,6 +52,10 @@ type App struct {
 	// a second request is rejected instead of interleaving progress events,
 	// temp files and output reservations with the active task.
 	editTasks editTaskAdmission
+	// editCommandFactoryOverride is an instance-scoped test seam. Production
+	// runners default to exec.CommandContext; no package-level mutable command
+	// factory is shared between App instances or parallel tests.
+	editCommandFactoryOverride editdomain.CommandFactory
 
 	managedFilesMu sync.Mutex
 	// managedFileUsers counts every operation that may touch the managed
