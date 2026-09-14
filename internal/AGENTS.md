@@ -7,7 +7,7 @@
 - `app/` 承担 Wails 边界和跨模块编排，公开请求/响应在此定义；不要让低层包依赖 UI。
 - 启动状态模型与通知入口：`envsetup/state.go`、`envsetup/events.go`；检查/动作/状态逻辑按 `service_*.go` 分工。
 - 配置默认值、归一化和兼容处理集中在 `config/config.go`；同一工作目录的读改写事务由 `config.Store` 统一串行化并由 App 注入 `envsetup.Service`；应用层设置映射在 `app/clip_settings.go`。
-- Demo 事实与整局 POV 解析在 `demo/`，片段归一化与生成编排在 `app/plugin_generate.go`，插件命令构建在 `clipsjson/`。
+- Demo 事实与整局 POV 解析在 `demo/`；`plugingen/` 的 `NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤只接收显式快照并保持无副作用；`app/plugin_generate*.go` 负责 Wails DTO 适配、工作目录/配置准入、JSON/take/history 写入和 HLAE 启动编排；插件动作仍由 `clipsjson/` 构建。
 - 平台导入协调（同键去重、等待者、结果固定与清理）在 `app/import_coordinator.go`，由工作目录身份持有并在切换/重置时替换；`fivee`、`wanmei` 只负责来源解析、下载解压与缓存提交，不互相依赖。
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
@@ -44,6 +44,7 @@
 - debug DLL override 只作为 `App` 会话状态，不写入配置，也不参与启动插件版本检测。
 - debug override 仅改变注入源 DLL，目标、备份和恢复复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
 - 修改生成计划时核对 take 命名、稳定 source ID、历史去重键与前端选择状态，不能仅验证 JSON 能序列化。
+- 批量生成在准入并停止旧会话后只读取一次 `config.Store` 快照；后续 job 不得重新读取配置而产生窗口、编码或命令设置漂移。规划函数不得读取时钟，批次时间戳由 App 注入。
 
 ## 日志与诊断
 
@@ -56,6 +57,7 @@
 ## 验证与维护
 
 - 后端代码改动执行 `go test ./...`；envsetup/release 改动确认这两个包通过，可用 `go test ./internal/envsetup ./internal/release` 定位失败。
+- 生成规划改动需覆盖 `primary_view`/兼容输入、override 继承、full-round 顺序与 source ID、历史过滤、take 元数据和批次快照冻结；`go vet ./...` 作为提取完成后的静态检查。
 - 状态、回退或日志契约变更，按涉及范围补充状态迁移、持久化/回退、字段与脱敏测试。
 - 制作生命周期变更应覆盖重复启动、文件清理互斥、失败收尾重试、进程归属与取消传播等实际受影响路径。
 - 剪辑裁剪范围须校验有限值、边界和非空结果；缺少可靠 victim 标记时保持整段，不按当前设置推断死亡位置。可选裁剪与无音轨合成沿用 `app_edit.go` / `edit_ffmpeg.go` 的单次处理路径，并覆盖混合整段/裁剪输入。编辑相关改动还须覆盖单任务准入、唯一输出预留、失败/取消不写 history 以及不删除既有产物。
