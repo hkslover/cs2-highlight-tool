@@ -6,6 +6,7 @@ import (
 	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
+	"cs2-highlight-tool-v2/internal/plugingen"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -69,7 +70,7 @@ type SelectedClipItem struct {
 // isVictimPrimaryView reports whether the selected player is the victim of
 // this kill, i.e. the item came from the clip page's death mode.
 func isVictimPrimaryView(primaryView string) bool {
-	return strings.EqualFold(strings.TrimSpace(primaryView), PrimaryViewVictim)
+	return plugingen.IsVictimPrimaryView(primaryView)
 }
 
 type ClipItemOverrides struct {
@@ -92,33 +93,8 @@ func (a *App) GetClipSettings() (*ClipSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	settings := normalizeClipSettings(ClipSettings{
-		KillerPreSeconds:   cfg.KillerPreSeconds,
-		KillerPostSeconds:  cfg.KillerPostSeconds,
-		VictimPreSeconds:   cfg.VictimPreSeconds,
-		VictimPostSeconds:  cfg.VictimPostSeconds,
-		AutoAddVictimView:  cfg.AutoAddVictimView,
-		RecordFPS:          cfg.RecordFPS,
-		RecordQuality:      cfg.RecordQuality,
-		EditFPS:            cfg.EditFPS,
-		EditQuality:        cfg.EditQuality,
-		VideoPreset:        cfg.VideoPreset,
-		LaunchResolution:   cfg.LaunchResolution,
-		RecordOutputDir:    a.fixedRecordOutputDir(),
-		EnableSpecShowXray: cfg.EnableSpecShowXray,
-		HideAllUI:          cfg.HideAllUI,
-		HidePlayerAvatars:  cfg.HidePlayerAvatars,
-		UseShoulderCamera:  cfg.UseShoulderCamera,
-		PovHudEnabled:      cfg.PovHudEnabled,
-		PovRadarEnabled:    cfg.PovRadarEnabled,
-		SkyBlackout:        cfg.SkyBlackout,
-		DisableClouds:      cfg.DisableClouds,
-		KillFeedLifetime:   cfg.KillFeedLifetime,
-		BlockKillFeed:      cfg.BlockKillFeed,
-	})
+	settings := clipSettingsFromConfig(cfg, a.fixedRecordOutputDir())
 	decorateEffectiveVideoSettings(&settings, cfg)
-	actionSettings := config.ResolveClipActionSettings(cfg)
-	settings.EnableVoice = actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH
 	return &settings, nil
 }
 

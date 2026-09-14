@@ -108,3 +108,21 @@ func TestFilterItemsByHistory_IgnoresNonMatchingHistoryKeys(t *testing.T) {
 		t.Fatalf("unexpected item: %+v", result[0])
 	}
 }
+
+func TestFilterFullRoundPOVSegmentsByHistoryUsesStableSourceID(t *testing.T) {
+	segments := []clipsjson.FullRoundPOVSegment{
+		{Round: 1, PlayerSteamID: "765", SourceID: "full_round_pov:r1:p765", Target: "7", StartTick: 100, EndTick: 200},
+		{Round: 2, PlayerSteamID: "765", SourceID: "full_round_pov:r2:p765", Target: "7", StartTick: 300, EndTick: 400},
+	}
+	plans := []TakePlan{
+		{DemoPath: "demo.dem", View: "full_round_pov", SpecMode: 1, SourceID: segments[0].SourceID},
+		{DemoPath: "demo.dem", View: "full_round_pov", SpecMode: 1, SourceID: segments[1].SourceID},
+	}
+	history := map[string]struct{}{
+		BuildProduceHistoryKeyWithSourceID("demo.dem", "full_round_pov", 1, nil, segments[0].SourceID): {},
+	}
+	filtered := FilterFullRoundPOVSegmentsByHistory(segments, plans, history, "")
+	if len(filtered) != 1 || filtered[0].SourceID != segments[1].SourceID {
+		t.Fatalf("filtered=%+v want only round 2", filtered)
+	}
+}

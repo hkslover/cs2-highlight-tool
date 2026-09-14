@@ -969,6 +969,20 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 }
 
+func TestClipSettingsFromConfigMapsEditSettings(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.EditFPS = config.MaxEditFPS + 1
+	cfg.EditQuality = " ULTRA "
+
+	settings := clipSettingsFromConfig(cfg, "outputs")
+	if settings.EditFPS != config.MaxEditFPS {
+		t.Fatalf("edit_fps = %d, want %d", settings.EditFPS, config.MaxEditFPS)
+	}
+	if settings.EditQuality != "ultra" {
+		t.Fatalf("edit_quality = %q, want ultra", settings.EditQuality)
+	}
+}
+
 func TestBuildHLAECommandLine(t *testing.T) {
 	line43 := buildHLAECommandLine("4:3")
 	if !strings.Contains(line43, "-w 1440 -h 1080") {

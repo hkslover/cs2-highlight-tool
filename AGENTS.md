@@ -18,7 +18,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/release/`、`internal/endpoints/`、`internal/download/` | Release 快照、下载地址策略、下载与解压 |
 | `internal/demo/` | Demo 解析、击杀事实、整局 POV 计划 |
 | `internal/wanmei/`、`internal/fivee/` | 对战平台查询与 Demo 下载 |
-| `internal/plugingen/`、`internal/clipsjson/` | 片段过滤、历史键与插件 JSON 构建 |
+| `internal/plugingen/`、`internal/clipsjson/` | 无副作用的片段归一化/历史过滤/生成规划与插件 JSON 动作构建 |
 | `internal/producews/` | 制作 WebSocket、队列、take 状态与诊断 |
 | `internal/producegame/`、`internal/producemerge/` | 游戏环境准备与恢复、录制产物合并 |
 | `internal/ffmpegprofile/`、`internal/procutil/` | 编码能力探测与回退、平台进程工具 |
@@ -106,12 +106,13 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 
 上述命令开关关闭时不写入对应命令或反向重置命令。FFmpeg 探测缓存字段为 `ffmpeg_detected_preset/ffmpeg_detected_encoders/ffmpeg_detected_at`，供自动选择和编码回退使用。`GetClipSettings` / `SaveClipSettings` 响应中的 `effective_video_preset/effective_video_encoder/effective_video_status` 是只读的实际编码结果，不改变持久化的 `video_preset=auto`；前端应在探测完成后展示这些字段。`GetClipActionSettings` / `SaveClipActionSettings` 的语音配置必须与 ClipSettings 语义一致。
 
-- 生成入口为 `GeneratePluginJSON`、`GeneratePluginJSONBatch`、`GeneratePluginJSONBatchAndLaunchHLAE`；批量请求通过 `jobs[]` 承载单 Demo 请求。请求/结果结构见 `internal/app/plugin_generate.go`。
+- 生成入口为 `GeneratePluginJSON`、`GeneratePluginJSONBatch`、`GeneratePluginJSONBatchAndLaunchHLAE`；批量请求通过 `jobs[]` 承载单 Demo 请求。请求/结果结构见 `internal/app/plugin_generate_types.go`，编排见 `plugin_generate.go` 与 `plugin_generate_launch.go`。
+- 生成规划由 `internal/plugingen` 的显式输入/输出承担：`NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤不得访问 App、Wails、磁盘配置或进程；App 在工作目录准入后冻结一次配置快照，再负责 JSON 写入、take/history 登记和可选启动编排。
 - 新调用使用 `selected_items[]`；`selected_kills` 仅作兼容。`include_killer` 缺省为 true，`include_victim` 控制被害者录制。
-- `primary_view=killer|victim` 表示选中玩家在击杀事件中的角色，缺省按 killer。UI 的“主视角/对方视角”须据此映射；死亡模式不能把主视角固定理解为击杀者。字段缺省的兼容和窗口映射见 `clip_settings.go`、`plugin_generate.go`、`frontend/src/shared/clip-views.ts`。
+- `primary_view=killer|victim` 表示选中玩家在击杀事件中的角色，缺省按 killer。UI 的“主视角/对方视角”须据此映射；死亡模式不能把主视角固定理解为击杀者。请求字段见 `internal/app/clip_settings.go`，兼容缺省与窗口映射见 `internal/app/plugin_generate_adapters.go`、`internal/plugingen/selection.go`、`frontend/src/shared/clip-views.ts`。
 - 单片段 `clip_overrides` 支持 `killer_pre_seconds/killer_post_seconds/victim_pre_seconds/victim_post_seconds/enable_voice/enable_spec_show_xray_zero`，缺省继承全局设置。
 - 整局 POV 使用独立的 `full_round_pov.player_steam_id`。每回合一个 take，早于 victim clip takes；victim-only 片段须传 `include_killer=false`。
-- `PreviewFullRoundPOV` 仅解析预览，不生成文件；只保留目标至少有一次有效击杀的回合，无击杀时 segments 为空。回合起点取 `RoundStart`，有效击杀/死亡以 `RoundFreezetimeEnd` 后为准；生成录制终点为目标死亡后 1 秒，存活时为下一回合开始前 1 秒，无下一回合则回退本回合结束。预览原始 tick 与生成时补边分别见 `internal/demo/full_round_pov.go`、`internal/app/full_round_pov.go`。
+- `PreviewFullRoundPOV` 仅解析预览，不生成文件；只保留目标至少有一次有效击杀的回合，无击杀时 segments 为空。回合起点取 `RoundStart`，有效击杀/死亡以 `RoundFreezetimeEnd` 后为准；生成录制终点为目标死亡后 1 秒，存活时为下一回合开始前 1 秒，无下一回合则回退本回合结束。预览原始 tick 与生成时补边分别见 `internal/demo/full_round_pov.go`、`internal/plugingen/full_round.go`；App 兼容委托位于 `internal/app/full_round_pov.go`。
 - `take_plans[]` 的整局 POV 使用 `view=full_round_pov` 和稳定 `source_id`，附带 `round/player_name/player_steam_id/start_tick/end_tick/end_reason`。
 - 击杀 take plan/history 可附带 `tick_rate`、`record_start_tick`、`record_end_tick` 和 `kill_offsets_seconds`；这些字段只描述实际录制观测与元数据，不改变原有的 Demo 事件窗口或插件命令时序。
 - 批量启动的 `debug.keep_intermediate_files` 仅本会话有效，默认 false；true 时收尾只清理 `*.mux.tmp.mp4`，保留 take 视频/音频中间产物。
