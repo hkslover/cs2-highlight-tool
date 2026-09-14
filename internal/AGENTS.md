@@ -10,6 +10,7 @@
 - Demo 事实与整局 POV 解析在 `demo/`；`plugingen/` 的 `NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤只接收显式快照并保持无副作用；`app/plugin_generate*.go` 负责 Wails DTO 适配、工作目录/配置准入、JSON/take/history 写入和 HLAE 启动编排；插件动作仍由 `clipsjson/` 构建。
 - 平台导入协调（同键去重、等待者、结果固定与清理）在 `app/import_coordinator.go`，由工作目录身份持有并在切换/重置时替换；`fivee`、`wanmei` 只负责来源解析、下载解压与缓存提交，不互相依赖。
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
+- `edit/` 承担不依赖 App/Wails 的剪辑模型、裁剪/转场/filter graph 规划、ffprobe 解析和 context-aware FFmpeg runner；它只接收显式媒体事实、编码选择、命令工厂与进度回调，不读取配置、切换 workspace、发 Wails 事件或登记 history。`app/app_edit.go`、`app/edit_ffmpeg.go` 仅负责 DTO/配置/准入/路径预留与提交/history/事件适配。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
 - `download.ReplaceDirWithContents` 只承担目录文件系统提交，不包含 HLAE/FFmpeg 组件判断。实现必须使用本次实例创建且可确认归属的唯一 staging/backup；准备或备份失败保持旧 target，提交失败先尝试恢复，恢复失败保留两条恢复路径并返回主/恢复双重错误。提交成功但旧 backup 清理失败通过 `ReplaceDirWithContentsWithReport` 暴露为告警，不得回报为安装失败；不触碰既有 `.old` 或未知事务残留。文件系统故障注入使用实例依赖，不增加包级可写 seam。
 - `download.CopyFile` 是兼容入口，但使用同目录临时文件完成 Copy、Close 检查和提交 rename；缓存导入通过 `IsLikelyDemoFile` 只做基本文件戳校验，不能把命中结果当作完整性证明。目标已存在但不是普通文件（尤其是目录）时必须在移动目标前拒绝，不得把目录移入备份路径后用文件覆盖。原子复制的故障注入通过实例 `atomicCopyOps`，不得引入包级可写 seam。
@@ -60,5 +61,5 @@
 - 生成规划改动需覆盖 `primary_view`/兼容输入、override 继承、full-round 顺序与 source ID、历史过滤、take 元数据和批次快照冻结；`go vet ./...` 作为提取完成后的静态检查。
 - 状态、回退或日志契约变更，按涉及范围补充状态迁移、持久化/回退、字段与脱敏测试。
 - 制作生命周期变更应覆盖重复启动、文件清理互斥、失败收尾重试、进程归属与取消传播等实际受影响路径。
-- 剪辑裁剪范围须校验有限值、边界和非空结果；缺少可靠 victim 标记时保持整段，不按当前设置推断死亡位置。可选裁剪与无音轨合成沿用 `app_edit.go` / `edit_ffmpeg.go` 的单次处理路径，并覆盖混合整段/裁剪输入。编辑相关改动还须覆盖单任务准入、唯一输出预留、失败/取消不写 history 以及不删除既有产物。
+- 剪辑裁剪范围须校验有限值、边界和非空结果；缺少可靠 victim 标记时保持整段，不按当前设置推断死亡位置。可选裁剪与无音轨合成由 `internal/edit` 的单次处理路径执行，并覆盖混合整段/裁剪输入。编辑相关改动还须覆盖单任务准入、唯一输出预留、失败/取消不写 history 以及不删除既有产物。
 - 跨层契约变更还须执行前端构建并更新根文件与前端规则；仅文档改动按根文件的文档检查执行。

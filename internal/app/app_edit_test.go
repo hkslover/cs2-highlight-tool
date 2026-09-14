@@ -15,6 +15,7 @@ import (
 
 	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/demo"
+	editdomain "cs2-highlight-tool-v2/internal/edit"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 	"cs2-highlight-tool-v2/internal/producews"
 )
@@ -319,12 +320,9 @@ func TestProbeVideoStreamInfo_StreamDurationPriorityAndFormatFallback(t *testing
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := ffmpegCommandContext
-			ffmpegCommandContext = fakeFFProbeCommandJSON
-			t.Cleanup(func() { ffmpegCommandContext = old })
 			t.Setenv("EDIT_FFPROBE_JSON", tt.payload)
 
-			got, err := probeVideoStreamInfo(context.Background(), "ffprobe", "clip.mp4")
+			got, err := probeVideoStreamInfoWithFactory(context.Background(), "ffprobe", "clip.mp4", editdomain.CommandFactory(fakeFFProbeCommandJSON))
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected probe error")
@@ -356,12 +354,9 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 		t.Fatalf("write clip: %v", err)
 	}
 
-	old := ffmpegCommandContext
-	ffmpegCommandContext = fakeFFProbeCommandJSON
-	t.Cleanup(func() { ffmpegCommandContext = old })
 	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900,"sample_aspect_ratio":"1:1","display_aspect_ratio":"16:9"}],"format":{"duration":"8.000"}}`)
 
-	app := &App{exeDir: exeDir}
+	app := &App{exeDir: exeDir, editCommandFactoryOverride: editdomain.CommandFactory(fakeFFProbeCommandJSON)}
 	got, err := app.resolveEditClips(context.Background(), []EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
 	if err != nil {
 		t.Fatalf("resolveEditClips: %v", err)
@@ -438,12 +433,6 @@ func TestHelperProcessEditFFProbe(t *testing.T) {
 }
 
 func TestConcatEditClips_AddsEditedHistoryEntry(t *testing.T) {
-	old := ffmpegCommandContext
-	ffmpegCommandContext = fakeFFmpegCommandSuccessContext
-	t.Cleanup(func() {
-		ffmpegCommandContext = old
-	})
-
 	exeDir := t.TempDir()
 	ffmpegDir := filepath.Join(exeDir, "ffmpeg", "bin")
 	if err := os.MkdirAll(ffmpegDir, 0755); err != nil {
@@ -462,7 +451,7 @@ func TestConcatEditClips_AddsEditedHistoryEntry(t *testing.T) {
 		t.Fatalf("write clipB: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := &App{exeDir: exeDir, editCommandFactoryOverride: editdomain.CommandFactory(fakeFFmpegCommandSuccessContext)}
 	outPath, err := app.ConcatEditClips(EditConcatRequest{
 		Clips: []EditConcatClip{
 			{VideoPath: clipA, Duration: 3.2},

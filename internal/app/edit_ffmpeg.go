@@ -1,45 +1,43 @@
 package app
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"sync"
 
 	"cs2-highlight-tool-v2/internal/config"
+	editdomain "cs2-highlight-tool-v2/internal/edit"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 )
 
-// ffmpegCommandContext builds every edit FFmpeg/FFprobe command so the task
-// context reaches exec.CommandContext. It is a package-level variable so tests
-// can substitute a fake; the probe and concat paths both go through
-// newFFmpegCommandContext.
-var ffmpegCommandContext = exec.CommandContext
-
-func newFFmpegCommandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
-	if ctx == nil {
-		ctx = context.Background()
+func (a *App) newEditRunner(tracker *composeProgressTracker) editdomain.Runner {
+	commandFactory := editdomain.CommandFactory(exec.CommandContext)
+	if a != nil && a.editCommandFactoryOverride != nil {
+		commandFactory = a.editCommandFactoryOverride
 	}
-	return ffmpegCommandContext(ctx, name, args...)
-}
-
-type probedVideoInfo struct {
-	Duration           float64
-	Width              int
-	Height             int
-	SampleAspectRatio  string
-	DisplayAspectRatio string
-	HasAudio           bool
-	AudioKnown         bool
+	var progress editdomain.ProgressSink
+	if tracker != nil {
+		progress = func(event editdomain.ProgressEvent) {
+			switch event.Kind {
+			case editdomain.ProgressStageStart:
+				tracker.stageStart(event.Label)
+			case editdomain.ProgressStageProgress:
+				tracker.stageProgress(event.Ratio)
+			case editdomain.ProgressStageDone:
+				tracker.stageDone()
+			}
+		}
+	}
+	return editdomain.Runner{
+		CommandContext:   commandFactory,
+		ConfigureProcess: configureNoWindowProcess,
+		ProbeTimeout:     editProbeTimeout,
+		ComposeTimeout:   editComposeTimeout,
+		Progress:         progress,
+	}
 }
 
 func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
@@ -70,138 +68,23 @@ func (a *App) ProbeClipDuration(videoPath string) (float64, error) {
 
 	probeCtx, cancel := context.WithTimeout(workCtx, editProbeTimeout)
 	defer cancel()
-	return probeDurationByFFprobe(probeCtx, ffprobeExe, videoPath)
+	return a.newEditRunner(nil).ProbeDuration(probeCtx, ffprobeExe, videoPath)
 }
 
 func probeDurationByFFprobe(ctx context.Context, ffprobeExe string, videoPath string) (float64, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return 0, editProbeFailure(ctx, err, "")
-	}
-	cmd := newFFmpegCommandContext(
-		ctx,
-		ffprobeExe,
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		videoPath,
-	)
-	configureNoWindowProcess(cmd)
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return 0, editProbeFailure(ctx, err, string(out))
-	}
-
-	raw := strings.TrimSpace(string(out))
-	duration, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse ffprobe duration failed: %s", raw)
-	}
-	if duration <= 0 {
-		return 0, fmt.Errorf("invalid ffprobe duration: %s", raw)
-	}
-
-	return math.Round(duration*1000) / 1000, nil
+	return probeDurationByFFprobeWithFactory(ctx, ffprobeExe, videoPath, editdomain.CommandFactory(exec.CommandContext))
 }
 
 func probeVideoStreamInfo(ctx context.Context, ffprobeExe, videoPath string) (probedVideoInfo, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return probedVideoInfo{}, editProbeFailure(ctx, err, "")
-	}
-	cmd := newFFmpegCommandContext(
-		ctx,
-		ffprobeExe,
-		"-v", "error",
-		"-show_entries", "stream=codec_type,duration,width,height,sample_aspect_ratio,display_aspect_ratio",
-		"-show_entries", "format=duration",
-		"-of", "json",
-		videoPath,
-	)
-	configureNoWindowProcess(cmd)
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return probedVideoInfo{}, editProbeFailure(ctx, err, string(out))
-	}
-
-	var payload struct {
-		Streams []struct {
-			CodecType          string          `json:"codec_type"`
-			Duration           json.RawMessage `json:"duration"`
-			Width              int             `json:"width"`
-			Height             int             `json:"height"`
-			SampleAspectRatio  string          `json:"sample_aspect_ratio"`
-			DisplayAspectRatio string          `json:"display_aspect_ratio"`
-		} `json:"streams"`
-		Format struct {
-			Duration json.RawMessage `json:"duration"`
-		} `json:"format"`
-	}
-	if err := json.Unmarshal(out, &payload); err != nil {
-		return probedVideoInfo{}, fmt.Errorf("parse ffprobe video stream failed: %w", err)
-	}
-	if len(payload.Streams) == 0 {
-		return probedVideoInfo{}, fmt.Errorf("ffprobe returned no video stream")
-	}
-
-	videoIndex := -1
-	hasAudio := false
-	hasCodecType := false
-	for index, candidate := range payload.Streams {
-		codecType := strings.ToLower(strings.TrimSpace(candidate.CodecType))
-		if codecType != "" {
-			hasCodecType = true
-		}
-		if codecType == "audio" {
-			hasAudio = true
-		}
-		if videoIndex < 0 && (codecType == "video" || codecType == "") {
-			videoIndex = index
-		}
-	}
-	if videoIndex < 0 {
-		return probedVideoInfo{}, fmt.Errorf("ffprobe returned no video stream")
-	}
-	stream := payload.Streams[videoIndex]
-	duration, ok := parseFFProbeDurationValue(stream.Duration)
-	if !ok {
-		duration, ok = parseFFProbeDurationValue(payload.Format.Duration)
-	}
-	if !ok {
-		return probedVideoInfo{}, fmt.Errorf("ffprobe returned invalid video duration")
-	}
-	if stream.Width <= 0 || stream.Height <= 0 {
-		return probedVideoInfo{}, fmt.Errorf("ffprobe returned invalid video resolution: %dx%d", stream.Width, stream.Height)
-	}
-
-	return probedVideoInfo{
-		Duration:           duration,
-		Width:              stream.Width,
-		Height:             stream.Height,
-		SampleAspectRatio:  strings.TrimSpace(stream.SampleAspectRatio),
-		DisplayAspectRatio: strings.TrimSpace(stream.DisplayAspectRatio),
-		HasAudio:           hasAudio,
-		AudioKnown:         hasCodecType,
-	}, nil
+	return probeVideoStreamInfoWithFactory(ctx, ffprobeExe, videoPath, editdomain.CommandFactory(exec.CommandContext))
 }
 
-func parseFFProbeDurationValue(raw json.RawMessage) (float64, bool) {
-	value := strings.TrimSpace(string(raw))
-	value = strings.Trim(value, `"`)
-	if value == "" || strings.EqualFold(value, "N/A") {
-		return 0, false
-	}
-	duration, err := strconv.ParseFloat(value, 64)
-	if err != nil || duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
-		return 0, false
-	}
-	return duration, true
+func probeDurationByFFprobeWithFactory(ctx context.Context, ffprobeExe string, videoPath string, commandFactory editdomain.CommandFactory) (float64, error) {
+	return (editdomain.Runner{CommandContext: commandFactory, ConfigureProcess: configureNoWindowProcess, ProbeTimeout: editProbeTimeout}).ProbeDuration(ctx, ffprobeExe, videoPath)
+}
+
+func probeVideoStreamInfoWithFactory(ctx context.Context, ffprobeExe, videoPath string, commandFactory editdomain.CommandFactory) (probedVideoInfo, error) {
+	return (editdomain.Runner{CommandContext: commandFactory, ConfigureProcess: configureNoWindowProcess, ProbeTimeout: editProbeTimeout}).ProbeVideoStreamInfo(ctx, ffprobeExe, videoPath)
 }
 
 func (a *App) resolveEditOutputPaths() (string, string, editEncodeSettings) {
@@ -232,138 +115,33 @@ func (a *App) resolveFFprobeExe() string {
 }
 
 func resolveEditEncodeSettings(fps int, quality string, videoPreset string, detectedEncoders []string) editEncodeSettings {
-	nextFPS := fps
-	if nextFPS <= 0 {
-		nextFPS = config.DefaultEditFPS
-	}
-	if nextFPS < config.MinEditFPS {
-		nextFPS = config.MinEditFPS
-	}
-	if nextFPS > config.MaxEditFPS {
-		nextFPS = config.MaxEditFPS
-	}
-
-	nextQuality := ffmpegprofile.NormalizeEditQuality(quality)
-	nextPreset := ffmpegprofile.NormalizeUserPreset(videoPreset)
-	caps := ffmpegprofile.CapabilitiesFromEncoders(detectedEncoders)
-
-	return editEncodeSettings{
-		FPS:         nextFPS,
-		Quality:     nextQuality,
-		VideoPreset: nextPreset,
-		Caps:        caps,
-	}
+	return editdomain.NormalizeEncodeSettings(fps, quality, videoPreset, detectedEncoders, editdomain.EncodeLimits{
+		DefaultFPS: config.DefaultEditFPS,
+		MinFPS:     config.MinEditFPS,
+		MaxFPS:     config.MaxEditFPS,
+	})
 }
 
 func buildEditRetryProfiles(encode editEncodeSettings) []ffmpegprofile.Profile {
-	return ffmpegprofile.BuildRetryChain(encode.VideoPreset, encode.Caps)
+	return editdomain.BuildRetryProfiles(encode)
 }
 
 func withFFmpegProgressArgs(args []string) []string {
-	if len(args) == 0 {
-		return []string{"-progress", "pipe:1", "-nostats"}
-	}
-	last := args[len(args)-1]
-	rebuilt := make([]string, 0, len(args)+3)
-	rebuilt = append(rebuilt, args[:len(args)-1]...)
-	rebuilt = append(rebuilt, "-progress", "pipe:1", "-nostats", last)
-	return rebuilt
+	return editdomain.WithProgressArgs(args)
 }
 
 func runFFmpegCommandWithProgress(cmd *exec.Cmd, expectedDurationSeconds float64, tracker *composeProgressTracker) ([]byte, error) {
-	if tracker == nil {
-		return cmd.CombinedOutput()
-	}
-
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	var readWG sync.WaitGroup
-
-	readWG.Add(1)
-	go func() {
-		defer readWG.Done()
-		scanner := bufio.NewScanner(stdoutPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			stdoutBuf.WriteString(line)
-			stdoutBuf.WriteByte('\n')
-			key, value, ok := strings.Cut(line, "=")
-			if !ok {
-				continue
+	var sink editdomain.ProgressSink
+	if tracker != nil {
+		sink = func(event editdomain.ProgressEvent) {
+			if event.Kind == editdomain.ProgressStageProgress {
+				tracker.stageProgress(event.Ratio)
 			}
-			key = strings.TrimSpace(key)
-			value = strings.TrimSpace(value)
-			if key == "progress" && value == "end" {
-				tracker.stageProgress(1)
-				continue
-			}
-			outSeconds, parsed := parseFFmpegProgressSeconds(key, value)
-			if !parsed || expectedDurationSeconds <= 0 {
-				continue
-			}
-			tracker.stageProgress(outSeconds / expectedDurationSeconds)
 		}
-	}()
-
-	readWG.Add(1)
-	go func() {
-		defer readWG.Done()
-		_, _ = io.Copy(&stderrBuf, stderrPipe)
-	}()
-
-	waitErr := cmd.Wait()
-	readWG.Wait()
-
-	combined := append([]byte{}, stdoutBuf.Bytes()...)
-	combined = append(combined, stderrBuf.Bytes()...)
-	if waitErr != nil {
-		return combined, waitErr
 	}
-	return combined, nil
+	return editdomain.RunCommandWithProgress(cmd, expectedDurationSeconds, sink)
 }
 
 func parseFFmpegProgressSeconds(key, value string) (float64, bool) {
-	key = strings.TrimSpace(key)
-	value = strings.TrimSpace(value)
-	switch key {
-	case "out_time_us", "out_time_ms":
-		raw, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || raw < 0 {
-			return 0, false
-		}
-		return float64(raw) / 1_000_000, true
-	case "out_time":
-		parts := strings.Split(value, ":")
-		if len(parts) != 3 {
-			return 0, false
-		}
-		hours, err := strconv.ParseFloat(parts[0], 64)
-		if err != nil {
-			return 0, false
-		}
-		minutes, err := strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			return 0, false
-		}
-		seconds, err := strconv.ParseFloat(parts[2], 64)
-		if err != nil {
-			return 0, false
-		}
-		return hours*3600 + minutes*60 + seconds, true
-	default:
-		return 0, false
-	}
+	return editdomain.ParseProgressSeconds(key, value)
 }

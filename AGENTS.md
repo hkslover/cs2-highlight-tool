@@ -21,6 +21,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/plugingen/`、`internal/clipsjson/` | 无副作用的片段归一化/历史过滤/生成规划与插件 JSON 动作构建 |
 | `internal/producews/` | 制作 WebSocket、队列、take 状态与诊断 |
 | `internal/producegame/`、`internal/producemerge/` | 游戏环境准备与恢复、录制产物合并 |
+| `internal/edit/` | 无 Wails 副作用的剪辑事实归一化、转场/filter graph 规划、ffprobe 与 FFmpeg 执行器 |
 | `internal/ffmpegprofile/`、`internal/procutil/` | 编码能力探测与回退、平台进程工具 |
 | `internal/logging/`、`internal/changelog/` | 结构化日志与脱敏、内嵌版本更新说明 |
 | `frontend/src/app/` | 应用壳、导航、hash 路由 |
