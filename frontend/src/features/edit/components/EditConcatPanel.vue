@@ -56,9 +56,6 @@
         >
           {{ exporting ? t("main.edit.exporting") : t("main.edit.export") }}
         </n-button>
-        <n-tag v-if="exportPath" type="success" size="small">
-          {{ t("main.edit.export_success", { path: basename(exportPath) }) }}
-        </n-tag>
         <n-button
           v-if="exportPath"
           size="small"
@@ -68,6 +65,9 @@
         >
           {{ t("main.produce.open_clip_folder") }}
         </n-button>
+        <n-tag v-if="exportPath" type="success" size="small">
+          {{ t("main.edit.export_success", { path: basename(exportPath) }) }}
+        </n-tag>
       </n-space>
       <n-space
         v-if="exporting || composeProgress.active"
