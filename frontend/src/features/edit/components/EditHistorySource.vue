@@ -60,6 +60,25 @@
               :name="roundGroup.name"
               :title="sourceRoundTitle(roundGroup)"
             >
+              <template #header-extra>
+                <div
+                  v-if="roundGroup.name !== 'pov-group'"
+                  class="demo-source-actions"
+                  @click.stop
+                >
+                  <n-button
+                    size="tiny"
+                    type="primary"
+                    secondary
+                    :loading="isAddingAllForRound(demoGroup.demo_path, roundGroup.name)"
+                    :disabled="isAddingAllForRound(demoGroup.demo_path, roundGroup.name) || addingAll || exporting"
+                    @click.stop="addAllFromRound(demoGroup, roundGroup)"
+                  >
+                    {{ t("main.edit.add_round") }}
+                  </n-button>
+                </div>
+              </template>
+
               <div class="source-round-items">
                 <div
                   v-for="item in roundGroup.items"
@@ -143,6 +162,7 @@ const { isAdding, addFromHistory: addItemToSequence, addMany } = useEditSequence
 
 const addingAll = ref(false);
 const addingAllByDemo = ref<Record<string, boolean>>({});
+const addingAllByRound = ref<Record<string, boolean>>({});
 
 onMounted(async () => {
   try {
@@ -191,6 +211,20 @@ async function addAllFromDemo(demoGroup: HistoryDemoGroup) {
   showBatchWarning(result.failed, result.firstError);
 }
 
+async function addAllFromRound(demoGroup: HistoryDemoGroup, roundGroup: HistoryRoundGroup) {
+  const key = roundBatchKey(demoGroup.demo_path, roundGroup.name);
+  if (!roundGroup.items.length || isAddingAllForRound(demoGroup.demo_path, roundGroup.name)) return;
+  if (addingAll.value || exporting.value) return;
+  addingAllByRound.value = { ...addingAllByRound.value, [key]: true };
+  setExportPath("");
+  setExportError("");
+  const result = await addMany(orderHistoryByView(roundGroup.items));
+  const next = { ...addingAllByRound.value };
+  delete next[key];
+  addingAllByRound.value = next;
+  showBatchWarning(result.failed, result.firstError);
+}
+
 function showBatchWarning(failed: number, firstError: string) {
   if (failed > 0 && firstError) {
     message.warning(t("main.edit.add_all_partial", { failed, error: firstError }));
@@ -199,6 +233,14 @@ function showBatchWarning(failed: number, firstError: string) {
 
 function isAddingAllForDemo(demoPath: string): boolean {
   return !!addingAllByDemo.value[demoPath];
+}
+
+function roundBatchKey(demoPath: string, name: string): string {
+  return `${demoPath}#${name}`;
+}
+
+function isAddingAllForRound(demoPath: string, name: string): boolean {
+  return !!addingAllByRound.value[roundBatchKey(demoPath, name)];
 }
 
 function sourceRoundTitle(group: HistoryRoundGroup): string {
