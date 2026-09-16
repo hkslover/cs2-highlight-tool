@@ -207,6 +207,12 @@
             </n-button>
           </div>
         </div>
+        <div class="setting-row">
+          <span class="setting-label">{{ t("main.settings.debug_popup_ad") }}</span>
+          <n-button size="tiny" secondary type="primary" @click="triggerDebugPopupAd">
+            {{ t("main.settings.debug_popup_ad_trigger") }}
+          </n-button>
+        </div>
       </n-space>
     </n-card>
   </n-space>
@@ -231,7 +237,12 @@ import {
 } from "@/domains/settings/settings-schema";
 import { useSettingsDebug } from "@/features/settings/composables/useSettingsDebug";
 import { useSettingsStorage } from "@/features/settings/composables/useSettingsStorage";
+import { TRIGGER_DEBUG_POPUP_AD_EVENT } from "@/shared/events";
 import StorageDirectoryCard from "./StorageDirectoryCard.vue";
+
+function triggerDebugPopupAd() {
+  window.dispatchEvent(new CustomEvent(TRIGGER_DEBUG_POPUP_AD_EVENT));
+}
 
 const props = withDefaults(
   defineProps<{

@@ -77,6 +77,14 @@ func TestFetchUnifiedLatest_ParsesAndFiltersAds(t *testing.T) {
 						"content":{"image_url":"https://cdn.example.com/legacy.jpg"}
 					},
 					{
+						"id":"popup_card",
+						"enabled":true,
+						"placement":"main_entry_popup",
+						"click_url":"https://ad.example.com/popup",
+						"image_url":"https://cdn.example.com/popup.jpg",
+						"image_alt":"Popup Ad"
+					},
+					{
 						"id":"second_valid_card",
 						"enabled":true,
 						"placement":"main_steps_top_banner",
@@ -96,15 +104,15 @@ func TestFetchUnifiedLatest_ParsesAndFiltersAds(t *testing.T) {
 	if latest.Ads.Version != "2.0" {
 		t.Fatalf("ads version = %q", latest.Ads.Version)
 	}
-	if len(latest.Ads.Items) != 3 {
-		t.Fatalf("ads item count = %d, want 3, errors=%v", len(latest.Ads.Items), latest.AdValidationErrors)
+	if len(latest.Ads.Items) != 4 {
+		t.Fatalf("ads item count = %d, want 4, errors=%v", len(latest.Ads.Items), latest.AdValidationErrors)
 	}
 	// Every rejected item must be reported; ads never fail silently.
 	if len(latest.AdValidationErrors) != 5 {
 		t.Fatalf("ad validation errors = %v, want 5", latest.AdValidationErrors)
 	}
 
-	wantIDs := []string{"valid_card_with_legacy_fields", "image_only_card", "second_valid_card"}
+	wantIDs := []string{"valid_card_with_legacy_fields", "image_only_card", "popup_card", "second_valid_card"}
 	for i, want := range wantIDs {
 		if latest.Ads.Items[i].ID != want {
 			t.Fatalf("ad[%d].id = %q, want %q", i, latest.Ads.Items[i].ID, want)
@@ -112,6 +120,9 @@ func TestFetchUnifiedLatest_ParsesAndFiltersAds(t *testing.T) {
 		if !latest.Ads.Items[i].Enabled {
 			t.Fatalf("ad[%d] should be enabled", i)
 		}
+	}
+	if latest.Ads.Items[2].Placement != AdPlacementMainEntryPopup {
+		t.Fatalf("popup placement = %q, want %q", latest.Ads.Items[2].Placement, AdPlacementMainEntryPopup)
 	}
 
 	// Image-only ads survive without any text field at all.

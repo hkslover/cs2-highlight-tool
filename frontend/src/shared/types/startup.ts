@@ -33,10 +33,12 @@ export interface WorkspaceState {
  * {@link click_url}. The release manifest keeps returning legacy text fields
  * (sponsor/title/rich_html); they are ignored and not part of this contract.
  */
+export type StartupAdPlacement = "main_steps_top_banner" | "main_entry_popup";
+
 export interface StartupAd {
  id: string;
  enabled: boolean;
- placement: "main_steps_top_banner";
+ placement: StartupAdPlacement;
  click_url: string;
  image_url: string;
  image_alt?: string;

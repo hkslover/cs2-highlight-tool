@@ -39,6 +39,7 @@ import type { ProgressMessage, StartupState } from "@/shared/types";
 import { useSettingsStore } from "@/domains/settings/settings-state";
 import { resetEditDomainForWorkspace } from "@/domains/edit";
 import { resetEditSequenceDurationCache } from "@/features/edit/composables/useEditSequenceActions";
+import { preloadAds } from "@/features/ads/composables/useAdsPreload";
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -146,6 +147,9 @@ function applyState(next: StartupState) {
   const previousConfig = { ...state.config };
   const wasRunning = state.running;
   Object.assign(state, next);
+  if (Array.isArray(state.ads) && state.ads.length > 0) {
+    preloadAds(state.ads);
+  }
 
   if (shouldRefreshSettingsForStartupState(previousMode, previousConfig, next, settingsStore.loaded.value)) {
     void settingsStore.refresh();

@@ -9,6 +9,7 @@ import (
 
 const (
 	AdPlacementMainStepsTopBanner = "main_steps_top_banner"
+	AdPlacementMainEntryPopup     = "main_entry_popup"
 )
 
 // AdsManifest is the ad block of the unified release manifest.
@@ -78,7 +79,7 @@ func validateAndNormalizeAd(raw manifestAdPayload) (AdItem, bool, string) {
 		return AdItem{}, false, "missing id"
 	}
 	placement := strings.TrimSpace(raw.Placement)
-	if placement != AdPlacementMainStepsTopBanner {
+	if placement != AdPlacementMainStepsTopBanner && placement != AdPlacementMainEntryPopup {
 		return AdItem{}, false, "unsupported placement"
 	}
 	clickURL, ok := normalizeExternalLinkURL(raw.ClickURL)

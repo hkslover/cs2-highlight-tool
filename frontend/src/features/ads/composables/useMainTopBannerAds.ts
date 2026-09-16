@@ -1,12 +1,16 @@
 import { computed, ref, type Ref } from "vue";
 import { backend } from "@/shared/backend";
+import {
+  adPreloadKey,
+  isPreloadedAdFailed,
+} from "@/features/ads/composables/useAdsPreload";
 import type { StartupAd } from "@/shared/types";
 
 export function useMainTopBannerAds(ads: Ref<StartupAd[]>) {
   // Creative URLs that failed to load are dropped from the rotation so a dead
   // image URL cannot leave an empty ad frame on screen. A failure is sticky for
   // the session: the same broken URL will not be retried on every re-render.
-  const failedAdIds = ref<ReadonlySet<string>>(new Set());
+  const failedAdKeys = ref<ReadonlySet<string>>(new Set());
 
   const sortedAds = computed(() =>
     (ads.value || []).filter(
@@ -14,17 +18,19 @@ export function useMainTopBannerAds(ads: Ref<StartupAd[]>) {
         ad.enabled !== false &&
         ad.placement === "main_steps_top_banner" &&
         (ad.image_url || "").trim().length > 0 &&
-        !failedAdIds.value.has(ad.id),
+        !failedAdKeys.value.has(adPreloadKey(ad)) &&
+        !isPreloadedAdFailed(ad),
     ),
   );
 
   function markImageFailed(ad: StartupAd) {
-    if (!ad?.id || failedAdIds.value.has(ad.id)) {
+    const key = adPreloadKey(ad);
+    if (!key || failedAdKeys.value.has(key)) {
       return;
     }
-    const next = new Set(failedAdIds.value);
-    next.add(ad.id);
-    failedAdIds.value = next;
+    const next = new Set(failedAdKeys.value);
+    next.add(key);
+    failedAdKeys.value = next;
   }
 
   async function openAd(clickURL: string) {

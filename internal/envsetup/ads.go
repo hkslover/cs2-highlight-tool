@@ -129,5 +129,21 @@ func debugStartupAds() []StartupAd {
 			ImageURL:  imageC,
 			ImageAlt:  "Debug Sponsor C",
 		},
+		{
+			ID:        "debug_entry_popup_1",
+			Enabled:   true,
+			Placement: release.AdPlacementMainEntryPopup,
+			ClickURL:  "https://example.com/popup-landing-1",
+			ImageURL:  "https://picsum.photos/seed/cs2ad-popup-1/600/400",
+			ImageAlt:  "Debug Popup Ad 1",
+		},
+		{
+			ID:        "debug_entry_popup_2",
+			Enabled:   true,
+			Placement: release.AdPlacementMainEntryPopup,
+			ClickURL:  "https://example.com/popup-landing-2",
+			ImageURL:  "https://picsum.photos/seed/cs2ad-popup-2/600/400",
+			ImageAlt:  "Debug Popup Ad 2",
+		},
 	}
 }

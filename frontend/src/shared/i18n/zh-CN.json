@@ -442,6 +442,8 @@
       "debug_plugin_dll": "调试插件 DLL",
       "debug_plugin_dll_default": "使用已安装插件",
       "debug_plugin_dll_clear": "清除",
+      "debug_popup_ad": "弹窗广告测试",
+      "debug_popup_ad_trigger": "立即弹出主页广告",
       "browse": "浏览"
     }
   },

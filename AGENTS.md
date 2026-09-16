@@ -76,7 +76,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 组件下载策略：CN 或 GeoIP 失败/为空时，`mirror_url` 与 `url` 并行竞速，先成功完成的链路胜出并取消另一条；非 CN 仅 `github_url`。竞速全部失败才报错，不恢复多源自动回退或 gh-proxy 终极兜底。统一源失败可使用本地已安装组件并标记 warning，不伪造远端成功。
 - HLAE、插件本地版本均来自各自安装目录 `changelog.xml` 首个 `<version>`，不以配置持久化版本为真值。
 - HLAE/FFmpeg 目录安装使用 `internal/download.ReplaceDirWithContents` 的提交事务：先在目标同卷创建本次唯一 staging 并完成复制，再将旧目标移到本次唯一 backup，最后 rename 提交；备份 rename、提交或恢复失败不得主动删除旧版本，恢复失败须保留 staging/backup 并返回双重错误及路径。提交成功后的 backup 清理失败只作为告警并保留 backup，不得被当成安装失败触发破坏性重试；历史遗留 `.old` 或事务目录不属于本次所有权，不得无条件删除。组件必需文件由 envsetup 在提交前验证，`ReplaceDirWithContentsWithReport` 的清理告警由调用方记录。该事务不宣称覆盖进程在两次 rename 之间崩溃的自动恢复。
-- `StartupState.ads[]` 仅包含有效的 `main_steps_top_banner` Sponsored Card，且为纯图广告：下发字段只有 `click_url/image_url/image_alt`，`image_url` 支持远程 `http(s)` 与 `data:image/...`。Release manifest 继续返回的 `sponsor/title/rich_html` 由客户端忽略，既不作必填也不因此丢弃该条，服务端无需改字段。点击走外部浏览器，广告失败不得阻断启动。
+- `StartupState.ads[]` 仅包含有效的 Sponsored Card（支持 `main_steps_top_banner` 顶部横幅与 `main_entry_popup` 进入主界面弹窗），且为纯图广告：下发字段只有 `click_url/image_url/image_alt`，`image_url` 支持远程 `http(s)` 与 `data:image/...`。Release manifest 继续返回的 `sponsor/title/rich_html` 由客户端忽略，既不作必填也不因此丢弃该条，服务端无需改字段。点击走外部浏览器，广告失败不得阻断启动。
 
 ### Demo 导入与解析
 

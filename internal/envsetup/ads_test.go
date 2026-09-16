@@ -8,7 +8,7 @@ import (
 	"cs2-highlight-tool-v2/internal/release"
 )
 
-func TestRunStartupChecks_PopulatesTopBannerAdsIntoState(t *testing.T) {
+func TestRunStartupChecks_PopulatesSupportedAdsIntoState(t *testing.T) {
 	setPreferredReleaseSourceForTest(t, func() (string, string, error) {
 		return "github", "CN", nil
 	})
@@ -39,6 +39,14 @@ func TestRunStartupChecks_PopulatesTopBannerAdsIntoState(t *testing.T) {
 						"image_alt":"Main Banner"
 					},
 					{
+						"id":"main_popup",
+						"enabled":true,
+						"placement":"main_entry_popup",
+						"click_url":"https://ad.example.com/popup",
+						"image_url":"https://cdn.example.com/popup.jpg",
+						"image_alt":"Main Popup"
+					},
+					{
 						"id":"ignored_banner",
 						"enabled":true,
 						"placement":"import_methods_card",
@@ -64,24 +72,22 @@ func TestRunStartupChecks_PopulatesTopBannerAdsIntoState(t *testing.T) {
 	}
 
 	state := svc.RunStartupChecks()
-	if len(state.Ads) != 1 {
-		t.Fatalf("ads count = %d, want 1", len(state.Ads))
+	if len(state.Ads) != 2 {
+		t.Fatalf("ads count = %d, want 2", len(state.Ads))
 	}
 	ad := state.Ads[0]
 	if ad.ID != "main_banner" {
-		t.Fatalf("ad id = %q", ad.ID)
+		t.Fatalf("ad[0] id = %q", ad.ID)
 	}
-	if ad.Placement != "main_steps_top_banner" {
-		t.Fatalf("ad placement = %q", ad.Placement)
+	if ad.Placement != release.AdPlacementMainStepsTopBanner {
+		t.Fatalf("ad[0] placement = %q", ad.Placement)
 	}
-	if ad.ClickURL != "https://ad.example.com/main" {
-		t.Fatalf("ad click_url = %q", ad.ClickURL)
+	popup := state.Ads[1]
+	if popup.ID != "main_popup" {
+		t.Fatalf("ad[1] id = %q", popup.ID)
 	}
-	if ad.ImageURL != "https://cdn.example.com/main.jpg" {
-		t.Fatalf("ad image_url = %q", ad.ImageURL)
-	}
-	if ad.ImageAlt != "Main Banner" {
-		t.Fatalf("ad image_alt = %q", ad.ImageAlt)
+	if popup.Placement != release.AdPlacementMainEntryPopup {
+		t.Fatalf("ad[1] placement = %q", popup.Placement)
 	}
 }
 
@@ -139,8 +145,8 @@ func TestRunStartupChecks_UsesDebugStartupAdsWhenEnabled(t *testing.T) {
 		if state.Ads[i].ID != want[i].ID {
 			t.Fatalf("ad[%d].id = %q, want %q", i, state.Ads[i].ID, want[i].ID)
 		}
-		if state.Ads[i].Placement != release.AdPlacementMainStepsTopBanner {
-			t.Fatalf("ad[%d].placement = %q", i, state.Ads[i].Placement)
+		if state.Ads[i].Placement != want[i].Placement {
+			t.Fatalf("ad[%d].placement = %q, want %q", i, state.Ads[i].Placement, want[i].Placement)
 		}
 		if state.Ads[i].ClickURL != want[i].ClickURL {
 			t.Fatalf("ad[%d].click_url = %q, want %q", i, state.Ads[i].ClickURL, want[i].ClickURL)
