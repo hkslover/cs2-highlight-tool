@@ -28,9 +28,13 @@ func main() {
 
 	// Create application with options
 	err = wails.Run(&options.App{
-		Title:     "CS2 Highlight Tool",
-		Width:     920,
-		Height:    720,
+		Title:  "CS2 Highlight Tool",
+		Width:  920,
+		Height: 720,
+		// Below this the main steps bar plus the ad banner leave too little room
+		// for the step views. Wails clamps Width/Height into this range.
+		MinWidth:  920,
+		MinHeight: 680,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

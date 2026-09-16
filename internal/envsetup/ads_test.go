@@ -77,17 +77,11 @@ func TestRunStartupChecks_PopulatesTopBannerAdsIntoState(t *testing.T) {
 	if ad.ClickURL != "https://ad.example.com/main" {
 		t.Fatalf("ad click_url = %q", ad.ClickURL)
 	}
-	if ad.Sponsor != "Acme Sponsor" {
-		t.Fatalf("ad sponsor = %q", ad.Sponsor)
-	}
-	if ad.Title != "Main sponsored card" {
-		t.Fatalf("ad title = %q", ad.Title)
-	}
-	if ad.RichHTML != "<p>main card content</p>" {
-		t.Fatalf("ad rich_html = %q", ad.RichHTML)
-	}
 	if ad.ImageURL != "https://cdn.example.com/main.jpg" {
 		t.Fatalf("ad image_url = %q", ad.ImageURL)
+	}
+	if ad.ImageAlt != "Main Banner" {
+		t.Fatalf("ad image_alt = %q", ad.ImageAlt)
 	}
 }
 
@@ -150,6 +144,9 @@ func TestRunStartupChecks_UsesDebugStartupAdsWhenEnabled(t *testing.T) {
 		}
 		if state.Ads[i].ClickURL != want[i].ClickURL {
 			t.Fatalf("ad[%d].click_url = %q, want %q", i, state.Ads[i].ClickURL, want[i].ClickURL)
+		}
+		if state.Ads[i].ImageURL != want[i].ImageURL {
+			t.Fatalf("ad[%d].image_url = %q, want %q", i, state.Ads[i].ImageURL, want[i].ImageURL)
 		}
 	}
 }

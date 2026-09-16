@@ -1,20 +1,20 @@
 package release
 
 import (
-	"bytes"
 	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 )
 
 const (
 	AdPlacementMainStepsTopBanner = "main_steps_top_banner"
 )
 
+// AdsManifest is the ad block of the unified release manifest.
+//
+// Sponsored cards are image-only: image_url (remote http/https or a
+// data:image/... URI) is rendered as the whole click target for click_url.
 type AdsManifest struct {
 	Version   string   `json:"version"`
 	UpdatedAt string   `json:"updated_at"`
@@ -26,9 +26,6 @@ type AdItem struct {
 	Enabled   bool   `json:"enabled"`
 	Placement string `json:"placement"`
 	ClickURL  string `json:"click_url"`
-	Sponsor   string `json:"sponsor"`
-	Title     string `json:"title"`
-	RichHTML  string `json:"rich_html"`
 	ImageURL  string `json:"image_url"`
 	ImageAlt  string `json:"image_alt,omitempty"`
 }
@@ -39,49 +36,18 @@ type manifestAdsPayload struct {
 	Items     []manifestAdPayload `json:"items"`
 }
 
+// manifestAdPayload declares only the fields the client consumes. The upstream
+// manifest keeps returning extra fields (sponsor/title/rich_html/...);
+// encoding/json ignores undeclared keys, so they are dropped without rejecting
+// the ad and without requiring any change on the release server.
 type manifestAdPayload struct {
 	ID        string `json:"id"`
 	Enabled   bool   `json:"enabled"`
 	Placement string `json:"placement"`
 	ClickURL  string `json:"click_url"`
-	Sponsor   string `json:"sponsor"`
-	Title     string `json:"title"`
-	RichHTML  string `json:"rich_html"`
 	ImageURL  string `json:"image_url"`
 	ImageAlt  string `json:"image_alt"`
 }
-
-var (
-	allowedRichHTMLTags = map[string]struct{}{
-		"p":      {},
-		"br":     {},
-		"strong": {},
-		"b":      {},
-		"em":     {},
-		"i":      {},
-		"u":      {},
-		"s":      {},
-		"ul":     {},
-		"ol":     {},
-		"li":     {},
-		"a":      {},
-		"code":   {},
-		"pre":    {},
-	}
-	dropWholeRichHTMLTags = map[string]struct{}{
-		"script":   {},
-		"style":    {},
-		"iframe":   {},
-		"object":   {},
-		"embed":    {},
-		"svg":      {},
-		"math":     {},
-		"textarea": {},
-		"noscript": {},
-		"meta":     {},
-		"link":     {},
-	}
-)
 
 func parseManifestAds(payload manifestAdsPayload) (AdsManifest, []string) {
 	out := AdsManifest{
@@ -119,19 +85,6 @@ func validateAndNormalizeAd(raw manifestAdPayload) (AdItem, bool, string) {
 	if !ok {
 		return AdItem{}, false, "invalid click_url"
 	}
-	sponsor := strings.TrimSpace(raw.Sponsor)
-	title := strings.TrimSpace(raw.Title)
-	if title == "" {
-		return AdItem{}, false, "missing title"
-	}
-	richHTML := strings.TrimSpace(raw.RichHTML)
-	if richHTML == "" {
-		return AdItem{}, false, "missing rich_html"
-	}
-	sanitizedRichHTML, sanitizeOK := sanitizeRichHTML(richHTML)
-	if !sanitizeOK {
-		return AdItem{}, false, "invalid rich_html"
-	}
 	imageURL, ok := normalizeAdImageURL(raw.ImageURL)
 	if !ok {
 		return AdItem{}, false, "invalid image_url"
@@ -142,9 +95,6 @@ func validateAndNormalizeAd(raw manifestAdPayload) (AdItem, bool, string) {
 		Enabled:   true,
 		Placement: placement,
 		ClickURL:  clickURL,
-		Sponsor:   sponsor,
-		Title:     title,
-		RichHTML:  sanitizedRichHTML,
 		ImageURL:  imageURL,
 		ImageAlt:  strings.TrimSpace(raw.ImageAlt),
 	}, true, ""
@@ -156,25 +106,6 @@ func reasonWithIndex(idx int, id, reason string) string {
 		return "ad[" + strconv.Itoa(idx) + "]: " + strings.TrimSpace(reason)
 	}
 	return "ad[" + strconv.Itoa(idx) + "](" + id + "): " + strings.TrimSpace(reason)
-}
-
-func normalizeExternalHTTPURL(raw string) (string, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", false
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", false
-	}
-	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
-	if scheme != "http" && scheme != "https" {
-		return "", false
-	}
-	if strings.TrimSpace(parsed.Host) == "" {
-		return "", false
-	}
-	return parsed.String(), true
 }
 
 func normalizeAdImageURL(raw string) (string, bool) {
@@ -273,125 +204,4 @@ func normalizeMailtoURL(parsed *url.URL) (string, bool) {
 	}
 
 	return parsed.String(), true
-}
-
-func sanitizeRichHTML(raw string) (string, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", false
-	}
-	root := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
-	nodes, err := html.ParseFragment(strings.NewReader(raw), root)
-	if err != nil {
-		return "", false
-	}
-	wrapper := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
-	for _, n := range nodes {
-		wrapper.AppendChild(n)
-	}
-	sanitizeRichHTMLTree(wrapper)
-
-	var buf bytes.Buffer
-	for child := wrapper.FirstChild; child != nil; child = child.NextSibling {
-		if err := html.Render(&buf, child); err != nil {
-			return "", false
-		}
-	}
-	sanitized := strings.TrimSpace(buf.String())
-	if sanitized == "" {
-		return "", false
-	}
-	return sanitized, true
-}
-
-func sanitizeRichHTMLTree(node *html.Node) {
-	for child := node.FirstChild; child != nil; {
-		next := child.NextSibling
-		switch child.Type {
-		case html.CommentNode:
-			detachNode(child)
-		case html.ElementNode:
-			tag := strings.ToLower(strings.TrimSpace(child.Data))
-			if _, ok := dropWholeRichHTMLTags[tag]; ok {
-				detachNode(child)
-				child = next
-				continue
-			}
-			sanitizeRichHTMLTree(child)
-			if _, ok := allowedRichHTMLTags[tag]; !ok {
-				unwrapNode(child)
-				child = next
-				continue
-			}
-			if !filterRichHTMLAttrs(child, tag) {
-				child = next
-				continue
-			}
-		default:
-			sanitizeRichHTMLTree(child)
-		}
-		child = next
-	}
-}
-
-func filterRichHTMLAttrs(node *html.Node, tag string) bool {
-	filtered := make([]html.Attribute, 0, len(node.Attr))
-	for _, attr := range node.Attr {
-		key := strings.ToLower(strings.TrimSpace(attr.Key))
-		val := strings.TrimSpace(attr.Val)
-		if tag == "a" {
-			switch key {
-			case "href":
-				normalized, ok := normalizeExternalLinkURL(val)
-				if !ok {
-					continue
-				}
-				filtered = append(filtered, html.Attribute{Key: "href", Val: normalized})
-			case "target":
-				if val == "_blank" {
-					filtered = append(filtered, html.Attribute{Key: "target", Val: "_blank"})
-				}
-			case "rel":
-				// overwrite rel at the end for external anchors.
-			}
-		}
-	}
-	if tag == "a" {
-		hasHref := false
-		for _, attr := range filtered {
-			if attr.Key == "href" {
-				hasHref = true
-				break
-			}
-		}
-		if !hasHref {
-			unwrapNode(node)
-			return false
-		}
-		filtered = append(filtered, html.Attribute{Key: "rel", Val: "noopener noreferrer"})
-	}
-	node.Attr = filtered
-	return true
-}
-
-func unwrapNode(node *html.Node) {
-	parent := node.Parent
-	if parent == nil {
-		return
-	}
-	for child := node.FirstChild; child != nil; {
-		next := child.NextSibling
-		node.RemoveChild(child)
-		parent.InsertBefore(child, node)
-		child = next
-	}
-	parent.RemoveChild(node)
-}
-
-func detachNode(node *html.Node) {
-	parent := node.Parent
-	if parent == nil {
-		return
-	}
-	parent.RemoveChild(node)
 }

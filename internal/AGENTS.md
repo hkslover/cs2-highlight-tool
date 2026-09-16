@@ -21,7 +21,7 @@
 - 初始化遵循 `app/app_workspace.go`、`appdata/validate.go`、`appdata/registry_windows.go`。保留 service 未初始化时的防御逻辑，不把 `workspace_init` 当作组件检查失败。
 - `StartupState` 的 mode、phase、状态值和组件 ID 遵循根文件；新增字段须保持前端兼容，不得只改后端枚举。
 - 统一 Release 快照后先检查自身更新。确认发现更新并进入 `needs_action` 时，组件保持未启动语义；自更新检查失败可继续组件检查。
-- 广告解析失败不得阻断启动，只向前端暴露有效的 Sponsored Card。
+- 广告解析失败不得阻断启动，只向前端暴露有效的 Sponsored Card。广告是纯图模型：`validateAndNormalizeAd` 只要求 `placement/click_url/image_url`，manifest 中多余的 `sponsor/title/rich_html` 必须被忽略而不是触发丢弃。
 - HLAE/插件版本读安装目录的 `changelog.xml`，不得改为配置版本号。
 - 下载顺序遵循根文件；统一源请求失败可回退本地已安装组件并使用 warning，但不得伪造远端版本成功。不得恢复 `executeWithSourceFallback` / `orderedRetrySources` 旧流程或 gh-proxy 终极兜底。
 

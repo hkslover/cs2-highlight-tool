@@ -1352,9 +1352,6 @@ export namespace envsetup {
 	    enabled: boolean;
 	    placement: string;
 	    click_url: string;
-	    sponsor: string;
-	    title: string;
-	    rich_html: string;
 	    image_url: string;
 	    image_alt?: string;
 	
@@ -1368,9 +1365,6 @@ export namespace envsetup {
 	        this.enabled = source["enabled"];
 	        this.placement = source["placement"];
 	        this.click_url = source["click_url"];
-	        this.sponsor = source["sponsor"];
-	        this.title = source["title"];
-	        this.rich_html = source["rich_html"];
 	        this.image_url = source["image_url"];
 	        this.image_alt = source["image_alt"];
 	    }
