@@ -1,6 +1,7 @@
 <template>
   <main class="main-app">
     <MainTopBannerAds v-if="!isSettingsRoute" :ads="ads" />
+    <MainEntryPopupAd :ads="ads" />
 
     <div v-if="!isSettingsRoute" class="main-steps-bar">
       <n-steps :current="currentStep" size="small" @update:current="onStepClick">
@@ -21,6 +22,7 @@ import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { t } from "@/shared/i18n";
 import MainTopBannerAds from "@/features/ads/components/MainTopBannerAds.vue";
+import MainEntryPopupAd from "@/features/ads/components/MainEntryPopupAd.vue";
 import type { StartupAd } from "@/shared/types";
 
 defineProps<{

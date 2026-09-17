@@ -25,6 +25,7 @@
     "src/domains/production/snapshot.ts",
     "src/domains/production/storeCore.ts",
     "src/domains/edit/editDomain.ts",
-    "src/domains/edit/history.ts"
+    "src/domains/edit/history.ts",
+    "src/features/ads/composables/useAdsPreload.ts"
   ]
 }

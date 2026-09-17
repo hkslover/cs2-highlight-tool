@@ -69,9 +69,6 @@ type StartupAd struct {
 	Enabled   bool   `json:"enabled"`
 	Placement string `json:"placement"`
 	ClickURL  string `json:"click_url"`
-	Sponsor   string `json:"sponsor"`
-	Title     string `json:"title"`
-	RichHTML  string `json:"rich_html"`
 	ImageURL  string `json:"image_url"`
 	ImageAlt  string `json:"image_alt,omitempty"`
 }

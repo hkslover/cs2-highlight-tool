@@ -223,9 +223,6 @@ func sanitizeStartupStateForExport(state StartupState) StartupState {
 	}
 	for i := range state.Ads {
 		state.Ads[i].ClickURL = sanitizeURLForExport(state.Ads[i].ClickURL)
-		state.Ads[i].Sponsor = sanitizeTextForExport(state.Ads[i].Sponsor)
-		state.Ads[i].Title = sanitizeTextForExport(state.Ads[i].Title)
-		state.Ads[i].RichHTML = sanitizeTextForExport(state.Ads[i].RichHTML)
 		state.Ads[i].ImageURL = sanitizeURLForExport(state.Ads[i].ImageURL)
 		state.Ads[i].ImageAlt = sanitizeTextForExport(state.Ads[i].ImageAlt)
 	}
