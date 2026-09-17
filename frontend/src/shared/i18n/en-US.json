@@ -175,6 +175,8 @@
       "add_material": "Add",
       "added": "Added",
       "already_produced": "Produced",
+      "killer_view_produced": "Produced",
+      "victim_view_produced": "Produced",
     "produced_count": "Produced {count}",
     "clear_selected": "Remove selected materials",
     "clear_selected_done": "Cancelled {count} materials",
@@ -442,6 +444,8 @@
       "debug_plugin_dll": "Debug Plugin DLL",
       "debug_plugin_dll_default": "Use Installed Plugin",
       "debug_plugin_dll_clear": "Clear",
+      "debug_popup_ad": "Popup ad test",
+      "debug_popup_ad_trigger": "Show home popup ad now",
       "browse": "Browse"
     }
   },
