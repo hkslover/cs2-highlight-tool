@@ -110,6 +110,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 生成入口为 `GeneratePluginJSON`、`GeneratePluginJSONBatch`、`GeneratePluginJSONBatchAndLaunchHLAE`；批量请求通过 `jobs[]` 承载单 Demo 请求。请求/结果结构见 `internal/app/plugin_generate_types.go`，编排见 `plugin_generate.go` 与 `plugin_generate_launch.go`。
 - 生成规划由 `internal/plugingen` 的显式输入/输出承担：`NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤不得访问 App、Wails、磁盘配置或进程；App 在工作目录准入后冻结一次配置快照，再负责 JSON 写入、take/history 登记和可选启动编排。
 - 新调用使用 `selected_items[]`；`selected_kills` 仅作兼容。`include_killer` 缺省为 true，`include_victim` 控制被害者录制。
+- 普通击杀片段的前端完成投影按 Demo、kill ID、明确录制角色和实际 spec mode 索引；仅成功的 `produce_clip` killer/victim 历史参与判断，`edited_video`、整局 POV 和未知视角不吞掉待录角色，补录副本不得改写原选择。
 - `primary_view=killer|victim` 表示选中玩家在击杀事件中的角色，缺省按 killer。UI 的“主视角/对方视角”须据此映射；死亡模式不能把主视角固定理解为击杀者。请求字段见 `internal/app/clip_settings.go`，兼容缺省与窗口映射见 `internal/app/plugin_generate_adapters.go`、`internal/plugingen/selection.go`、`frontend/src/shared/clip-views.ts`。
 - 单片段 `clip_overrides` 支持 `killer_pre_seconds/killer_post_seconds/victim_pre_seconds/victim_post_seconds/enable_voice/enable_spec_show_xray_zero`，缺省继承全局设置。
 - 整局 POV 使用独立的 `full_round_pov.player_steam_id`。每回合一个 take，早于 victim clip takes；victim-only 片段须传 `include_killer=false`。

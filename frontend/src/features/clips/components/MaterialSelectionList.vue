@@ -33,14 +33,24 @@
                   {{ t("main.clips.opponent_view_tag") }}
                 </n-tag>
               </n-space>
-              <n-tag
-                v-if="isKillAlreadyProduced(item.kill.id)"
-                size="small"
-                type="warning"
-                :bordered="false"
-              >
-                {{ t("main.clips.already_produced") }}
-              </n-tag>
+              <n-space v-if="hasRecordedViews(item.kill.id)" align="center" size="small" class="recorded-tags">
+                <n-tag
+                  v-if="recordedViewsForKill(item.kill.id).killer"
+                  size="small"
+                  type="success"
+                  :bordered="false"
+                >
+                  {{ t("main.clips.killer_view_produced") }}
+                </n-tag>
+                <n-tag
+                  v-if="recordedViewsForKill(item.kill.id).victim"
+                  size="small"
+                  type="warning"
+                  :bordered="false"
+                >
+                  {{ t("main.clips.victim_view_produced") }}
+                </n-tag>
+              </n-space>
               <div class="material-actions">
                 <n-button
                   text
@@ -177,6 +187,7 @@ import type {
   DemoListEntry,
   DemoMaterialSelection,
 } from "@/shared/types";
+import type { RecordedViewStatus } from "@/domains/production/recordedViews";
 import {
   isOpponentIncluded,
   isPrimaryIncluded,
@@ -205,8 +216,17 @@ const props = defineProps<{
   expandedRoundNames: string[];
   settingsExpandedIds: string[];
   clipSettings: ClipSettings;
-  isKillAlreadyProduced: (killID: string) => boolean;
+  getRecordedViews: (killID: string) => RecordedViewStatus;
 }>();
+
+function recordedViewsForKill(killID: string): RecordedViewStatus {
+  return props.getRecordedViews(killID);
+}
+
+function hasRecordedViews(killID: string): boolean {
+  const status = recordedViewsForKill(killID);
+  return status.killer || status.victim;
+}
 
 const emit = defineEmits<{
   (event: "update:round-expanded", value: string | number | Array<string | number> | null): void;

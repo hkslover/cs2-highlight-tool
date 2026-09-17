@@ -36,9 +36,9 @@ import {
   buildPlannedRowsByDemo,
   buildSelectedRoundGroups,
   buildTakeRow,
+  buildRecordedViewIndex,
   compareTakeRows,
   pendingSelectionsByDemo as selectPendingSelectionsByDemo,
-  producedKillIDsByDemo as selectProducedKillIDsByDemo,
   resolveTakeState as resolveProduceTakeState,
   splitKillsByRound,
   takeFileKey,
@@ -53,9 +53,15 @@ import { OPEN_PRODUCE_HISTORY_EVENT } from "@/shared/events";
 export function useProducePage() {
   const router = useRouter();
   const message = useMessage();
-  const { batchResult, launchViewEnabled, errorMessage, killSnapshotByDemo, resetProducePageState } = useProducePageState();
-  const { historySnapshot } = useProduceHistory();
-  const { debugEnabled, keepProduceIntermediates } = useDebugSettings();
+  const {
+    batchResult,
+    launchViewEnabled,
+    errorMessage,
+    killSnapshotByDemo,
+    resetProducePageState,
+  } = useProducePageState();
+  const { historySnapshot, historyInitialized } = useProduceHistory();
+  const { keepProduceIntermediates } = useDebugSettings();
 
   const { produceBusy, refreshWorkActivity } = useWorkActivity();
   const exportProduceLogsLoading = ref(false);
@@ -71,15 +77,15 @@ export function useProducePage() {
 
   const requests = useProduceRequests();
 
-  const producedKillIDsByDemo = computed(() => {
-    return selectProducedKillIDsByDemo(historySnapshot.value.items || []);
+  const recordedViewIndex = computed(() => {
+    return buildRecordedViewIndex(historySnapshot.value.items || []);
   });
 
   const pendingSelectionsByDemo = computed(() => {
     return selectPendingSelectionsByDemo(
       clipReadyDemos.value,
       getMaterialSelections,
-      producedKillIDsByDemo.value,
+      recordedViewIndex.value,
     );
   });
 
@@ -123,18 +129,20 @@ export function useProducePage() {
     }),
   );
 
-  const emptyStage = computed<"no_demos" | "no_selections" | "all_completed">(() => {
-    if (!demoList.value.length) {
-      return "no_demos";
-    }
-    const hasProducedHistory = (historySnapshot.value.items || []).some(
-      (item) => (item.history_type || "produce_clip") === "produce_clip",
-    );
-    if (hasProducedHistory) {
-      return "all_completed";
-    }
-    return "no_selections";
-  });
+  const emptyStage = computed<"no_demos" | "no_selections" | "all_completed">(
+    () => {
+      if (!demoList.value.length) {
+        return "no_demos";
+      }
+      const hasProducedHistory = (historySnapshot.value.items || []).some(
+        (item) => (item.history_type || "produce_clip") === "produce_clip",
+      );
+      if (hasProducedHistory) {
+        return "all_completed";
+      }
+      return "no_selections";
+    },
+  );
 
   const plannedRowsByDemo = computed(() => {
     return buildPlannedRowsByDemo(
@@ -164,7 +172,10 @@ export function useProducePage() {
     const byKey = new Map<string, ProduceTakeFile>();
     for (const file of takeFiles.value.items || []) {
       if (!file.demo_path || !file.take_index) continue;
-      byKey.set(takeFileKey(file.demo_path, file.take_index, file.view || ""), file);
+      byKey.set(
+        takeFileKey(file.demo_path, file.take_index, file.view || ""),
+        file,
+      );
     }
     return byKey;
   });
@@ -197,7 +208,11 @@ export function useProducePage() {
   });
 
   const canExportProduceLogs = computed(() =>
-    Boolean(wsState.value.last_error || queueState.value.last_error || errorMessage.value),
+    Boolean(
+      wsState.value.last_error ||
+        queueState.value.last_error ||
+        errorMessage.value,
+    ),
   );
 
   watch(
@@ -240,14 +255,21 @@ export function useProducePage() {
     return plannedRowsByDemo.value.get(entry.file_path) || [];
   }
 
-  function plannedRoundGroupsForDemo(entry: DemoListEntry): ProduceTakeRoundGroup[] {
+  function plannedRoundGroupsForDemo(
+    entry: DemoListEntry,
+  ): ProduceTakeRoundGroup[] {
     return plannedRoundGroupsByDemo.value.get(entry.file_path) || [];
   }
 
   function getPlannedRoundExpandedNames(entry: DemoListEntry): string[] {
     const groups = plannedRoundGroupsForDemo(entry);
     const defaults = groups.map((group) => group.name);
-    if (!Object.prototype.hasOwnProperty.call(plannedRoundExpandedByDemo.value, entry.key)) {
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        plannedRoundExpandedByDemo.value,
+        entry.key,
+      )
+    ) {
       return defaults;
     }
     const current = plannedRoundExpandedByDemo.value[entry.key] || [];
@@ -282,7 +304,10 @@ export function useProducePage() {
       return t("main.clips.full_round_pov_group_title");
     }
     if (group.round > 0) {
-      return t("main.clips.round_title", { round: group.round, kills: group.kill_count });
+      return t("main.clips.round_title", {
+        round: group.round,
+        kills: group.kill_count,
+      });
     }
     return t("main.produce.round_unknown_title", { kills: group.kill_count });
   }
@@ -292,7 +317,12 @@ export function useProducePage() {
     const plan = fullRoundPlanByDemo.value[entry.key];
     const selectedPlayer = String(selection.player_steam_id || "").trim();
     const plannedPlayer = String(plan?.player_steam_id || "").trim();
-    if (!selection.enabled || !selectedPlayer || plannedPlayer !== selectedPlayer) return 0;
+    if (
+      !selection.enabled ||
+      !selectedPlayer ||
+      plannedPlayer !== selectedPlayer
+    )
+      return 0;
     return plan?.segments?.length ?? 0;
   }
 
@@ -304,11 +334,15 @@ export function useProducePage() {
     return pendingMaterialCount + povCount;
   }
 
-  function pendingSelectionsForDemo(entry: DemoListEntry): DemoMaterialSelection[] {
+  function pendingSelectionsForDemo(
+    entry: DemoListEntry,
+  ): DemoMaterialSelection[] {
     return pendingSelectionsByDemo.value.get(entry.file_path) || [];
   }
 
-  function selectedRoundGroupsForDemo(entry: DemoListEntry): SelectedRoundGroup[] {
+  function selectedRoundGroupsForDemo(
+    entry: DemoListEntry,
+  ): SelectedRoundGroup[] {
     return buildSelectedRoundGroups(pendingSelectionsForDemo(entry));
   }
 
@@ -322,13 +356,18 @@ export function useProducePage() {
   }
 
   function resolveTakeState(row: ProduceTakeRow): ProduceRowState {
-    return resolveProduceTakeState(row, takeFileByKey.value, takeStatusByKey.value);
+    return resolveProduceTakeState(
+      row,
+      takeFileByKey.value,
+      takeStatusByKey.value,
+    );
   }
 
   function statusText(state: ProduceRowState): string {
     if (state === "recording") return t("main.produce.take_status_recording");
     if (state === "recorded") return t("main.produce.take_status_recorded");
-    if (state === "waiting_files") return t("main.produce.take_status_waiting_files");
+    if (state === "waiting_files")
+      return t("main.produce.take_status_waiting_files");
     if (state === "processing") return t("main.produce.take_status_processing");
     if (state === "completed") return t("main.produce.take_status_completed");
     if (state === "failed") return t("main.produce.take_status_failed");
@@ -339,7 +378,9 @@ export function useProducePage() {
     return state === "recording" || state === "processing";
   }
 
-  function statusTagType(state: ProduceRowState): "default" | "warning" | "success" | "error" {
+  function statusTagType(
+    state: ProduceRowState,
+  ): "default" | "warning" | "success" | "error" {
     if (state === "completed") return "success";
     if (state === "failed") return "error";
     if (state === "waiting_files" || state === "recorded") return "warning";
@@ -349,7 +390,8 @@ export function useProducePage() {
   function viewLabel(view: string): string {
     const normalized = String(view).toLowerCase();
     if (normalized === "victim") return t("main.clips.victim_view");
-    if (normalized === "full_round_pov") return t("main.clips.full_round_pov_tag");
+    if (normalized === "full_round_pov")
+      return t("main.clips.full_round_pov_tag");
     return t("main.clips.killer_view");
   }
 
@@ -371,7 +413,9 @@ export function useProducePage() {
   }
 
   function takeFileByRow(row: ProduceTakeRow): ProduceTakeFile | undefined {
-    return takeFileByKey.value.get(takeFileKey(row.demo_path, row.take_index, row.view));
+    return takeFileByKey.value.get(
+      takeFileKey(row.demo_path, row.take_index, row.view),
+    );
   }
 
   function canOpenClip(row: ProduceTakeRow): boolean {
@@ -460,6 +504,7 @@ export function useProducePage() {
   return {
     // State refs
     errorMessage,
+    historyInitialized,
     produceBusy,
     generatingAndLaunching,
     generatingConfigOnlyLoading,
@@ -472,7 +517,6 @@ export function useProducePage() {
     takeFiles,
     showPlatformCheckModal,
     // Computed
-    producedKillIDsByDemo,
     pendingSelectionsByDemo,
     selectedKillsByDemo,
     displayDemos,

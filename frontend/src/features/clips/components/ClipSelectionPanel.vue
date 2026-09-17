@@ -67,14 +67,24 @@
                   <div class="kill-line">
                     <DeathNoticeLine :kill="kill" />
                   </div>
-                  <n-tag
-                    v-if="isKillAlreadyProduced(activeDemoEntry.file_path, kill.id)"
-                    size="small"
-                    type="warning"
-                    :bordered="false"
-                  >
-                    {{ t("main.clips.already_produced") }}
-                  </n-tag>
+                  <n-space v-if="hasRecordedViews(activeDemoEntry.file_path, kill.id)" align="center" size="small">
+                    <n-tag
+                      v-if="recordedViewsForKill(activeDemoEntry.file_path, kill.id).killer"
+                      size="small"
+                      type="success"
+                      :bordered="false"
+                    >
+                      {{ t("main.clips.killer_view_produced") }}
+                    </n-tag>
+                    <n-tag
+                      v-if="recordedViewsForKill(activeDemoEntry.file_path, kill.id).victim"
+                      size="small"
+                      type="warning"
+                      :bordered="false"
+                    >
+                      {{ t("main.clips.victim_view_produced") }}
+                    </n-tag>
+                  </n-space>
                 </div>
               </n-space>
             </n-collapse-item>
@@ -103,6 +113,7 @@ import type {
   DemoListEntry,
 } from "@/shared/types";
 import type { DemoWeaponGroup, KillFilter, KillFilterPreset, KillPlayerRole, KillTrait } from "@/shared/kill-filter";
+import type { RecordedViewStatus } from "@/domains/production/recordedViews";
 import DeathNoticeLine from "@/shared/ui/DeathNoticeLine.vue";
 import ClipFilterPanel from "./ClipFilterPanel.vue";
 import type { SelectOption } from "naive-ui";
@@ -126,8 +137,17 @@ const props = defineProps<{
   expandedRounds: string[];
   emptyKillDescription: string;
   isKillSelected: (killID: string) => boolean;
-  isKillAlreadyProduced: (demoPath: string, killID: string) => boolean;
+  getRecordedViews: (demoPath: string, killID: string) => RecordedViewStatus;
 }>();
+
+function recordedViewsForKill(demoPath: string, killID: string): RecordedViewStatus {
+  return props.getRecordedViews(demoPath, killID);
+}
+
+function hasRecordedViews(demoPath: string, killID: string): boolean {
+  const status = recordedViewsForKill(demoPath, killID);
+  return status.killer || status.victim;
+}
 
 const emit = defineEmits<{
   (event: "pov-toggle", value: boolean): void;

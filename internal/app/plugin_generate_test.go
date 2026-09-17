@@ -168,6 +168,82 @@ func TestGenerationHistoryFilterKeepsFullRoundWhenItemsAreEmpty(t *testing.T) {
 	}
 }
 
+func TestGenerationHistoryFilterRebuildsVictimOnlyPlan(t *testing.T) {
+	demoPath := filepath.Join(t.TempDir(), "match.dem")
+	items := []clipsjson.Item{{
+		Kill:           demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7, VictimSlot: 11},
+		IncludeKiller:  boolPtr(true),
+		IncludeVictim:  true,
+		KillerSpecMode: 1,
+		VictimSpecMode: 1,
+	}}
+	settings := plugingen.GenerationSettings{
+		KillerPreSeconds:     1,
+		KillerPostSeconds:    1,
+		VictimPreSeconds:     1,
+		VictimPostSeconds:    1,
+		RecordFPS:            60,
+		RecordQuality:        "high",
+		EffectiveVideoPreset: "c1",
+		LaunchResolution:     "16:9",
+	}
+	initial, err := plugingen.BuildPlan(plugingen.PlanInput{
+		DemoPath:       demoPath,
+		Items:          items,
+		TickRate:       64,
+		BatchTimestamp: "initial",
+		Settings:       settings,
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan initial: %v", err)
+	}
+
+	plans := make([]ProduceTakePlan, len(initial.TakePlans))
+	historyKeys := make(map[string]struct{})
+	for i, plan := range initial.TakePlans {
+		plans[i] = ProduceTakePlan{
+			DemoPath: demoPath,
+			View:     plan.View,
+			SpecMode: plan.SpecMode,
+			KillIDs:  append([]string(nil), plan.KillIDs...),
+			SourceID: plan.SourceID,
+		}
+		if plan.View == "killer" {
+			historyKeys[plugingen.BuildProduceHistoryKeyWithSourceID(demoPath, plan.View, plan.SpecMode, plan.KillIDs, plan.SourceID)] = struct{}{}
+		}
+	}
+
+	filtered := filterItemsByHistory(items, plans, historyKeys)
+	if len(filtered) != 1 {
+		t.Fatalf("filtered items=%d want 1", len(filtered))
+	}
+	if filtered[0].IncludeKiller == nil || *filtered[0].IncludeKiller {
+		t.Fatalf("expected killer=false after history filtering: %+v", filtered[0].IncludeKiller)
+	}
+	if !filtered[0].IncludeVictim {
+		t.Fatal("expected victim=true after history filtering")
+	}
+
+	retry, err := plugingen.BuildPlan(plugingen.PlanInput{
+		DemoPath:       demoPath,
+		Items:          filtered,
+		TickRate:       64,
+		BatchTimestamp: "retry",
+		Settings:       settings,
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan retry: %v", err)
+	}
+	if len(retry.TakePlans) == 0 {
+		t.Fatalf("retry plan has no take plans")
+	}
+	for _, plan := range retry.TakePlans {
+		if plan.View != "victim" {
+			t.Fatalf("retry plan reintroduced killer take: %+v", retry.TakePlans)
+		}
+	}
+}
+
 func mustGetwd(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
