@@ -13,10 +13,16 @@ async function importTypeScript(relativePath) {
     },
     fileName: sourceURL.pathname,
   });
-  return import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
+  return import(
+    `data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`
+  );
 }
 
-const { buildProduceJobs } = await importTypeScript("../src/domains/production/jobs.ts");
+const { buildProduceJobs } = await importTypeScript(
+  "../src/domains/production/jobs.ts",
+);
+const { buildRecordedViewIndex, projectPendingSelection } =
+  await importTypeScript("../src/domains/production/recordedViews.ts");
 
 const kill = {
   id: "kill-1",
@@ -86,6 +92,59 @@ test("buildProduceJobs preserves role, override, match end, and valid POV data",
   });
 });
 
+test("history to pending projection to jobs sends only the missing victim role", () => {
+  const entry = {
+    key: "demo-1",
+    file_path: "demo.dem",
+    file_name: "demo.dem",
+    loading: false,
+    meta: { tick_rate: 64 },
+  };
+  const selected = {
+    kill,
+    include_killer: true,
+    include_victim: true,
+    killer_spec_mode: 1,
+    victim_spec_mode: 1,
+    primary_view: "victim",
+    clip_overrides: { victim_post_seconds: 2.5 },
+  };
+  const index = buildRecordedViewIndex([
+    {
+      demo_path: "demo.dem",
+      take_index: 1,
+      view: "killer",
+      spec_mode: 1,
+      kill_ids: ["kill-1"],
+      video_path: "killer.mp4",
+      completed_at_ms: 100,
+    },
+  ]);
+  const pending = projectPendingSelection(selected, entry.file_path, index);
+  assert.ok(pending);
+  assert.equal(pending.include_killer, false);
+  assert.equal(pending.include_victim, true);
+  assert.equal(pending.primary_view, "victim");
+  assert.deepEqual(pending.clip_overrides, selected.clip_overrides);
+
+  const jobs = buildProduceJobs({
+    demos: [entry],
+    getMaterialSelections: () => [pending],
+    getFullRoundPOVSelection: () => ({ enabled: false, player_steam_id: "" }),
+  });
+  assert.deepEqual(jobs[0].selected_items, [
+    {
+      kill,
+      include_killer: false,
+      include_victim: true,
+      killer_spec_mode: 1,
+      victim_spec_mode: 1,
+      primary_view: "victim",
+      clip_overrides: { victim_post_seconds: 2.5 },
+    },
+  ]);
+});
+
 test("buildProduceJobs rejects a stale or empty full-round POV plan", () => {
   const entry = {
     key: "demo-2",
@@ -97,8 +156,14 @@ test("buildProduceJobs rejects a stale or empty full-round POV plan", () => {
   const jobs = buildProduceJobs({
     demos: [entry],
     getMaterialSelections: () => [],
-    getFullRoundPOVSelection: () => ({ enabled: true, player_steam_id: "selected" }),
-    getFullRoundPOVPlan: () => ({ player_steam_id: "old-selection", segments: [{ round: 1 }] }),
+    getFullRoundPOVSelection: () => ({
+      enabled: true,
+      player_steam_id: "selected",
+    }),
+    getFullRoundPOVPlan: () => ({
+      player_steam_id: "old-selection",
+      segments: [{ round: 1 }],
+    }),
   });
   assert.deepEqual(jobs, []);
 });

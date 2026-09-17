@@ -1,9 +1,7 @@
 import type {
   DemoClipKill,
-  DemoListEntry,
   DemoMaterialSelection,
   GeneratePluginJSONBatchResult,
-  ProduceHistoryItem,
   ProduceTakeFile,
   ProduceTakePlan,
   ProduceTakeStatus,
@@ -50,7 +48,11 @@ export interface SelectedRoundGroup {
   items: DemoMaterialSelection[];
 }
 
-export function takeRowKey(demoPath: string, takeIndex: number, view: string): string {
+export function takeRowKey(
+  demoPath: string,
+  takeIndex: number,
+  view: string,
+): string {
   return `${demoPath}#${takeIndex}#${view}`;
 }
 
@@ -58,7 +60,11 @@ export function takeStatusKey(demoPath: string, takeIndex: number): string {
   return `${demoPath}#${takeIndex}`;
 }
 
-export function takeFileKey(demoPath: string, takeIndex: number, view: string): string {
+export function takeFileKey(
+  demoPath: string,
+  takeIndex: number,
+  view: string,
+): string {
   return `${demoPath}#${takeIndex}#${view}`;
 }
 
@@ -112,7 +118,9 @@ export function buildPlannedRowsByDemo(
         for (const [id, kill] of live.entries()) killMap.set(id, kill);
       }
     }
-    const rows = (item.take_plans || []).map((plan) => buildTakeRow(plan, demoPath, killMap));
+    const rows = (item.take_plans || []).map((plan) =>
+      buildTakeRow(plan, demoPath, killMap),
+    );
     if (rows.length) byDemo.set(demoPath, rows);
   }
   return byDemo;
@@ -144,7 +152,8 @@ export function splitKillsByRound(
 function compareKills(a: DemoClipKill, b: DemoClipKill): number {
   const tickA = Number(a.tick || 0);
   const tickB = Number(b.tick || 0);
-  if (tickA === tickB) return String(a.id || "").localeCompare(String(b.id || ""));
+  if (tickA === tickB)
+    return String(a.id || "").localeCompare(String(b.id || ""));
   return tickA - tickB;
 }
 
@@ -164,7 +173,12 @@ export function buildPlannedRoundGroupsByDemo(
       if (String(row.view).toLowerCase() === "full_round_pov") {
         const groupName = "pov-group";
         if (!groupMap.has(groupName)) {
-          groupMap.set(groupName, { name: groupName, round: 0, kill_count: 0, rows: [] });
+          groupMap.set(groupName, {
+            name: groupName,
+            round: 0,
+            kill_count: 0,
+            rows: [],
+          });
         }
         groupMap.get(groupName)!.rows.push({
           key: `${row.key}#${groupName}`,
@@ -174,9 +188,11 @@ export function buildPlannedRoundGroupsByDemo(
         continue;
       }
       const groupedKills = splitKillsByRound(row.kills);
-      if (!groupedKills.length) groupedKills.push({ round: Number(row.round || 0), kills: [] });
+      if (!groupedKills.length)
+        groupedKills.push({ round: Number(row.round || 0), kills: [] });
       for (const grouped of groupedKills) {
-        const groupName = grouped.round > 0 ? `round-${grouped.round}` : "round-unknown";
+        const groupName =
+          grouped.round > 0 ? `round-${grouped.round}` : "round-unknown";
         if (!groupMap.has(groupName)) {
           groupMap.set(groupName, {
             name: groupName,
@@ -186,7 +202,11 @@ export function buildPlannedRoundGroupsByDemo(
           });
         }
         const group = groupMap.get(groupName)!;
-        group.rows.push({ key: `${row.key}#${groupName}`, row, kills: grouped.kills });
+        group.rows.push({
+          key: `${row.key}#${groupName}`,
+          row,
+          kills: grouped.kills,
+        });
         group.kill_count += grouped.kills.length;
       }
     }
@@ -223,44 +243,26 @@ export function buildSelectedRoundGroups(
     }));
 }
 
-export function producedKillIDsByDemo(
-  items: readonly ProduceHistoryItem[],
-): Map<string, Set<string>> {
-  const byDemo = new Map<string, Set<string>>();
-  for (const item of items) {
-    if ((item.history_type || "produce_clip") === "edited_video") continue;
-    const demoPath = item.demo_path || "";
-    if (!demoPath) continue;
-    if (!byDemo.has(demoPath)) byDemo.set(demoPath, new Set<string>());
-    const ids = byDemo.get(demoPath)!;
-    for (const killID of item.kill_ids || []) if (killID) ids.add(killID);
-  }
-  return byDemo;
-}
-
-export function pendingSelectionsByDemo(
-  demos: readonly DemoListEntry[],
-  getMaterialSelections: (entry: DemoListEntry) => readonly DemoMaterialSelection[],
-  produced: ReadonlyMap<string, ReadonlySet<string>>,
-): Map<string, DemoMaterialSelection[]> {
-  const byDemo = new Map<string, DemoMaterialSelection[]>();
-  for (const entry of demos) {
-    const producedIDs = produced.get(entry.file_path);
-    const pending = getMaterialSelections(entry).filter((item) => {
-      const killID = item.kill?.id || "";
-      return Boolean(killID) && !producedIDs?.has(killID);
-    });
-    byDemo.set(entry.file_path, pending);
-  }
-  return byDemo;
-}
+export {
+  buildRecordedViewIndex,
+  pendingSelectionsByDemo,
+  projectPendingSelection,
+  recordedViewsForKill,
+  DEFAULT_PRODUCE_SPEC_MODES,
+  type RecordedRole,
+  type RecordedSpecModes,
+  type RecordedViewIndex,
+  type RecordedViewStatus,
+} from "./recordedViews.js";
 
 export function resolveTakeState(
   row: ProduceTakeRow,
   takeFiles: ReadonlyMap<string, ProduceTakeFile>,
   takeStatuses: ReadonlyMap<string, ProduceTakeStatus>,
 ): ProduceRowState {
-  const file = takeFiles.get(takeFileKey(row.demo_path, row.take_index, row.view));
+  const file = takeFiles.get(
+    takeFileKey(row.demo_path, row.take_index, row.view),
+  );
   if (file?.status === "failed") return "failed";
   if (file?.status === "completed") return "completed";
   if (file?.status === "processing") return "processing";

@@ -76,7 +76,7 @@
             :expanded-round-names="getMaterialExpanded(entry)"
             :settings-expanded-ids="getMaterialSettingsExpanded(entry)"
             :clip-settings="clipSettings"
-            :is-kill-already-produced="(killID) => isKillAlreadyProduced(entry, killID)"
+            :get-recorded-views="(killID) => getRecordedViews(entry, killID)"
             @update:round-expanded="emit('update:material-round-expanded', entry, $event)"
             @update:settings-expanded="emit('update:material-settings-expanded', entry, $event)"
           />
@@ -97,6 +97,7 @@ import type {
   DemoMaterialSelection,
   FullRoundPOVSegment,
 } from "@/shared/types";
+import type { RecordedViewStatus } from "@/domains/production/recordedViews";
 import FullRoundPOVPreview from "./FullRoundPOVPreview.vue";
 import MaterialSelectionList from "./MaterialSelectionList.vue";
 
@@ -125,7 +126,7 @@ const props = defineProps<{
   getPOVTrackingLabel: (entry: DemoListEntry) => string;
   producedCount: (entry: DemoListEntry) => number;
   canClearMaterials: (entry: DemoListEntry) => boolean;
-  isKillAlreadyProduced: (entry: DemoListEntry, killID: string) => boolean;
+  getRecordedViews: (entry: DemoListEntry, killID: string) => RecordedViewStatus;
   getPOVExpanded: (entry: DemoListEntry) => string[];
   getPOVRoundExpanded: (entry: DemoListEntry) => string[];
   povRoundKills: (entry: DemoListEntry, round: number) => DemoClipKill[];
@@ -150,6 +151,10 @@ const clipReadyDemos = computed(() => props.clipReadyDemos);
 
 function segmentTitleFor(entry: DemoListEntry): (segment: Readonly<FullRoundPOVSegment>) => string {
   return (segment) => props.povSegmentTitle(entry, segment);
+}
+
+function getRecordedViews(entry: DemoListEntry, killID: string): RecordedViewStatus {
+  return props.getRecordedViews(entry, killID);
 }
 </script>
 

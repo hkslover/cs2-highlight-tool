@@ -88,6 +88,87 @@ func TestFilterItemsByHistory_SeparatesKillerAndVictimViews(t *testing.T) {
 	}
 }
 
+func TestFilterItemsByHistory_RebuildsMissingVictimPlan(t *testing.T) {
+	items := []clipsjson.Item{
+		{
+			Kill:           demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7, VictimSlot: 11},
+			IncludeKiller:  boolPtr(true),
+			IncludeVictim:  true,
+			KillerSpecMode: 1,
+			VictimSpecMode: 1,
+		},
+		{
+			Kill:           demo.ClipKill{ID: "k2", Tick: 240, KillerSlot: 7, VictimSlot: 11},
+			IncludeKiller:  boolPtr(true),
+			IncludeVictim:  true,
+			KillerSpecMode: 1,
+			VictimSpecMode: 1,
+		},
+	}
+	initial, err := BuildPlan(PlanInput{
+		DemoPath:       "demo.dem",
+		Items:          items,
+		TickRate:       64,
+		BatchTimestamp: "batch",
+		Settings:       testGenerationSettings(),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan initial: %v", err)
+	}
+
+	plans := make([]TakePlan, len(initial.TakePlans))
+	historyKeys := make(map[string]struct{})
+	killerPlans := 0
+	for i, plan := range initial.TakePlans {
+		plans[i] = TakePlan{
+			DemoPath: "demo.dem",
+			View:     plan.View,
+			SpecMode: plan.SpecMode,
+			KillIDs:  append([]string(nil), plan.KillIDs...),
+			SourceID: plan.SourceID,
+		}
+		if plan.View == "killer" {
+			killerPlans++
+			historyKeys[BuildProduceHistoryKeyWithSourceID("demo.dem", plan.View, plan.SpecMode, plan.KillIDs, plan.SourceID)] = struct{}{}
+		}
+	}
+	if killerPlans == 0 {
+		t.Fatalf("initial plan did not contain a killer take: %+v", initial.TakePlans)
+	}
+
+	filtered := FilterItemsByHistory(items, plans, historyKeys)
+	if len(filtered) != len(items) {
+		t.Fatalf("filtered items=%d want %d", len(filtered), len(items))
+	}
+	for _, item := range filtered {
+		if item.IncludeKiller == nil || *item.IncludeKiller {
+			t.Fatalf("expected killer=false after history filtering: %+v", item)
+		}
+		if !item.IncludeVictim {
+			t.Fatalf("expected victim=true after history filtering: %+v", item)
+		}
+	}
+
+	retry, err := BuildPlan(PlanInput{
+		DemoPath:       "demo.dem",
+		Items:          filtered,
+		TickRate:       64,
+		BatchTimestamp: "retry",
+		Settings:       testGenerationSettings(),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan retry: %v", err)
+	}
+	if len(retry.TakePlans) == 0 {
+		t.Fatalf("retry plan has no take plans")
+	}
+	for _, plan := range retry.TakePlans {
+		if plan.View != "victim" {
+			t.Fatalf("retry plan reintroduced killer take: %+v", retry.TakePlans)
+		}
+	}
+}
+
 func TestFilterItemsByHistory_IgnoresNonMatchingHistoryKeys(t *testing.T) {
 	items := []clipsjson.Item{
 		{Kill: demo.ClipKill{ID: "k1"}, IncludeKiller: boolPtr(true)},

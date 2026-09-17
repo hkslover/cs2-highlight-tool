@@ -225,7 +225,7 @@
             v-if="debugEnabled"
             type="default"
             :loading="generatingConfigOnlyLoading"
-            :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
+            :disabled="!historyInitialized || !hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
             @click="generateConfigOnly"
           >
             {{ t("main.produce.generate_all_json") }}
@@ -263,7 +263,7 @@
         <n-button
           type="warning"
           :loading="generatingAndLaunching"
-          :disabled="!hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
+          :disabled="!historyInitialized || !hasPendingMaterials || generatingAndLaunching || generatingConfigOnlyLoading || queueState.running || produceBusy"
           @click="generateAndLaunch"
         >
           {{ t("main.produce.start_produce") }}
@@ -293,6 +293,7 @@ const { debugEnabled } = useDebugSettings();
 
 const {
   produceBusy,
+  historyInitialized,
   generatingAndLaunching,
   generatingConfigOnlyLoading,
   exportProduceLogsLoading,

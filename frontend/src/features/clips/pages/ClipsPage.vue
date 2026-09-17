@@ -14,7 +14,7 @@
         :get-p-o-v-tracking-label="getFullRoundPOVTrackingLabel"
         :produced-count="producedCountForDemo"
         :can-clear-materials="canClearMaterials"
-        :is-kill-already-produced="isKillAlreadyProducedForEntry"
+        :get-recorded-views="getRecordedViewsForEntry"
         :get-p-o-v-expanded="getFullRoundPOVExpanded"
         :get-p-o-v-round-expanded="getPOVRoundExpanded"
         :pov-round-kills="povRoundKills"
@@ -53,7 +53,7 @@
         :expanded-rounds="expandedRounds"
         :empty-kill-description="emptyKillDescription"
         :is-kill-selected="isKillSelectedForActiveDemo"
-        :is-kill-already-produced="isKillAlreadyProduced"
+        :get-recorded-views="getRecordedViews"
         @pov-toggle="handleFullRoundPOVSwitch"
         @player-change="handlePlayerChange"
         @role-change="handleRoleChange"
@@ -173,6 +173,11 @@ import {
 import ClipSelectionPanel from "@/features/clips/components/ClipSelectionPanel.vue";
 import MaterialListPanel from "@/features/clips/components/MaterialListPanel.vue";
 import { ensureProduceHistoryInitialized, useProduceHistory } from "@/features/produce/composables/useProduceHistory";
+import {
+  buildRecordedViewIndex,
+  recordedViewsForKill,
+  type RecordedViewStatus,
+} from "@/domains/production/recordedViews";
 import { useSplitter } from "@/shared/composables/useSplitter";
 import { backend } from "@/shared/backend";
 
@@ -341,24 +346,9 @@ onBeforeUnmount(() => {
   window.removeEventListener(CLIP_SETTINGS_SAVED_EVENT, onClipSettingsSaved);
 });
 
-const producedKillIDsByDemo = computed(() => {
-  const byDemo = new Map<string, Set<string>>();
-  for (const item of historySnapshot.value.items || []) {
-    const demoPath = item.demo_path || "";
-    if (!demoPath) continue;
-    if ((item.history_type || "produce_clip") === "edited_video") continue;
-    if (!byDemo.has(demoPath)) {
-      byDemo.set(demoPath, new Set<string>());
-    }
-    const set = byDemo.get(demoPath)!;
-    for (const killID of item.kill_ids || []) {
-      if (killID) {
-        set.add(killID);
-      }
-    }
-  }
-  return byDemo;
-});
+const recordedViewIndex = computed(() =>
+  buildRecordedViewIndex(historySnapshot.value.items || []),
+);
 
 // producedTakeCountByDemo counts ALL produce_clip history takes for a demo,
 // including full_round_pov takes (which carry no kill_ids). This drives the
@@ -405,8 +395,8 @@ function handleMaterialSettingsExpanded(entry: DemoListEntry, names: string[]): 
   };
 }
 
-function isKillAlreadyProducedForEntry(entry: DemoListEntry, killID: string): boolean {
-  return isKillAlreadyProduced(entry.file_path, killID);
+function getRecordedViewsForEntry(entry: DemoListEntry, killID: string): RecordedViewStatus {
+  return getRecordedViews(entry.file_path, killID);
 }
 
 function isKillSelectedForActiveDemo(killID: string): boolean {
@@ -585,10 +575,8 @@ function fullRoundPlayerLabel(player: DemoPlayerInfo): string {
   return player.name || getFullRoundPlayerSteamID(player);
 }
 
-function isKillAlreadyProduced(demoPath: string, killID: string): boolean {
-  if (!demoPath || !killID) return false;
-  const set = producedKillIDsByDemo.value.get(demoPath);
-  return !!set?.has(killID);
+function getRecordedViews(demoPath: string, killID: string): RecordedViewStatus {
+  return recordedViewsForKill(recordedViewIndex.value, demoPath, killID);
 }
 
 function producedCountForDemo(entry: DemoListEntry): number {

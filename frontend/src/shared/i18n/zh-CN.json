@@ -175,6 +175,8 @@
       "add_material": "添加",
       "added": "已添加",
       "already_produced": "已生成",
+      "killer_view_produced": "已制作",
+      "victim_view_produced": "已制作",
       "produced_count": "已生成 {count}",
       "clear_selected": "移除已选素材",
       "clear_selected_done": "已取消 {count} 段素材",

@@ -14,8 +14,9 @@ export async function ensureProduceHistoryInitialized(): Promise<void> {
 }
 
 export function useProduceHistory() {
-  const { historySnapshot } = useProductionState();
+  const { historySnapshot, historyInitialized } = useProductionState();
   return {
     historySnapshot,
+    historyInitialized,
   };
 }

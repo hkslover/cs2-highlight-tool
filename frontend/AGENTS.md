@@ -42,7 +42,7 @@
 - 主视角/对方视角通过 `primary_view` 映射，复用 `src/shared/clip-views.ts`；死亡模式的主视角是 victim，录制角色仍是 killer/victim。
 - 整局 POV 是 Demo 级独立状态，不伪装成普通击杀片段。请求通过 `full_round_pov.player_steam_id` 传递，普通片段通过 `selected_items[]` 传递；victim-only 项传 `include_killer=false`。
 - `PreviewFullRoundPOV` 的 segments 为空时显示空态并阻止生成，不能为零击杀玩家伪造可录制回合。
-- 制作状态消费对应快照和事件，名称见根文件；历史 `history_type/source_label` 保持向后兼容，缺省按 `produce_clip` 处理。
+- 制作状态消费对应快照和事件，名称见根文件；历史 `history_type/source_label` 保持向后兼容，缺省按 `produce_clip` 处理。普通击杀片段的完成状态按 Demo、kill ID、明确 killer/victim 角色和实际 spec mode 区分；仅成功 `produce_clip` 历史参与，整局 POV、编辑历史和未知视角不阻断补录，待制作投影不得改写原选择。
 - 制作按钮、设置页清理按钮使用 `src/shared/state/useWorkActivity.ts` 和 `GetWorkActivity` 的状态；未加载或查询失败时禁用。制作忙碌包含收尾，不能仅看录制是否结束。
 - debug DLL override 仅在 debug 设置组展示，以 Get/Pick/Clear 接口返回值为事实来源，不写前端持久化状态；`debug.keep_intermediate_files` 仅随本次批量启动请求传递。
 - 剪辑通过 `ProbeClipDuration` / `ConcatEditClips` 和 `compose_progress` 协作；不得继续使用源码已移除的工程保存、素材自动匹配等接口。
