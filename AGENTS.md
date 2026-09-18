@@ -96,7 +96,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `record_quality`、`edit_quality` | `standard | high | ultra`，默认`high`；软件编码映射 CRF，硬件编码映射 QP /`q:v` |
 | `edit_fps` | `24..240`，默认 `60` |
 | `video_preset` | `auto | c1 | n1 | a1 | i1`，默认`auto`，由后端 FFmpeg 能力探测选择 |
-| `launch_resolution` | `16:9 | 4:3 | 4:3_1280x960`，默认`4:3`；两种 4:3 为`1440x1080`、`1280x960`，录制通过 FFmpeg`-aspect 16:9` 标记拉伸播放 |
+| `launch_resolution` | `16:9 | 4:3 | 4:3_1280x960`，默认`4:3`；两种 4:3 为`1440x1080`、`1280x960`，录制通过 FFmpeg `-vf scale=trunc(ih*16/9/2)*2:ih` 真实拉伸为方像素 16:9（替代旧的 `-aspect 16:9` 元数据标签，兼容忽略 SAR 的播放器与异常捕获高度） |
 | `record_output_dir` | Get/Save 设置时固定为 `<dataDir>/outputs` |
 | `hide_all_ui` | 默认 false；开启写入 `cl_draw_only_deathnotices 1` |
 | `hide_player_avatars` | 默认 false；开启写入 `cl_teamcounter_playercount_instead_of_avatars true` |

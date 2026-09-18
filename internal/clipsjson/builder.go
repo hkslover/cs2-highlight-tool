@@ -863,7 +863,8 @@ func buildFFmpegParams(preset string, quality string, launchResolution string) (
 		return "", "", err
 	}
 	if shouldStretchFourThreeRecording(launchResolution) {
-		params += " -aspect 16:9"
+		// 真实像素拉伸替代 -aspect 元数据：忽略 SAR 的播放器不再出侧边黑边；取偶防 HEVC 奇数宽失败。
+		params += " -vf scale=trunc(ih*16/9/2)*2:ih"
 	}
 	return videoPreset, params, nil
 }
