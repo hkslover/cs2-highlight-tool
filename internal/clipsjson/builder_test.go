@@ -838,16 +838,16 @@ func TestBuild_AppliesRecordQualityToHardwarePreset(t *testing.T) {
 	assertHasActionContaining(t, bootstrap, "-qp 10")
 }
 
-func TestBuild_AddsDisplayAspectForFourThreeLaunchResolution(t *testing.T) {
+func TestBuild_StretchesFourThreeLaunchResolutionToSquarePixels(t *testing.T) {
 	tests := []struct {
 		name             string
 		launchResolution string
-		wantAspect       bool
+		wantStretch      bool
 	}{
-		{name: "4:3 1440x1080", launchResolution: "4:3", wantAspect: true},
-		{name: "4:3 1280x960", launchResolution: "4:3_1280x960", wantAspect: true},
-		{name: "16:9", launchResolution: "16:9", wantAspect: false},
-		{name: "empty", launchResolution: "", wantAspect: false},
+		{name: "4:3 1440x1080", launchResolution: "4:3", wantStretch: true},
+		{name: "4:3 1280x960", launchResolution: "4:3_1280x960", wantStretch: true},
+		{name: "16:9", launchResolution: "16:9", wantStretch: false},
+		{name: "empty", launchResolution: "", wantStretch: false},
 	}
 
 	for _, tt := range tests {
@@ -867,9 +867,10 @@ func TestBuild_AddsDisplayAspectForFourThreeLaunchResolution(t *testing.T) {
 				t.Fatalf("Build: %v", err)
 			}
 			bootstrap := result.Sequences[0].Actions
-			if tt.wantAspect {
-				assertHasActionContaining(t, bootstrap, "-aspect 16:9")
-				return
+			if tt.wantStretch {
+				assertHasActionContaining(t, bootstrap, "-vf scale=trunc(ih*16/9/2)*2:ih")
+			} else {
+				assertNoActionContaining(t, bootstrap, "-vf scale=trunc(ih*16/9/2)*2:ih")
 			}
 			assertNoActionContaining(t, bootstrap, "-aspect 16:9")
 		})
