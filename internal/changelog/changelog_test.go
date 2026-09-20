@@ -77,6 +77,49 @@ func TestSplitBilingual_OrderIndependent(t *testing.T) {
 	}
 }
 
+// TestSplitBilingual_ToleratesCRLF 覆盖 Windows 检出（CRLF）场景。
+// 历史上 `(?m)$` 配不上 \r 之前的行尾，导致两段都切不出来、更新弹窗静默失效。
+func TestSplitBilingual_ToleratesCRLF(t *testing.T) {
+	lf := "## 中文\n- 中文正文\n\n## English\n- english body\n"
+	zh, en := splitBilingual(strings.ReplaceAll(lf, "\n", "\r\n"))
+	if !strings.Contains(zh, "中文正文") {
+		t.Errorf("expected CRLF content to keep the Chinese section, got %q", zh)
+	}
+	if !strings.Contains(en, "english body") {
+		t.Errorf("expected CRLF content to keep the English section, got %q", en)
+	}
+}
+
+// TestEmbeddedNotesAllParse 是格式护栏：notes/ 下每条笔记都必须能切出非空的
+// 中英两段。任何一条因为行尾或标题写法问题失效，都会让对应版本的更新弹窗
+// 静默跳过，所以逐条校验而不是只查当前版本。
+func TestEmbeddedNotesAllParse(t *testing.T) {
+	entries, err := notesFS.ReadDir("notes")
+	if err != nil {
+		t.Fatalf("read embedded notes dir failed: %v", err)
+	}
+	checked := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "v") || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		version := strings.TrimSuffix(strings.TrimPrefix(name, "v"), ".md")
+		notes, ok := Get(version)
+		if !ok {
+			t.Errorf("notes/%s: Get(%q) returned ok=false", name, version)
+			continue
+		}
+		if notes.BodyZh == "" || notes.BodyEn == "" {
+			t.Errorf("notes/%s: expected both sections non-empty (zh=%d bytes, en=%d bytes)", name, len(notes.BodyZh), len(notes.BodyEn))
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatalf("no embedded notes were checked")
+	}
+}
+
 // TestEmbeddedNotesCoverCurrentVersion 是发版护栏：
 // 读取仓库 wails.json 中声明的版本号，如果是纯三段数字（X.Y.Z），
 // 必须能在 notes/ 下找到对应 md 文件；带 -dev/-rc 等非正式后缀时跳过。

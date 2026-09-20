@@ -43,6 +43,10 @@ func Get(version string) (Notes, bool) {
 // splitBilingual 按 `## 中文` / `## English` 切分输入内容。
 // 缺一段则该段返回空字符串。
 func splitBilingual(content string) (zh, en string) {
+	// 先归一化行尾：notes/*.md 在 Windows 检出（历史上曾带 CRLF）时，
+	// `^## 头部[ \t]*$` 无法匹配到 \r 之前，会让两段都切不出来。
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
 	matches := sectionHeader.FindAllStringSubmatchIndex(content, -1)
 	if len(matches) == 0 {
 		return "", ""
