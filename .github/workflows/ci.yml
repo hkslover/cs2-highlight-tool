@@ -2,7 +2,9 @@ name: CI
 
 # The release workflow only runs on `v*` tags, so a red Windows test suite used
 # to surface only at release time. This workflow gives the same test suite a
-# chance to run on every pull request and on main.
+# chance to run on every pull request and on main. Windows is the only shipping
+# platform, so both jobs stay on windows-latest and mirror the release
+# workflow instead of maintaining a second platform matrix.
 on:
   push:
     branches: [main]
@@ -18,13 +20,8 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Windows is the shipping platform; ubuntu-latest keeps feedback fast.
-        os: [ubuntu-latest, windows-latest]
+    name: Backend
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,7 +49,7 @@ jobs:
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
