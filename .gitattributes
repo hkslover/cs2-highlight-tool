@@ -1,0 +1,5 @@
+# The in-app changelog keeps its bilingual notes embedded via //go:embed. The
+# parser matches `## 中文` / `## English` section headers line by line, so a
+# CRLF checkout on Windows would embed unparseable bytes and silently disable
+# the "what's new" modal. Force LF for the notes regardless of platform.
+internal/changelog/notes/*.md text eol=lf

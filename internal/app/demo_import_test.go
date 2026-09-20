@@ -81,7 +81,7 @@ func TestPrepareRawDemoFiles_SameNameDifferentSources(t *testing.T) {
 		t.Fatalf("write sourceB: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	got, err := app.prepareRawDemoFiles([]string{sourceA, sourceB})
 	if err != nil {
 		t.Fatalf("prepareRawDemoFiles: %v", err)

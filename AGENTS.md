@@ -33,6 +33,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `frontend/tests/` | Node 原生领域单元测试与 TypeScript 契约检查；运行时产物写入前端缓存目录 |
 | `frontend/wailsjs/` | Wails 自动生成绑定 |
 | `.github/workflows/release-windows.yml` | Windows 发布构建 |
+| `.github/workflows/ci.yml` | PR/主干 CI，windows-latest 上的后端 Go 测试与前端测试/构建（与发布工作流同平台，无 Linux 矩阵） |
 
 ## 开始工作与改动边界
 

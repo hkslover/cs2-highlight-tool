@@ -69,7 +69,7 @@ func TestImportWanmeiMatch_CleansUpLegacyRawDemo(t *testing.T) {
 	})
 
 	matchID := "9208138716569380236"
-	app := &App{exeDir: t.TempDir()}
+	app := newTestAppInTempDir(t)
 	stableSourcePath := filepath.Join(app.exeDir, "demo", "wanmei", matchID, matchID+".dem")
 	legacyRawPath := filepath.Join(app.exeDir, "demo", "raw", hashSourcePath(stableSourcePath), filepath.Base(stableSourcePath))
 

@@ -356,7 +356,9 @@ func TestResolveEditClips_TransitionPathAlwaysProbes(t *testing.T) {
 
 	t.Setenv("EDIT_FFPROBE_JSON", `{"streams":[{"duration":"4.250","width":1600,"height":900,"sample_aspect_ratio":"1:1","display_aspect_ratio":"16:9"}],"format":{"duration":"8.000"}}`)
 
-	app := &App{exeDir: exeDir, editCommandFactoryOverride: editdomain.CommandFactory(fakeFFProbeCommandJSON)}
+	app := newTestApp(t, exeDir, func(a *App) {
+		a.editCommandFactoryOverride = editdomain.CommandFactory(fakeFFProbeCommandJSON)
+	})
 	got, err := app.resolveEditClips(context.Background(), []EditConcatClip{{VideoPath: clipPath, Duration: 99}}, true)
 	if err != nil {
 		t.Fatalf("resolveEditClips: %v", err)
@@ -451,7 +453,9 @@ func TestConcatEditClips_AddsEditedHistoryEntry(t *testing.T) {
 		t.Fatalf("write clipB: %v", err)
 	}
 
-	app := &App{exeDir: exeDir, editCommandFactoryOverride: editdomain.CommandFactory(fakeFFmpegCommandSuccessContext)}
+	app := newTestApp(t, exeDir, func(a *App) {
+		a.editCommandFactoryOverride = editdomain.CommandFactory(fakeFFmpegCommandSuccessContext)
+	})
 	outPath, err := app.ConcatEditClips(EditConcatRequest{
 		Clips: []EditConcatClip{
 			{VideoPath: clipA, Duration: 3.2},
@@ -513,7 +517,7 @@ func TestResolveEditEncodeSettings_QualityMapping(t *testing.T) {
 
 func TestResolveEditOutputPaths_UsesSavedEditSettings(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
 		KillerPreSeconds:  1,

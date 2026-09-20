@@ -12,12 +12,9 @@ import (
 )
 
 func TestNormalizeGeneratePluginBatchJobsUsesAbsoluteDemoPaths(t *testing.T) {
-	targetDir := t.TempDir()
-	targetPath := filepath.Join(targetDir, "demo.dem")
-	relativePath, err := filepath.Rel(mustGetwd(t), targetPath)
-	if err != nil {
-		t.Fatalf("relative path: %v", err)
-	}
+	// 只需要一个相对路径：不依赖临时目录，因为 Windows 的 %TEMP% 常在与
+	// 工作目录不同的卷上，那时 filepath.Rel 无法表达相对路径。
+	relativePath := filepath.Join("testdata", "demo.dem")
 
 	jobs, err := normalizeGeneratePluginBatchJobs([]GeneratePluginJSONRequest{{DemoPath: relativePath}})
 	if err != nil {
@@ -37,7 +34,7 @@ func TestNormalizeGeneratePluginBatchJobsUsesAbsoluteDemoPaths(t *testing.T) {
 
 func TestGenerationSnapshotFreezesSettingsAcrossJobs(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	if _, err := app.SaveClipSettings(ClipSettings{
 		KillerPreSeconds:  1,
 		KillerPostSeconds: 1,
@@ -92,7 +89,7 @@ func TestGenerationSnapshotFreezesSettingsAcrossJobs(t *testing.T) {
 
 func TestGenerationHistoryFilterKeepsFullRoundWhenItemsAreEmpty(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	snapshot, err := app.captureGenerationSnapshot()
 	if err != nil {
 		t.Fatalf("captureGenerationSnapshot: %v", err)
@@ -242,13 +239,4 @@ func TestGenerationHistoryFilterRebuildsVictimOnlyPlan(t *testing.T) {
 			t.Fatalf("retry plan reintroduced killer take: %+v", retry.TakePlans)
 		}
 	}
-}
-
-func mustGetwd(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	return wd
 }
