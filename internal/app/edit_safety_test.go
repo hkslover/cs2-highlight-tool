@@ -23,7 +23,7 @@ func newEditSafetyTestApp(t *testing.T) *App {
 	t.Helper()
 	exeDir := t.TempDir()
 	writeEditSafetyToolchain(t, exeDir)
-	return &App{exeDir: exeDir}
+	return newTestApp(t, exeDir)
 }
 
 func writeEditSafetyToolchain(t *testing.T, dataDir string) {

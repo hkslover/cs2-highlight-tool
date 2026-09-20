@@ -97,7 +97,7 @@ func TestPrepareAndRestoreGameInfoForProduce(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepare gameinfo: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestPrepareGameInfoForProduce_NoBackupWhenAlreadyInjected(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepare gameinfo: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestPrepareGameInfoForProduce_NoBackupWhenAlreadyInjected(t *testing.T) {
 
 func TestPrepareGameInfoForProduce_RecoversStaleBackupBeforeReinjecting(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	firstApp := &App{exeDir: env.exeDir}
+	firstApp := newTestApp(t, env.exeDir)
 	if err := firstApp.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("first prepare gameinfo: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestPrepareGameInfoForProduce_RecoversStaleBackupBeforeReinjecting(t *testi
 		t.Fatalf("expected stale backup, stat err=%v", err)
 	}
 
-	secondApp := &App{exeDir: env.exeDir}
+	secondApp := newTestApp(t, env.exeDir)
 	if err := secondApp.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("second prepare gameinfo: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestPrepareGameInfoForProduce_RecoversStaleBackupBeforeReinjecting(t *testi
 
 func TestPrepareGameInfoForProduce_StaleRecoveryPreservesExternalChanges(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	firstApp := &App{exeDir: env.exeDir}
+	firstApp := newTestApp(t, env.exeDir)
 	if err := firstApp.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("first prepare gameinfo: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestPrepareGameInfoForProduce_StaleRecoveryPreservesExternalChanges(t *test
 		t.Fatalf("write externally changed gameinfo: %v", err)
 	}
 
-	secondApp := &App{exeDir: env.exeDir}
+	secondApp := newTestApp(t, env.exeDir)
 	if err := secondApp.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("second prepare gameinfo: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestPrepareGameInfoForProduce_StaleRecoveryPreservesExternalChanges(t *test
 
 func TestPrepareAndRestorePluginDLLForProduce_NewTarget(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 
 	if err := app.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("preparePluginDLLForProduce: %v", err)
@@ -279,7 +279,7 @@ func TestPrepareAndRestorePluginDLLForProduce_BackupExistingTarget(t *testing.T)
 		t.Fatalf("write existing target dll: %v", err)
 	}
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("preparePluginDLLForProduce: %v", err)
 	}
@@ -324,11 +324,11 @@ func TestPreparePluginDLLForProduce_RecoversStaleBackupAcrossAppInstances(t *tes
 		t.Fatalf("write existing target dll: %v", err)
 	}
 
-	firstApp := &App{exeDir: env.exeDir}
+	firstApp := newTestApp(t, env.exeDir)
 	if err := firstApp.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("first preparePluginDLLForProduce: %v", err)
 	}
-	secondApp := &App{exeDir: env.exeDir}
+	secondApp := newTestApp(t, env.exeDir)
 	if err := secondApp.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("second preparePluginDLLForProduce: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestPreparePluginDLLForProduce_RecoversStaleBackupAcrossAppInstances(t *tes
 
 func TestPreparePluginDLLForProduce_RecoversMissingTargetMarkerAcrossAppInstances(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	firstApp := &App{exeDir: env.exeDir}
+	firstApp := newTestApp(t, env.exeDir)
 	if err := firstApp.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("first preparePluginDLLForProduce: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestPreparePluginDLLForProduce_RecoversMissingTargetMarkerAcrossAppInstance
 		t.Fatalf("unexpected missing-target marker: %q", marker)
 	}
 
-	secondApp := &App{exeDir: env.exeDir}
+	secondApp := newTestApp(t, env.exeDir)
 	if err := secondApp.preparePluginDLLForProduce(); err != nil {
 		t.Fatalf("second preparePluginDLLForProduce: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestPreparePluginDLLForProduce_UsesDebugOverrideDLL(t *testing.T) {
 		t.Fatalf("write debug plugin dll: %v", err)
 	}
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if _, err := app.setDebugPluginDLLOverride(overridePath); err != nil {
 		t.Fatalf("setDebugPluginDLLOverride: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestPreparePluginDLLForProduce_ClearDebugOverrideUsesConfiguredDLL(t *testi
 		t.Fatalf("write debug plugin dll: %v", err)
 	}
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if _, err := app.setDebugPluginDLLOverride(overridePath); err != nil {
 		t.Fatalf("setDebugPluginDLLOverride: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestPreparePluginDLLForProduce_ClearDebugOverrideUsesConfiguredDLL(t *testi
 
 func TestForceRestoreProduceEnvironmentForProduce_RestoresGameInfoAndPluginDLL(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepareGameInfoForProduce: %v", err)
@@ -583,7 +583,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_PluginPrepareFailureRollsBackGameI
 	}
 
 	demoPath := writeProduceDemoFile(t)
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	result, err := app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{
 		Jobs: []GeneratePluginJSONRequest{
 			{
@@ -1375,7 +1375,7 @@ func TestMergeWorker_CancelledSessionStopsBlockedMergeAndDecrementsPending(t *te
 // still restore normally.
 func TestForceRestoreProduceEnvironmentForEpoch_OldEpochDoesNotTouchNewerEnv(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 
 	epoch1 := app.beginProduceEnvironmentPrep()
 	if err := app.prepareGameInfoForProduce(); err != nil {
@@ -1453,7 +1453,7 @@ func TestForceRestoreProduceEnvironmentForEpoch_OldEpochDoesNotTouchNewerEnv(t *
 // and the ORIGINAL environment must still be restorable.
 func TestProduceEnvironment_ReusableAfterFullRestore(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 
 	for i := 0; i < 2; i++ {
 		epoch := app.beginProduceEnvironmentPrep()
@@ -1843,7 +1843,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_RejectsActiveOldSession(t *testing
 	}
 
 	demoPath := writeProduceDemoFile(t)
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	stuck := &produceSessionRuntime{cancel: func() {}, done: make(chan struct{})}
 	app.produceStateMu.Lock()
 	app.produceState.runtime = stuck
@@ -1914,7 +1914,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_QueueRunningFailsBeforeResettingTa
 		t.Fatal("queue should be running")
 	}
 
-	app := &App{exeDir: exeDir, produceW: produceW}
+	app := newTestApp(t, exeDir, func(a *App) { a.produceW = produceW })
 	app.produceStateMu.Lock()
 	app.produceState.takeFiles = map[string]ProduceTakeFile{
 		"marker#1": {DemoPath: "marker", TakeIndex: 1, Status: "processing"},

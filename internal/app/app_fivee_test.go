@@ -41,7 +41,7 @@ func TestListFiveERecentMatches_PersistsPlayerName(t *testing.T) {
 	}
 	t.Cleanup(func() { fivee.HTTPRequestFn = oldReq })
 
-	app := &App{exeDir: t.TempDir()}
+	app := newTestAppInTempDir(t)
 	result, err := app.ListFiveERecentMatches("  molim  ", 3)
 	if err != nil {
 		t.Fatalf("ListFiveERecentMatches() error: %v", err)
@@ -77,7 +77,7 @@ func TestListFiveERecentMatches_ExtractsDomainFromShareLinkAndPersists(t *testin
 	}
 	t.Cleanup(func() { fivee.HTTPRequestFn = oldReq })
 
-	app := &App{exeDir: t.TempDir()}
+	app := newTestAppInTempDir(t)
 	input := "【5E对战平台：被窝以外皆他乡OVO的个人主页】https://csgo.5eplay.com/app/share_loding_type7?domain=12139xi22eza&tab=77&uuid=338955c1-d7bb-11f0-a93a-0c42a164bc3c"
 	result, err := app.ListFiveERecentMatches(input, 1)
 	if err != nil {
@@ -105,7 +105,7 @@ func TestListFiveERecentMatches_EmptyPlayerNameSkipsRemoteCall(t *testing.T) {
 	}
 	t.Cleanup(func() { fivee.HTTPRequestFn = oldReq })
 
-	app := &App{exeDir: t.TempDir()}
+	app := newTestAppInTempDir(t)
 	result, err := app.ListFiveERecentMatches("   ", 1)
 	if err != nil {
 		t.Fatalf("ListFiveERecentMatches() error: %v", err)
@@ -152,7 +152,7 @@ func TestImportFiveEMatch_CleansUpLegacyRawDemo(t *testing.T) {
 	})
 
 	matchID := "g161-20260427162329954189731"
-	app := &App{exeDir: t.TempDir()}
+	app := newTestAppInTempDir(t)
 	stableSourcePath := filepath.Join(app.exeDir, "demo", "5e", matchID, matchID+".dem")
 	legacyRawPath := filepath.Join(app.exeDir, "demo", "raw", hashSourcePath(stableSourcePath), filepath.Base(stableSourcePath))
 

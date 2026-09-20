@@ -15,7 +15,7 @@ import (
 )
 
 func TestPIDDetectionFailureRetainsEnvironmentUntilProcessesAreGone(t *testing.T) {
-	a := &App{exeDir: t.TempDir(), produceW: producews.NewDefault(nil)}
+	a := newTestApp(t, t.TempDir(), func(a *App) { a.produceW = producews.NewDefault(nil) })
 	demoPath, cs2Exe := prepareLaunchTestEnvironment(t, a.exeDir)
 	gameInfo := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(cs2Exe))), "csgo", "gameinfo.gi")
 	original, err := os.ReadFile(gameInfo)
@@ -134,10 +134,7 @@ func TestLaunchHLAEGamePassesProduceWSPort(t *testing.T) {
 		listCS2PIDsFn = originalListPIDs
 	})
 
-	app := &App{
-		exeDir:   exeDir,
-		produceW: produceW,
-	}
+	app := newTestApp(t, exeDir, func(a *App) { a.produceW = produceW })
 	if _, err := app.launchHLAEGame(); err != nil {
 		t.Fatalf("launchHLAEGame: %v", err)
 	}

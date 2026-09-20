@@ -12,7 +12,7 @@ import (
 
 func TestAppUpdateConfigSerializesReadModifyWrite(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
 	var releaseOnce sync.Once

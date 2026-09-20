@@ -18,7 +18,7 @@ import (
 
 func TestGeneratePluginJSON_SortsByTickAndMergesByKillerTarget(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1}); err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
@@ -57,7 +57,7 @@ func TestGeneratePluginJSON_SortsByTickAndMergesByKillerTarget(t *testing.T) {
 
 func TestGeneratePluginJSON_VictimEachAsOwnSequence(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1}); err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
@@ -95,7 +95,7 @@ func TestGeneratePluginJSON_VictimEachAsOwnSequence(t *testing.T) {
 
 func TestGeneratePluginJSON_VictimUsesVictimPrePostSeconds(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
 		KillerPreSeconds:  2,
@@ -128,7 +128,7 @@ func TestGeneratePluginJSON_VictimUsesVictimPrePostSeconds(t *testing.T) {
 
 func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	demoPath := writeDemoFile(t)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
@@ -170,7 +170,7 @@ func TestGeneratePluginJSON_ClipOverridesUsePerClipWindows(t *testing.T) {
 
 func TestGeneratePluginJSON_ClipVictimOverridesIgnoredWhenVictimDisabled(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	demoPath := writeDemoFile(t)
 
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -200,7 +200,7 @@ func TestGeneratePluginJSON_ClipVictimOverridesIgnoredWhenVictimDisabled(t *test
 
 func TestGeneratePluginJSON_ClipOverridesInjectPerPassVoiceAndXrayCommands(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	demoPath := writeDemoFile(t)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
@@ -247,7 +247,7 @@ func TestGeneratePluginJSON_ClipOverridesInjectPerPassVoiceAndXrayCommands(t *te
 
 func TestGeneratePluginJSON_KillerThirdPersonInputIsForcedToSpecMode1(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -275,7 +275,7 @@ func TestGeneratePluginJSON_KillerThirdPersonInputIsForcedToSpecMode1(t *testing
 
 func TestGeneratePluginJSON_VictimThirdPersonInputIsForcedToSpecMode1(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -303,7 +303,7 @@ func TestGeneratePluginJSON_VictimThirdPersonInputIsForcedToSpecMode1(t *testing
 
 func TestGeneratePluginJSON_SameTargetDifferentKillerSpecModeInputsStillMerge(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1}); err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
@@ -342,7 +342,7 @@ func TestGeneratePluginJSON_SameTargetDifferentKillerSpecModeInputsStillMerge(t 
 
 func TestGeneratePluginJSON_OldRequestFallsBackToSpecMode1(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -363,7 +363,7 @@ func TestGeneratePluginJSON_OldRequestFallsBackToSpecMode1(t *testing.T) {
 
 func TestGeneratePluginJSON_ContainsMirvRecordingCommands(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -395,7 +395,7 @@ func TestGeneratePluginJSON_ContainsMirvRecordingCommands(t *testing.T) {
 
 func TestGeneratePluginJSON_PassesRecordQualityToFFmpegBootstrap(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	if _, err := app.SaveClipSettings(ClipSettings{
 		RecordQuality: "ultra",
 		VideoPreset:   "n1",
@@ -425,7 +425,7 @@ func TestGeneratePluginJSON_PassesRecordQualityToFFmpegBootstrap(t *testing.T) {
 
 func TestGeneratePluginJSON_EmitsTakePlans(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	result, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -454,7 +454,7 @@ func TestGeneratePluginJSON_EmitsTakePlans(t *testing.T) {
 
 func TestGeneratePluginJSONInternal_LastSequenceAlwaysDisconnect(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, _, err := app.generatePluginJSONInternal(GeneratePluginJSONRequest{
@@ -481,12 +481,11 @@ func TestGeneratePluginJSONInternal_LastSequenceAlwaysDisconnect(t *testing.T) {
 
 func TestGeneratePluginJSONBatchAndLaunchHLAE_AllSkippedByHistory(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{
-		exeDir: exeDir,
-		produceState: produceSessionState{
+	app := newTestApp(t, exeDir, func(a *App) {
+		a.produceState = produceSessionState{
 			historyKeyIndex: make(map[string]struct{}),
-		},
-	}
+		}
+	})
 
 	demoPath := writeDemoFile(t)
 	preview, _, err := app.generatePluginJSONInternal(GeneratePluginJSONRequest{
@@ -568,7 +567,7 @@ func TestFilterItemsByHistory_IgnoreEditedHistoryKeys(t *testing.T) {
 
 func TestGeneratePluginJSON_ExtraCommandsOnlyInBootstrapSequence(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
@@ -596,7 +595,7 @@ func TestGeneratePluginJSON_ExtraCommandsOnlyInBootstrapSequence(t *testing.T) {
 
 func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	demoPath := writeDemoFile(t)
 
 	if _, err := app.SaveClipSettings(ClipSettings{HidePlayerAvatars: true}); err != nil {
@@ -632,7 +631,7 @@ func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *
 
 func TestGeneratePluginJSON_VoiceIndicesFollowEnableSwitch(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	demoPath := writeDemoFile(t)
 
 	if _, err := app.SaveClipActionSettings(ClipActionSettings{
@@ -680,7 +679,7 @@ func TestGeneratePluginJSON_VoiceIndicesFollowEnableSwitch(t *testing.T) {
 
 func TestClipActionSettings_GetAndSave(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	initial, err := app.GetClipActionSettings()
 	if err != nil {
@@ -738,7 +737,7 @@ func TestClipSettings_ReportsEffectiveAutoProfileWithoutPersistingItAsUserChoice
 		t.Fatalf("save config: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 	settings, err := app.GetClipSettings()
 	if err != nil {
 		t.Fatalf("GetClipSettings: %v", err)
@@ -772,7 +771,7 @@ func TestClipSettings_ReportsEffectiveAutoProfileWithoutPersistingItAsUserChoice
 
 func TestClipSettings_GetAndSave(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	initial, err := app.GetClipSettings()
 	if err != nil {
@@ -1005,7 +1004,7 @@ func TestBuildHLAECommandLine(t *testing.T) {
 
 func TestGeneratePluginJSONBatch_PartialFailure(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	okDemo := writeDemoFile(t)
 	missingDemo := filepath.Join(t.TempDir(), "missing.dem")
@@ -1049,7 +1048,7 @@ func TestGeneratePluginJSONBatch_PartialFailure(t *testing.T) {
 
 func TestGeneratePluginJSONBatch_UsesDemoSubDirsWithinSharedBatchTimestampDir(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
 		RecordOutputDir:    t.TempDir(),
@@ -1106,7 +1105,7 @@ func TestGeneratePluginJSONBatch_UsesDemoSubDirsWithinSharedBatchTimestampDir(t 
 
 func TestGeneratePluginJSONBatch_UsesIncrementalSuffixForDuplicateDemoNames(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	if _, err := app.SaveClipSettings(ClipSettings{
 		RecordOutputDir:    t.TempDir(),
@@ -1161,7 +1160,7 @@ func TestGeneratePluginJSONBatch_UsesIncrementalSuffixForDuplicateDemoNames(t *t
 
 func TestGeneratePluginJSONBatch_ReturnsBatchTimestampAndTakePlans(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	result, err := app.GeneratePluginJSONBatch(GeneratePluginJSONBatchRequest{
@@ -1192,7 +1191,7 @@ func TestGeneratePluginJSONBatch_ReturnsBatchTimestampAndTakePlans(t *testing.T)
 
 func TestSaveClipSettings_AlwaysUsesFixedOutputDir(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	saved, err := app.SaveClipSettings(ClipSettings{
 		RecordOutputDir:    filepath.Join(t.TempDir(), "输出"),
@@ -1216,7 +1215,7 @@ func TestSaveClipSettings_AlwaysUsesFixedOutputDir(t *testing.T) {
 
 func TestGeneratePluginJSONBatchAndLaunchHLAE_LaunchErrorWhenEnvironmentMissing(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	demoPath := writeDemoFile(t)
 	result, err := app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{
@@ -1256,7 +1255,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_PIDDetectFailureStopsLaunch(t *tes
 		t.Fatalf("start produce websocket: %v", err)
 	}
 	defer produceW.Stop()
-	app := &App{exeDir: exeDir, produceW: produceW}
+	app := newTestApp(t, exeDir, func(a *App) { a.produceW = produceW })
 
 	oldLaunchCmd := launchHLAECommand
 	oldListFn := listCS2PIDsFn
@@ -1309,10 +1308,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *test
 		t.Fatalf("start produce websocket: %v", err)
 	}
 	defer produceW.Stop()
-	app := &App{
-		exeDir:   exeDir,
-		produceW: produceW,
-	}
+	app := newTestApp(t, exeDir, func(a *App) { a.produceW = produceW })
 
 	oldLaunchCmd := launchHLAECommand
 	oldListFn := listCS2PIDsFn
@@ -1367,7 +1363,7 @@ func TestGeneratePluginJSONBatchAndLaunchHLAE_StartQueueFailureClosesPID(t *test
 
 func TestGeneratePluginJSONBatchAndLaunchHLAE_NoLaunchWhenAllJobsFail(t *testing.T) {
 	exeDir := t.TempDir()
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	missingDemo := filepath.Join(t.TempDir(), "missing.dem")
 	result, err := app.GeneratePluginJSONBatchAndLaunchHLAE(GeneratePluginJSONBatchRequest{

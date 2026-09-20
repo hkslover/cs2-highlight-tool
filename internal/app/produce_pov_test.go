@@ -36,7 +36,7 @@ func TestPrepareGameInfoForProduce_InjectsPluginAndPovWhenEnabled(t *testing.T) 
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, true)
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepareGameInfoForProduce: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestPrepareGameInfoForProduce_DoesNotInjectPovWhenDisabled(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, false)
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepareGameInfoForProduce: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestPreparePovForProduce_WritesVPKWhenAbsent(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, true)
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.preparePovForProduce(); err != nil {
 		t.Fatalf("preparePovForProduce: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestPreparePovForProduce_LeavesExistingUserVPK(t *testing.T) {
 		t.Fatalf("write existing vpk: %v", err)
 	}
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.preparePovForProduce(); err != nil {
 		t.Fatalf("preparePovForProduce: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestPreparePovForProduce_NoopWhenDisabled(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, false)
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.preparePovForProduce(); err != nil {
 		t.Fatalf("preparePovForProduce: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestForceRestoreProduceEnvironmentForProduce_CleansPluginAndPovAndGameInfo(
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, true)
 
-	app := &App{exeDir: env.exeDir}
+	app := newTestApp(t, env.exeDir)
 	if err := app.prepareGameInfoForProduce(); err != nil {
 		t.Fatalf("prepareGameInfoForProduce: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestGetClipSettings_PovHudEnabledRoundTrip(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
-	app := &App{exeDir: exeDir}
+	app := newTestApp(t, exeDir)
 
 	current, err := app.GetClipSettings()
 	if err != nil {
