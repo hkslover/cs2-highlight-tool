@@ -85,23 +85,28 @@ func validateDataDirChars(path string) error {
 
 // IsDiskRoot 判断给定路径是否为磁盘根目录或 UNC 根。
 // 例如：C:\、D:\、/、\\server\share。
+//
+// 注意 filepath.Clean 的平台差异：Windows 上 Clean("C:") == "C:."（盘符相对
+// 路径）、Clean("/") == `\`（当前盘根），所以裸分隔符与裸盘符都要单独识别，
+// 否则这两个输入会绕过根目录校验。
 func IsDiskRoot(path string) bool {
 	clean := filepath.Clean(path)
 
-	// Unix 根
-	if clean == "/" {
+	// 仅由当前平台分隔符组成的路径：Unix 根 /，以及 Windows 上 Clean("/") == `\`。
+	// 只裁剪本平台分隔符，避免把 POSIX 上名为 `\` 的普通目录误判为根。
+	if clean != "" && strings.Trim(clean, string(filepath.Separator)) == "" {
 		return true
 	}
 
-	// Windows 盘符根：C:\ 或 C:
-	if len(clean) == 2 && clean[1] == ':' {
-		return true
-	}
-	if len(clean) == 3 && clean[1] == ':' && (clean[2] == '\\' || clean[2] == '/') {
-		return true
+	// Windows 盘符根：C:、C:\、C:/，以及 Windows Clean("C:") 得到的 "C:."。
+	if len(clean) >= 2 && clean[1] == ':' {
+		rest := clean[2:]
+		if rest == "" || rest == "." || strings.Trim(rest, `\/`) == "" {
+			return true
+		}
 	}
 
-	// 仅含盘符 + 一个分隔符 -> 根（filepath.Clean 通常会归一化为 C:\）
+	// UNC 根：VolumeName 已吃掉 \\server\share，只剩空余量即根。
 	volume := filepath.VolumeName(clean)
 	if volume != "" {
 		remainder := strings.TrimPrefix(clean, volume)
