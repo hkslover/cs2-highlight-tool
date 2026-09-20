@@ -1,0 +1,77 @@
+name: CI
+
+# The release workflow only runs on `v*` tags, so a red Windows test suite used
+# to surface only at release time. This workflow gives the same test suite a
+# chance to run on every pull request and on main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is the shipping platform; ubuntu-latest keeps feedback fast.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      # main.go embeds frontend/dist, which is generated and gitignored, so a
+      # bare checkout cannot build the root package. The root package has no
+      # tests; a placeholder satisfies the embed without a full frontend build
+      # (the frontend job below builds the real bundle).
+      - name: Create frontend/dist placeholder for the embed
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          echo "placeholder for //go:embed all:frontend/dist" \
+            > frontend/dist/index.html
+
+      - name: Test backend
+        run: go test ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
