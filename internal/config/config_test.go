@@ -36,7 +36,9 @@ func TestLoadOrCreateDoesNotRewriteNormalizedConfig(t *testing.T) {
 	if err := Save(path, Default(dir)); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	fixedTime := time.Unix(123, 456)
+	// 时间戳用整秒：NTFS 的文件时间粒度是 100ns，纳秒级的固定值在
+	// os.Chtimes 之后会被取整，导致“没被重写”这个断言假失败。
+	fixedTime := time.Unix(123, 0)
 	if err := os.Chtimes(path, fixedTime, fixedTime); err != nil {
 		t.Fatalf("set config timestamp: %v", err)
 	}
@@ -47,27 +49,38 @@ func TestLoadOrCreateDoesNotRewriteNormalizedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat config: %v", err)
 	}
-	if !info.ModTime().Equal(fixedTime) {
+	// 仍留出容差，兼容 FAT 等 2 秒粒度的文件系统；被重写的时间差会是几十年。
+	if drift := info.ModTime().Sub(fixedTime); drift < -2*time.Second || drift > 2*time.Second {
 		t.Fatalf("normalized config was rewritten: modtime=%v want=%v", info.ModTime(), fixedTime)
 	}
 }
 
-func TestSaveConcurrentWritersAlwaysLeaveValidJSON(t *testing.T) {
+// TestConcurrentStoreUpdatesAlwaysLeaveValidJSON 验证并发写入的最终状态。
+//
+// 这里必须经过 Store：它是生产路径上唯一的写入序列化点，而裸并发调用 Save
+// 在 Windows 上不成立 —— Windows 没有 POSIX 的 unlink-while-open 语义，并发
+// os.Rename 覆盖同一个目标会返回 ERROR_ACCESS_DENIED，即使两个写入都是合法的。
+func TestConcurrentStoreUpdatesAlwaysLeaveValidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
+	store := NewStore(path, dir)
+	defer store.Close()
+
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func(version int) {
 			defer wg.Done()
-			cfg := Default(dir)
-			cfg.LastChangelogVersion = string(rune('a' + version))
-			if err := Save(path, cfg); err != nil {
-				t.Errorf("Save: %v", err)
+			if _, err := store.Update(func(cfg *Config) error {
+				cfg.LastChangelogVersion = string(rune('a' + version))
+				return nil
+			}); err != nil {
+				t.Errorf("Update: %v", err)
 			}
 		}(i)
 	}
 	wg.Wait()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -75,6 +88,9 @@ func TestSaveConcurrentWritersAlwaysLeaveValidJSON(t *testing.T) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatalf("final config is invalid JSON: %v", err)
+	}
+	if cfg.LastChangelogVersion < "a" || cfg.LastChangelogVersion > "t" {
+		t.Fatalf("final config lost every writer's value: %q", cfg.LastChangelogVersion)
 	}
 }
 
