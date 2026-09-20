@@ -72,9 +72,9 @@ test("fast edit trims only adjacent victim takes in the same demo round and kill
   const items = [first, second, third, separatedByRound].map(sequenceItem);
 
   const plan = buildOpponentFastEditPlan(items);
-  assert.deepEqual(plan.ranges[0], { start_seconds: 1, end_seconds: 2.3 });
-  assert.deepEqual(plan.ranges[1], { start_seconds: 2.2, end_seconds: 3.3 });
-  assert.deepEqual(plan.ranges[2], { start_seconds: 3.2, end_seconds: 4.5 });
+  assert.deepEqual(plan.ranges[0], { start_seconds: 1, end_seconds: 2.5 });
+  assert.deepEqual(plan.ranges[1], { start_seconds: 2.4, end_seconds: 3.5 });
+  assert.deepEqual(plan.ranges[2], { start_seconds: 3.4, end_seconds: 4.5 });
   assert.deepEqual(plan.ranges[3], { start_seconds: 4, end_seconds: 5 });
   assert.equal(plan.hardCutAfter[0], true);
   assert.equal(plan.hardCutAfter[1], true);
@@ -122,7 +122,7 @@ test("same-tick deaths keep a short overlap and short source clips stay non-empt
     victimItem({ path: "same-b.mp4", tick: 1200, offset: 2 }),
   ].map(sequenceItem));
   assert.deepEqual(sameTick.ranges, [
-    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 1, end_seconds: 2.5 },
     { start_seconds: 1.85, end_seconds: 2.5 },
   ]);
   assert.deepEqual(sameTick.hardCutAfter, [true]);
@@ -138,7 +138,7 @@ test("reversed user order is trimmed independently and rounded ends stay within 
     victimItem({ path: "early.mp4", tick: 1200, offset: 2 }),
   ].map(sequenceItem));
   assert.deepEqual(reversed.ranges, [
-    { start_seconds: 2, end_seconds: 3.3 },
+    { start_seconds: 2, end_seconds: 3.5 },
     { start_seconds: 1, end_seconds: 2.5 },
   ]);
   assert.deepEqual(reversed.hardCutAfter, [true]);
@@ -164,7 +164,7 @@ test("long gaps keep a short lead and mixed roles stay full length and fadeable"
 
   const plan = buildOpponentFastEditPlan([first, longGap, killer, lastVictim]);
   assert.deepEqual(plan.ranges, [
-    { start_seconds: 1, end_seconds: 2.3 },
+    { start_seconds: 1, end_seconds: 2.5 },
     { start_seconds: 3, end_seconds: 4.5 },
     undefined,
     { start_seconds: 5, end_seconds: 6.5 },
@@ -187,12 +187,12 @@ test("fast edit request adds optional trims and keeps fast-edit group gaps hard 
     video_path: "one.mp4",
     duration: 5,
     start_seconds: 1,
-    end_seconds: 2.3,
+    end_seconds: 2.5,
   });
   assert.deepEqual(request.clips[1], {
     video_path: "two.mp4",
     duration: 5,
-    start_seconds: 2.2,
+    start_seconds: 2.4,
     end_seconds: 3.5,
   });
   assert.deepEqual(request.transitions, []);

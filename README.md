@@ -16,12 +16,22 @@
   </p>
 </div>
 
+<a id="ads"></a>
+## 广告
+
+<div align="center">
+  <a href="https://88dog.com/?promotion=CSHL88">
+    <img src="docs/images/88dog_top.png" alt="88dog 加速器" width="880" />
+  </a>
+</div>
+
 ## 导航
 
 - [软件截图](#screenshots)
 - [核心功能](#features)
 - [我是用户](#quickstart)
 - [我是开发者](#dev)
+- [广告](#ads)
 - [特别鸣谢](#thanks)
 
 
