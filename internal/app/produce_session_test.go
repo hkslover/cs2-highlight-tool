@@ -858,16 +858,19 @@ func TestDispatchMergeTasks_ResolvesPathsByDemoSubdir(t *testing.T) {
 
 	task1 := <-state.taskCh
 	task2 := <-state.taskCh
-	if task1.plan.TakeIndex != 1 || !strings.HasSuffix(strings.ToLower(task1.videoPath), "demo_a/take0000.mp4") {
+	// expectedTakePaths 用 filepath.Join 拼路径：Windows 上分隔符是 `\`，
+	// 后缀断言先 ToSlash 归一，避免把平台分隔符写死进期望值。
+	slashPath := func(p string) string { return filepath.ToSlash(strings.ToLower(p)) }
+	if task1.plan.TakeIndex != 1 || !strings.HasSuffix(slashPath(task1.videoPath), "demo_a/take0000.mp4") {
 		t.Fatalf("unexpected first pair: %+v", task1)
 	}
-	if !strings.HasSuffix(strings.ToLower(task1.audioPath), "demo_a/take0000/audio.wav") {
+	if !strings.HasSuffix(slashPath(task1.audioPath), "demo_a/take0000/audio.wav") {
 		t.Fatalf("unexpected first audio path: %+v", task1)
 	}
-	if task2.plan.TakeIndex != 2 || !strings.HasSuffix(strings.ToLower(task2.videoPath), "demo_b/take0002.mp4") {
+	if task2.plan.TakeIndex != 2 || !strings.HasSuffix(slashPath(task2.videoPath), "demo_b/take0002.mp4") {
 		t.Fatalf("unexpected second pair: %+v", task2)
 	}
-	if !strings.HasSuffix(strings.ToLower(task2.audioPath), "demo_b/take0002/audio.wav") {
+	if !strings.HasSuffix(slashPath(task2.audioPath), "demo_b/take0002/audio.wav") {
 		t.Fatalf("unexpected second audio path: %+v", task2)
 	}
 }
