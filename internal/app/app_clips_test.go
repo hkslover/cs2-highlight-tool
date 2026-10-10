@@ -850,8 +850,8 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.HidePlayerAvatars {
 		t.Fatalf("hide_player_avatars should default to false: %+v", initial)
 	}
-	if initial.HideChatMessages {
-		t.Fatalf("hide_chat_messages should default to false: %+v", initial)
+	if !initial.HideChatMessages {
+		t.Fatalf("hide_chat_messages should default to true: %+v", initial)
 	}
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)

@@ -104,7 +104,7 @@ func Default(dataDir string) *Config {
 		EnableSpecShowXray: true,
 		HideAllUI:          false,
 		HidePlayerAvatars:  false,
-		HideChatMessages:   false,
+		HideChatMessages:   true,
 		UseShoulderCamera:  false,
 		PovHudEnabled:      true,
 		PovRadarEnabled:    false,
