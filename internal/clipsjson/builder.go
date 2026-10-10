@@ -675,9 +675,7 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	if opts.HideAllUI {
 		actions = append(actions, Action{Cmd: "cl_draw_only_deathnotices 1", Tick: actionTick})
 	}
-	if opts.HidePlayerAvatars {
-		actions = append(actions, Action{Cmd: "cl_teamcounter_playercount_instead_of_avatars true", Tick: actionTick})
-	}
+	actions = append(actions, Action{Cmd: fmt.Sprintf("cl_teamcounter_playercount_instead_of_avatars %t", opts.HidePlayerAvatars), Tick: actionTick})
 	if opts.HideChatMessages {
 		actions = append(actions, Action{Cmd: "hidehud 128", Tick: actionTick})
 	}

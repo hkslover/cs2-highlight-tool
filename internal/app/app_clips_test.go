@@ -612,6 +612,7 @@ func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *
 	}
 	enabled := readGeneratedSequences(t, demoPath+".json")
 	assertHasAction(t, enabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
+	assertNoAction(t, enabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars false")
 
 	if _, err := app.SaveClipSettings(ClipSettings{HidePlayerAvatars: false}); err != nil {
 		t.Fatalf("SaveClipSettings disabled: %v", err)
@@ -626,7 +627,8 @@ func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *
 		t.Fatalf("GeneratePluginJSON disabled: %v", err)
 	}
 	disabled := readGeneratedSequences(t, demoPath+".json")
-	assertNoPrefixAction(t, disabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
+	assertHasAction(t, disabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars false")
+	assertNoAction(t, disabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
 }
 
 func TestGeneratePluginJSONBatch_HideChatMessagesControlsEveryDemoBootstrap(t *testing.T) {

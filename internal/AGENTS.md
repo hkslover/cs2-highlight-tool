@@ -38,7 +38,7 @@
 
 ## 设置、生成与游戏环境
 
-- 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；关闭命令开关时不生成命令或重置命令。编码设置的 `effective_video_preset`、`effective_video_encoder`、`effective_video_status` 仅作为 Get/Save 响应的只读探测结果，不能覆盖持久化的 `video_preset` 用户策略。
+- 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；除 `hide_player_avatars` 始终写入 `cl_teamcounter_playercount_instead_of_avatars true|false` 外，关闭命令开关时不生成命令或重置命令。编码设置的 `effective_video_preset`、`effective_video_encoder`、`effective_video_status` 仅作为 Get/Save 响应的只读探测结果，不能覆盖持久化的 `video_preset` 用户策略。
 - `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动；`sky_blackout` 不得联动关闭云层。
 - `hide_chat_messages` 默认开启，旧配置缺少字段时继承默认值，显式 false 保持关闭；开启时每个 Demo 的初始化序列写入 `hidehud 128`，在片段录制前执行，关闭时不写入或重置 `hidehud`。
 - `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。

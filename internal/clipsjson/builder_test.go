@@ -204,7 +204,7 @@ func TestBuild_NoMatchEndTickLeavesRecordingWindowUnclamped(t *testing.T) {
 	}
 }
 
-func TestBuild_HidePlayerAvatarsCommandOnlyWhenEnabled(t *testing.T) {
+func TestBuild_HidePlayerAvatarsCommandReflectsSetting(t *testing.T) {
 	baseOptions := BuildOptions{
 		TickRate:          64,
 		KillerPreSeconds:  1,
@@ -225,12 +225,14 @@ func TestBuild_HidePlayerAvatarsCommandOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("Build enabled hide_player_avatars: %v", err)
 	}
 	assertHasAction(t, enabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
+	assertNoAction(t, enabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars false")
 
 	disabled, err := Build(items, baseOptions)
 	if err != nil {
 		t.Fatalf("Build disabled hide_player_avatars: %v", err)
 	}
-	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
+	assertHasAction(t, disabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars false")
+	assertNoAction(t, disabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars true")
 }
 
 func TestBuild_FullRoundPOVHideChatMessagesOnlyInBootstrap(t *testing.T) {
