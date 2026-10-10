@@ -427,6 +427,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	if cfg.HidePlayerAvatars {
 		t.Fatalf("hide_player_avatars should default to false")
 	}
+	if cfg.HideChatMessages {
+		t.Fatalf("hide_chat_messages should default to false for legacy configs")
+	}
 	if cfg.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false")
 	}
@@ -455,6 +458,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(saved), "hide_player_avatars") {
 		t.Fatalf("saved config should contain hide_player_avatars, got: %s", string(saved))
+	}
+	if !strings.Contains(string(saved), `"hide_chat_messages": false`) {
+		t.Fatalf("saved config should contain disabled hide_chat_messages, got: %s", string(saved))
 	}
 	if !strings.Contains(string(saved), "use_shoulder_camera") {
 		t.Fatalf("saved config should contain use_shoulder_camera, got: %s", string(saved))

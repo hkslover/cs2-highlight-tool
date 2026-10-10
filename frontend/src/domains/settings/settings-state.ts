@@ -72,6 +72,7 @@ export const DEFAULT_CLIP_SETTINGS: Readonly<ClipSettings> = Object.freeze({
   enable_spec_show_xray_zero: true,
   hide_all_ui: false,
   hide_player_avatars: false,
+  hide_chat_messages: false,
   use_shoulder_camera: false,
   pov_hud_enabled: true,
   pov_radar_enabled: false,

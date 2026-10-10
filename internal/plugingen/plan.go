@@ -24,6 +24,7 @@ type GenerationSettings struct {
 	EnableSpecShowXray   bool
 	HideAllUI            bool
 	HidePlayerAvatars    bool
+	HideChatMessages     bool
 	UseShoulderCamera    bool
 	PovRadarEnabled      bool
 	SkyBlackout          bool
@@ -110,6 +111,7 @@ func BuildPlan(input PlanInput) (*GenerationPlan, error) {
 		EnableSpecShowXray:        settings.EnableSpecShowXray,
 		HideAllUI:                 settings.HideAllUI,
 		HidePlayerAvatars:         settings.HidePlayerAvatars,
+		HideChatMessages:          settings.HideChatMessages,
 		UseShoulderCamera:         settings.UseShoulderCamera,
 		PovRadarEnabled:           settings.PovRadarEnabled,
 		SkyBlackout:               settings.SkyBlackout,

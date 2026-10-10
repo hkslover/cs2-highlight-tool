@@ -128,6 +128,30 @@ test("dispose flushes the debounce window so closing a panel does not lose edits
   assert.equal(calls[0].edit_fps, 120);
 });
 
+test("hide chat messages is saved by the shared draft and cleared for a new workspace", async () => {
+  const { store, calls } = storeWith();
+  await store.init();
+  assert.equal(store.draftSettings.hide_chat_messages, false);
+
+  store.draftSettings.hide_chat_messages = true;
+  await store.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].hide_chat_messages, true);
+  assert.equal(store.confirmedSettings.value.hide_chat_messages, true);
+
+  store.draftSettings.hide_chat_messages = false;
+  await store.flush();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].hide_chat_messages, false);
+
+  store.draftSettings.hide_chat_messages = true;
+  store.resetForWorkspace();
+  assert.equal(store.draftSettings.hide_chat_messages, false);
+  assert.equal(store.confirmedSettings.value, null);
+  await store.dispose();
+  assert.equal(calls.length, 2);
+});
+
 test("dispose waits for an in-flight save and drains an edit made during close", async () => {
   const base = settings();
   const saves = [];
