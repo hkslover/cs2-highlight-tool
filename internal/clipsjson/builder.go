@@ -84,6 +84,7 @@ type BuildOptions struct {
 	EnableSpecShowXray        bool
 	HideAllUI                 bool
 	HidePlayerAvatars         bool
+	HideChatMessages          bool
 	UseShoulderCamera         bool
 	PovRadarEnabled           bool
 	SkyBlackout               bool
@@ -174,6 +175,7 @@ type bootstrapOptions struct {
 	EnableSpecShowXray bool
 	HideAllUI          bool
 	HidePlayerAvatars  bool
+	HideChatMessages   bool
 	UseShoulderCamera  bool
 	PovRadarEnabled    bool
 	SkyBlackout        bool
@@ -270,6 +272,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		EnableSpecShowXray: opts.EnableSpecShowXray,
 		HideAllUI:          opts.HideAllUI,
 		HidePlayerAvatars:  opts.HidePlayerAvatars,
+		HideChatMessages:   opts.HideChatMessages,
 		UseShoulderCamera:  opts.UseShoulderCamera,
 		PovRadarEnabled:    opts.PovRadarEnabled,
 		SkyBlackout:        opts.SkyBlackout,
@@ -674,6 +677,9 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	}
 	if opts.HidePlayerAvatars {
 		actions = append(actions, Action{Cmd: "cl_teamcounter_playercount_instead_of_avatars true", Tick: actionTick})
+	}
+	if opts.HideChatMessages {
+		actions = append(actions, Action{Cmd: "hidehud 128", Tick: actionTick})
 	}
 	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices %d", voiceValue), Tick: actionTick})
 	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices_h %d", voiceValue), Tick: actionTick})

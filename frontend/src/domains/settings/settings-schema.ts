@@ -5,6 +5,7 @@ export type SearchableSwitchSettingKey =
   | "enable_spec_show_xray_zero"
   | "hide_all_ui"
   | "hide_player_avatars"
+  | "hide_chat_messages"
   | "use_shoulder_camera"
   | "pov_hud_enabled"
   | "pov_radar_enabled"
@@ -58,6 +59,12 @@ export const SEARCHABLE_CLIP_SETTINGS: readonly SearchableClipSettingItem[] = [
     labelKey: "main.settings.hide_player_avatars",
     kind: "switch",
     aliases: ["隐藏玩家头像", "玩家头像", "player avatars", "teamcounter"],
+  },
+  {
+    key: "hide_chat_messages",
+    labelKey: "main.settings.hide_chat_messages",
+    kind: "switch",
+    aliases: ["隐藏聊天信息", "聊天", "hide chat", "chat messages", "hidehud"],
   },
   {
     key: "use_shoulder_camera",
@@ -156,4 +163,3 @@ export function getSearchableSwitchValue(settings: ClipSettings, item: Searchabl
 export function getSearchableNumberValue(settings: ClipSettings, item: SearchableClipSettingItem): number {
   return isSearchableNumberSetting(item) ? settings[item.key] : 0;
 }
-

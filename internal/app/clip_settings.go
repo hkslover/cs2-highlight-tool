@@ -31,6 +31,7 @@ type ClipSettings struct {
 	EnableSpecShowXray    bool    `json:"enable_spec_show_xray_zero"`
 	HideAllUI             bool    `json:"hide_all_ui"`
 	HidePlayerAvatars     bool    `json:"hide_player_avatars"`
+	HideChatMessages      bool    `json:"hide_chat_messages"`
 	UseShoulderCamera     bool    `json:"use_shoulder_camera"`
 	PovHudEnabled         bool    `json:"pov_hud_enabled"`
 	PovRadarEnabled       bool    `json:"pov_radar_enabled"`
@@ -123,6 +124,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.EnableSpecShowXray = settings.EnableSpecShowXray
 		cfg.HideAllUI = settings.HideAllUI
 		cfg.HidePlayerAvatars = settings.HidePlayerAvatars
+		cfg.HideChatMessages = settings.HideChatMessages
 		cfg.UseShoulderCamera = settings.UseShoulderCamera
 		cfg.PovHudEnabled = settings.PovHudEnabled
 		cfg.PovRadarEnabled = settings.PovRadarEnabled

@@ -60,6 +60,7 @@ export namespace app {
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
 	    hide_player_avatars: boolean;
+	    hide_chat_messages: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
@@ -93,6 +94,7 @@ export namespace app {
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
 	        this.hide_player_avatars = source["hide_player_avatars"];
+	        this.hide_chat_messages = source["hide_chat_messages"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
@@ -885,6 +887,7 @@ export namespace config {
 	    enable_spec_show_xray_zero: boolean;
 	    hide_all_ui: boolean;
 	    hide_player_avatars: boolean;
+	    hide_chat_messages: boolean;
 	    use_shoulder_camera: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
@@ -928,6 +931,7 @@ export namespace config {
 	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
 	        this.hide_all_ui = source["hide_all_ui"];
 	        this.hide_player_avatars = source["hide_player_avatars"];
+	        this.hide_chat_messages = source["hide_chat_messages"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];

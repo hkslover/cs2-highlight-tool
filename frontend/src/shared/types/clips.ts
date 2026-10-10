@@ -19,6 +19,7 @@ export interface ClipSettings {
   enable_spec_show_xray_zero: boolean;
   hide_all_ui: boolean;
   hide_player_avatars: boolean;
+  hide_chat_messages: boolean;
   use_shoulder_camera: boolean;
   pov_hud_enabled: boolean;
   pov_radar_enabled: boolean;

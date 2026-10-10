@@ -233,6 +233,40 @@ func TestBuild_HidePlayerAvatarsCommandOnlyWhenEnabled(t *testing.T) {
 	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
 }
 
+func TestBuild_FullRoundPOVHideChatMessagesOnlyInBootstrap(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		result, err := Build(nil, BuildOptions{
+			HideChatMessages: enabled,
+			VideoPreset:      "c1",
+			FullRoundPOVSegments: []FullRoundPOVSegment{
+				{Round: 1, StartTick: 200, EndTick: 600, Target: "7", SpecMode: 1, PlayerSteamID: "123"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Build enabled=%v: %v", enabled, err)
+		}
+		count := 0
+		for sequenceIndex, sequence := range result.Sequences {
+			for _, action := range sequence.Actions {
+				if !strings.HasPrefix(action.Cmd, "hidehud") {
+					continue
+				}
+				count++
+				if !enabled || sequenceIndex != 0 || action.Tick != DefaultActionTick || action.Cmd != "hidehud 128" {
+					t.Fatalf("unexpected hidehud action in sequence %d: %+v", sequenceIndex, action)
+				}
+			}
+		}
+		wantCount := 0
+		if enabled {
+			wantCount = 1
+		}
+		if count != wantCount {
+			t.Fatalf("hidehud count=%d want %d", count, wantCount)
+		}
+	}
+}
+
 func TestBuild_ShoulderCameraCommandBeforeBuildInfoOnlyWhenEnabled(t *testing.T) {
 	shoulderCameraCommand := "cam_command 1;cam_idealdist 30;cam_idealyaw 0;cam_idealpitch 0;c_thirdpersonshoulder 1;c_thirdpersonshoulderaimdist 300;c_thirdpersonshoulderdist 40;c_thirdpersonshoulderheight 2;c_thirdpersonshoulderoffset 20;"
 	enabled, err := Build([]Item{{

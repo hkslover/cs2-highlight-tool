@@ -629,6 +629,49 @@ func TestGeneratePluginJSON_HidePlayerAvatarsSettingControlsBootstrapCommand(t *
 	assertNoPrefixAction(t, disabled[0].Actions, "cl_teamcounter_playercount_instead_of_avatars")
 }
 
+func TestGeneratePluginJSONBatch_HideChatMessagesControlsEveryDemoBootstrap(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	demoPaths := []string{writeDemoFile(t), writeDemoFile(t)}
+	jobs := make([]GeneratePluginJSONRequest, 0, len(demoPaths))
+	for _, demoPath := range demoPaths {
+		jobs = append(jobs, GeneratePluginJSONRequest{
+			DemoPath: demoPath,
+			TickRate: 64,
+			SelectedItems: []SelectedClipItem{
+				{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: true},
+			},
+		})
+	}
+	// Toggle off after enabling to ensure no reset command is emitted either.
+	for _, enabled := range []bool{true, false} {
+		if _, err := app.SaveClipSettings(ClipSettings{HideChatMessages: enabled}); err != nil {
+			t.Fatalf("SaveClipSettings enabled=%v: %v", enabled, err)
+		}
+		loaded, err := app.GetClipSettings()
+		if err != nil || loaded.HideChatMessages != enabled {
+			t.Fatalf("GetClipSettings enabled=%v: settings=%+v err=%v", enabled, loaded, err)
+		}
+		result, err := app.GeneratePluginJSONBatch(GeneratePluginJSONBatchRequest{Jobs: jobs})
+		if err != nil {
+			t.Fatalf("GeneratePluginJSONBatch enabled=%v: %v", enabled, err)
+		}
+		if result.SuccessCount != len(jobs) {
+			t.Fatalf("batch result: %+v", result)
+		}
+		for _, demoPath := range demoPaths {
+			sequences := readGeneratedSequences(t, demoPath+".json")
+			if enabled {
+				assertHasAction(t, sequences[0].Actions, "hidehud 128")
+			} else {
+				assertNoPrefixAction(t, sequences[0].Actions, "hidehud")
+			}
+			for _, sequence := range sequences[1:] {
+				assertNoPrefixAction(t, sequence.Actions, "hidehud")
+			}
+		}
+	}
+}
+
 func TestGeneratePluginJSON_VoiceIndicesFollowEnableSwitch(t *testing.T) {
 	exeDir := t.TempDir()
 	app := newTestApp(t, exeDir)
@@ -807,6 +850,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.HidePlayerAvatars {
 		t.Fatalf("hide_player_avatars should default to false: %+v", initial)
 	}
+	if !initial.HideChatMessages {
+		t.Fatalf("hide_chat_messages should default to true: %+v", initial)
+	}
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
@@ -834,6 +880,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		LaunchResolution:  "16:9",
 		HideAllUI:         true,
 		HidePlayerAvatars: true,
+		HideChatMessages:  true,
 		UseShoulderCamera: true,
 		PovRadarEnabled:   true,
 		DisableClouds:     true,
@@ -864,6 +911,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !saved.HidePlayerAvatars {
 		t.Fatalf("hide_player_avatars should persist true: %+v", saved)
+	}
+	if !saved.HideChatMessages {
+		t.Fatalf("hide_chat_messages should persist true: %+v", saved)
 	}
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
@@ -902,6 +952,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.HidePlayerAvatars {
 		t.Fatalf("saved hide_player_avatars mismatch: %+v", loaded)
+	}
+	if !loaded.HideChatMessages {
+		t.Fatalf("saved hide_chat_messages mismatch: %+v", loaded)
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)

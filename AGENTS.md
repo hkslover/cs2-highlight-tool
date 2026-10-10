@@ -101,6 +101,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `record_output_dir` | Get/Save 设置时固定为 `<dataDir>/outputs` |
 | `hide_all_ui` | 默认 false；开启写入 `cl_draw_only_deathnotices 1` |
 | `hide_player_avatars` | 默认 false；开启写入 `cl_teamcounter_playercount_instead_of_avatars true` |
+| `hide_chat_messages` | 默认 true，旧配置缺少字段时按开启处理，显式 false 保持关闭；开启在每个 Demo 的初始化序列中写入 `hidehud 128`，在片段录制前执行；关闭不写命令或反向重置 |
 | `use_shoulder_camera` | 默认 false；开启在 `r_show_build_info 0` 前写入越肩命令 |
 | `sky_blackout` | 默认 true；开启仅写入 `r_drawskybox 0` |
 | `disable_clouds` | 默认 false；开启仅写入 `mirv_sky clouds draw 0`，与天空开关独立 |
