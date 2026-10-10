@@ -100,14 +100,14 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `launch_resolution` | `16:9 | 4:3 | 4:3_1280x960`，默认`4:3`；两种 4:3 为`1440x1080`、`1280x960`，录制通过 FFmpeg `-vf scale=trunc(ih*16/9/2)*2:ih` 真实拉伸为方像素 16:9（替代旧的 `-aspect 16:9` 元数据标签，兼容忽略 SAR 的播放器与异常捕获高度） |
 | `record_output_dir` | Get/Save 设置时固定为 `<dataDir>/outputs` |
 | `hide_all_ui` | 默认 false；开启写入 `cl_draw_only_deathnotices 1` |
-| `hide_player_avatars` | 默认 false；开启写入 `cl_teamcounter_playercount_instead_of_avatars true` |
+| `hide_player_avatars` | 默认 false；开启写入 `cl_teamcounter_playercount_instead_of_avatars true`，关闭写入 `cl_teamcounter_playercount_instead_of_avatars false` |
 | `hide_chat_messages` | 默认 true，旧配置缺少字段时按开启处理，显式 false 保持关闭；开启在每个 Demo 的初始化序列中写入 `hidehud 128`，在片段录制前执行；关闭不写命令或反向重置 |
 | `use_shoulder_camera` | 默认 false；开启在 `r_show_build_info 0` 前写入越肩命令 |
 | `sky_blackout` | 默认 true；开启仅写入 `r_drawskybox 0` |
 | `disable_clouds` | 默认 false；开启仅写入 `mirv_sky clouds draw 0`，与天空开关独立 |
 | `pov_radar_enabled` | 默认 false；开启仅写入 `csdm_radar_pov 1`，与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期独立 |
 
-上述命令开关关闭时不写入对应命令或反向重置命令。FFmpeg 探测缓存字段为 `ffmpeg_detected_preset/ffmpeg_detected_encoders/ffmpeg_detected_at`，供自动选择和编码回退使用。`GetClipSettings` / `SaveClipSettings` 响应中的 `effective_video_preset/effective_video_encoder/effective_video_status` 是只读的实际编码结果，不改变持久化的 `video_preset=auto`；前端应在探测完成后展示这些字段。`GetClipActionSettings` / `SaveClipActionSettings` 的语音配置必须与 ClipSettings 语义一致。
+除 `hide_player_avatars` 始终写入对应布尔值外，上述命令开关关闭时不写入对应命令或反向重置命令。FFmpeg 探测缓存字段为 `ffmpeg_detected_preset/ffmpeg_detected_encoders/ffmpeg_detected_at`，供自动选择和编码回退使用。`GetClipSettings` / `SaveClipSettings` 响应中的 `effective_video_preset/effective_video_encoder/effective_video_status` 是只读的实际编码结果，不改变持久化的 `video_preset=auto`；前端应在探测完成后展示这些字段。`GetClipActionSettings` / `SaveClipActionSettings` 的语音配置必须与 ClipSettings 语义一致。
 
 - 生成入口为 `GeneratePluginJSON`、`GeneratePluginJSONBatch`、`GeneratePluginJSONBatchAndLaunchHLAE`；批量请求通过 `jobs[]` 承载单 Demo 请求。请求/结果结构见 `internal/app/plugin_generate_types.go`，编排见 `plugin_generate.go` 与 `plugin_generate_launch.go`。
 - 生成规划由 `internal/plugingen` 的显式输入/输出承担：`NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤不得访问 App、Wails、磁盘配置或进程；App 在工作目录准入后冻结一次配置快照，再负责 JSON 写入、take/history 登记和可选启动编排。
