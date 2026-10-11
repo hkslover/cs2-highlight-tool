@@ -414,6 +414,7 @@
       "enable_spec_show_xray_zero": "Inject spec_show_xray 0 in bootstrap",
       "hide_all_ui": "Hide All UI",
       "hide_player_avatars": "Hide Player Avatars",
+      "hide_chat_messages": "Hide Chat Messages",
       "use_shoulder_camera": "Use shoulder camera",
       "pov_hud_enabled": "Enable POV HUD",
       "pov_radar_enabled": "Enable POV Radar",

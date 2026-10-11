@@ -16,6 +16,7 @@ from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parent
+DEFAULT_OUTPUT_DIR = ROOT.parents[1] / "internal" / "producegame" / "assets"
 STYLE_PATH = "panorama/styles/hud/hud.vcss_c"
 TEXTURE_PATH = "panorama/images/custom/cs2ht_brand_logo_rgba.vtex_c"
 
@@ -115,6 +116,8 @@ def atomic_write(path, content):
 def main():
     parser = argparse.ArgumentParser(description="Build brand.vpk without modifying hud.brand.css or logo.png.")
     parser.add_argument("--image", type=Path, default=ROOT / "logo.png")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
+                        help="VPK output directory (default: internal/producegame/assets)")
     args = parser.parse_args()
     css = (ROOT / "hud.brand.css").read_bytes()
     template = (ROOT / "hud.template.vcss_c").read_bytes()
@@ -123,7 +126,7 @@ def main():
         TEXTURE_PATH: rgba_texture(args.image),
     }
     content = vpk(files)
-    output = ROOT / "brand.vpk"
+    output = args.output_dir / "brand.vpk"
     report = {
         "vpk": output.name,
         "bytes": len(content),
@@ -134,6 +137,7 @@ def main():
         "method": "Panorama DATA CRC rebuild from hud.brand.css; 384x128 single-mip RGBA8888 texture",
         "runtime_tested": False,
     }
+    output.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(output, content)
     atomic_write(ROOT / "manifest.json", (json.dumps(report, indent=2) + "\n").encode("utf-8"))
     print(f"Built: {output}\nBytes: {len(content)}\nSHA-256: {report['sha256']}")

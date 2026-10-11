@@ -1,15 +1,15 @@
 {
   "vpk": "brand.vpk",
-  "bytes": 201207,
-  "sha256": "e93237e204f5125734aeb76d18ffb9c22fb8b6dad01ef6035ba319f6f307943a",
+  "bytes": 201208,
+  "sha256": "e5203aa58614c30546496c565dbe849eb1d9ef814be657d40ecd017f861003a2",
   "image_dimensions": [
     384,
     128
   ],
   "entries": {
     "panorama/styles/hud/hud.vcss_c": {
-      "bytes": 4327,
-      "crc32": "a994bf8f"
+      "bytes": 4328,
+      "crc32": "cdcb8286"
     },
     "panorama/images/custom/cs2ht_brand_logo_rgba.vtex_c": {
       "bytes": 196680,
