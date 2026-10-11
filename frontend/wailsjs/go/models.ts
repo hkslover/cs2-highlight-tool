@@ -104,6 +104,36 @@ export namespace app {
 	        this.block_kill_feed = source["block_kill_feed"];
 	    }
 	}
+	export class DebugCommandRequest {
+	    commands: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugCommandRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.commands = source["commands"];
+	    }
+	}
+	export class DebugCommandResponse {
+	    request_id: string;
+	    status: string;
+	    error?: string;
+	    commands: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugCommandResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.request_id = source["request_id"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.commands = source["commands"];
+	    }
+	}
 	export class DebugLaunchRequest {
 	    inject_plugin: boolean;
 	    pov_hud_enabled: boolean;

@@ -125,6 +125,8 @@ export function SaveClipActionSettings(arg1:app.ClipActionSettings):Promise<app.
 
 export function SaveClipSettings(arg1:app.ClipSettings):Promise<app.ClipSettings>;
 
+export function SendDebugConsoleCommand(arg1:app.DebugCommandRequest):Promise<app.DebugCommandResponse>;
+
 export function SetWorkspaceDir(arg1:string):Promise<void>;
 
 export function StopDebugGame():Promise<app.DebugSessionState>;

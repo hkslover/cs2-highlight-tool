@@ -44,6 +44,17 @@ type debugSessionRuntime struct {
 	teardownErr      error
 	releaseWorkspace func()
 	updatedAtMs      int64
+
+	// Interactive debug protocol state. Readiness is only true after the plugin
+	// confirms this exact session id over a connection that is still current;
+	// a connected transport is not proof of the debug protocol.
+	debugReady          bool
+	debugReadyConnID    uint64
+	debugReadySessionID string
+	debugProtocolError  string
+	debugReadyDeadline  time.Time
+	debugReadyTimer     *time.Timer
+	debugPending        map[string]*debugPendingCommand
 }
 
 func newDebugSessionID() string {
@@ -116,11 +127,10 @@ func (a *App) emitDebugSessionState() {
 	wailsruntime.EventsEmit(a.ctx, "debug_session_state_changed", a.GetDebugSessionState())
 }
 
-// refreshDebugPluginState re-emits the debug snapshot after a transport change.
-// The websocket service owns connection transitions and emits
-// produce_ws_state_changed; without this the debug page would keep showing the
-// connection value captured at launch. It still forces plugin_ready=false
-// because a transport connection is not proof of the debug protocol.
+// refreshDebugPluginState re-emits the debug snapshot after a transport change
+// and invalidates debug-protocol readiness that the new transport no longer
+// proves. A reconnect must not leave the page accepting commands on a
+// connection that has already been replaced.
 func (a *App) refreshDebugPluginState() {
 	rt := a.debugRuntimeForAdmission()
 	if rt == nil || debugRuntimeDone(rt) {
@@ -130,6 +140,13 @@ func (a *App) refreshDebugPluginState() {
 	if !rt.request.InjectPlugin {
 		rt.mu.Unlock()
 		return
+	}
+	connected := a.produceW != nil && a.produceW.GetWSState().Connected
+	switch {
+	case !connected:
+		a.failDebugCommandChannelLocked(rt, "插件连接已断开，命令未执行")
+	case rt.debugReady && a.produceW != nil && a.produceW.GameConnID() != rt.debugReadyConnID:
+		a.failDebugCommandChannelLocked(rt, "插件连接已重建，等待调试协议就绪")
 	}
 	rt.updatedAtMs = nowMs()
 	rt.mu.Unlock()
@@ -168,14 +185,17 @@ func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
 		UpdatedAtMs:      rt.updatedAtMs,
 	}
 	rt.mu.Unlock()
-	a.fillDebugPluginState(&state)
+	a.fillDebugPluginState(rt, &state)
 	return state
 }
 
 // fillDebugPluginState separates transport connection from debug-protocol
-// readiness. Step 03 adds the `debug_session_ready` handshake, so a connected
-// transport is reported as connected-but-not-ready instead of ready.
-func (a *App) fillDebugPluginState(state *DebugSessionState) {
+// readiness. Readiness requires the plugin's `debug_session_ready` handshake
+// for this session over the live connection; a reconnect invalidates it until
+// the plugin resends the handshake. The first-ready deadline is reported even
+// when the transport never connected, so an old DLL or a missing handshake is
+// visible instead of an indefinite "waiting" message.
+func (a *App) fillDebugPluginState(rt *debugSessionRuntime, state *DebugSessionState) {
 	state.PluginEnabled = state.InjectPlugin
 	if !state.InjectPlugin {
 		state.PluginConnected = false
@@ -186,11 +206,36 @@ func (a *App) fillDebugPluginState(state *DebugSessionState) {
 	connected := a.produceW != nil && a.produceW.GetWSState().Connected
 	state.PluginConnected = connected
 	state.PluginReady = false
-	if connected {
-		state.PluginMessage = "插件已连接，调试协议待接入"
-	} else {
+	if rt == nil {
 		state.PluginMessage = "等待插件连接"
+		return
 	}
+
+	rt.mu.Lock()
+	ready := rt.debugReady
+	readyConnID := rt.debugReadyConnID
+	protocolError := rt.debugProtocolError
+	readyDeadline := rt.debugReadyDeadline
+	rt.mu.Unlock()
+
+	if protocolError != "" {
+		state.PluginMessage = protocolError
+		return
+	}
+	if ready && connected && a.produceW != nil && a.produceW.GameConnID() == readyConnID {
+		state.PluginReady = true
+		state.PluginMessage = "插件调试协议已就绪"
+		return
+	}
+	if !readyDeadline.IsZero() && time.Now().After(readyDeadline) {
+		state.PluginMessage = "插件未连接或不支持调试协议"
+		return
+	}
+	if !connected {
+		state.PluginMessage = "等待插件连接"
+		return
+	}
+	state.PluginMessage = "插件已连接，等待调试协议就绪"
 }
 
 // LaunchDebugGame prepares the selected environment and starts HLAE. Both modes
@@ -214,6 +259,10 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 	if err := a.stopProduceSessionWorker(); err != nil {
 		return a.GetDebugSessionState(), err
 	}
+
+	// The debug protocol handler must be installed before the plugin can
+	// connect, so a fresh service (tests replace produceW) is covered too.
+	a.attachDebugMessageHandler()
 
 	normalized := normalizeDebugLaunchRequest(req)
 
@@ -275,6 +324,12 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 	rt.cs2PID = cs2PID
 	rt.processStarted = true
 	rt.status = DebugStatusRunning
+	if normalized.InjectPlugin {
+		rt.debugReadyDeadline = time.Now().Add(debugReadyTimeout)
+		rt.debugReadyTimer = time.AfterFunc(debugReadyTimeout, func() {
+			a.onDebugReadyTimeout(rt)
+		})
+	}
 	rt.updatedAtMs = nowMs()
 	rt.mu.Unlock()
 
@@ -320,6 +375,11 @@ func (a *App) stopDebugSessionWorker() error {
 	if rt.cancel != nil {
 		rt.cancel()
 	}
+	// Unblock any command waiting on a receipt before waiting for the watcher.
+	rt.mu.Lock()
+	a.failDebugCommandChannelLocked(rt, "调试会话已结束")
+	a.stopDebugReadyTimerLocked(rt)
+	rt.mu.Unlock()
 	select {
 	case <-rt.done:
 	case <-time.After(debugSessionStopWait):
@@ -394,6 +454,7 @@ func (a *App) runDebugSessionWatcher(ctx context.Context, rt *debugSessionRuntim
 	defer func() {
 		teardownErr := a.debugTeardown(rt)
 		rt.mu.Lock()
+		a.stopDebugReadyTimerLocked(rt)
 		rt.teardownErr = teardownErr
 		if teardownErr != nil {
 			rt.status = DebugStatusFailed

@@ -1,4 +1,9 @@
-import type { DebugLaunchRequest, DebugSessionState } from "@/shared/types";
+import type {
+  DebugCommandRequest,
+  DebugCommandResponse,
+  DebugLaunchRequest,
+  DebugSessionState,
+} from "@/shared/types";
 
 export const DEBUG_SESSION_EVENT = "debug_session_state_changed";
 
@@ -12,6 +17,7 @@ export interface DebugSessionBackend {
   getSessionState: () => Promise<DebugSessionState>;
   launchGame: (request: DebugLaunchRequest) => Promise<DebugSessionState>;
   stopGame: () => Promise<DebugSessionState>;
+  sendCommand: (request: DebugCommandRequest) => Promise<DebugCommandResponse>;
 }
 
 export type DebugSessionSubscriber = (
@@ -92,6 +98,8 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
   const loading = options.createCell(false);
   const launching = options.createCell(false);
   const stopping = options.createCell(false);
+  const sending = options.createCell(false);
+  const lastCommandResult = options.createCell<DebugCommandResponse | null>(null);
   const errorMessage = options.createCell("");
 
   let latestUpdatedAt = 0;
@@ -204,6 +212,29 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     }
   }
 
+  /**
+   * Send one console request and keep its receipt for the page. A failed
+   * receipt is a normal result; only transport/session errors reject, and they
+   * are left to the caller so the session-level error cell stays about the
+   * session, not one command.
+   */
+  async function sendCommand(
+    commands: string[],
+  ): Promise<DebugCommandResponse | null> {
+    const currentGeneration = generation;
+    sending.value = true;
+    try {
+      const result = await options.backend.sendCommand({ commands });
+      if (currentGeneration !== generation) return null;
+      lastCommandResult.value = result;
+      return result;
+    } finally {
+      if (currentGeneration === generation) {
+        sending.value = false;
+      }
+    }
+  }
+
   /** Drop every local session fact and the event subscription. */
   function dispose(): void {
     generation++;
@@ -214,6 +245,8 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     loading.value = false;
     launching.value = false;
     stopping.value = false;
+    sending.value = false;
+    lastCommandResult.value = null;
     errorMessage.value = "";
     latestUpdatedAt = 0;
     latestSource = undefined;
@@ -226,10 +259,13 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     loading,
     launching,
     stopping,
+    sending,
+    lastCommandResult,
     errorMessage,
     init,
     launch,
     stop,
+    sendCommand,
     dispose,
   };
 }

@@ -20,6 +20,11 @@ function createCore(overrides = {}) {
     getSessionState: async () => session(),
     launchGame: async () => session(),
     stopGame: async () => session(),
+    sendCommand: async (request) => ({
+      request_id: "req-default",
+      status: "executed",
+      commands: request.commands,
+    }),
     ...overrides.backend,
   };
   const core = createDebugSessionCore({
@@ -231,4 +236,66 @@ test("a stale request cannot clear a newer request's loading state", async () =>
   assert.equal((await newRequest).session_id, "new");
   assert.equal(core.launching.value, false);
   assert.equal(core.sessionState.value.session_id, "new");
+});
+
+test("sendCommand keeps the receipt and forwards the raw command element", async () => {
+  const seen = [];
+  const { core } = createCore({
+    backend: {
+      sendCommand: async (request) => {
+        seen.push(request);
+        return {
+          request_id: "req-1",
+          status: "executed",
+          commands: request.commands,
+        };
+      },
+    },
+  });
+  await core.init();
+
+  const result = await core.sendCommand(["sv_cheats 1; mirv_streams record start"]);
+  assert.equal(result.status, "executed");
+  assert.deepEqual(seen[0].commands, ["sv_cheats 1; mirv_streams record start"]);
+  assert.equal(core.lastCommandResult.value.request_id, "req-1");
+  assert.equal(core.sending.value, false);
+});
+
+test("a failed receipt is kept as a result, not a thrown error", async () => {
+  const { core } = createCore({
+    backend: {
+      sendCommand: async () => ({
+        request_id: "req-2",
+        status: "failed",
+        error: "Radar POV hook installation failed",
+        commands: ["csdm_radar_pov 1"],
+      }),
+    },
+  });
+  await core.init();
+
+  const result = await core.sendCommand(["csdm_radar_pov 1"]);
+  assert.equal(result.status, "failed");
+  assert.equal(core.lastCommandResult.value.error, "Radar POV hook installation failed");
+  assert.equal(core.errorMessage.value, "");
+});
+
+test("a transport failure rejects and clears the previous result on dispose", async () => {
+  const { core } = createCore({
+    backend: {
+      sendCommand: async () => {
+        throw new Error("插件调试协议未就绪");
+      },
+    },
+  });
+  await core.init();
+
+  await assert.rejects(core.sendCommand(["quit"]), /插件调试协议未就绪/);
+  assert.equal(core.errorMessage.value, "", "command errors stay out of the session error cell");
+  assert.equal(core.lastCommandResult.value, null);
+
+  core.dispose();
+  assert.equal(core.sending.value, false);
+  assert.equal(core.lastCommandResult.value, null);
+  assert.equal(core.errorMessage.value, "");
 });

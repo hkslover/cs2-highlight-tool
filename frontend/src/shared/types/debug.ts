@@ -19,6 +19,25 @@ export interface DebugLaunchRequest {
   launch_resolution: DebugLaunchResolution;
 }
 
+/** Console execution status reported by the plugin's game thread. */
+export type DebugCommandStatus = "executed" | "failed";
+
+/**
+ * One debug console request. A custom input stays a single element so the
+ * engine receives the original string, semicolons and quotes included.
+ */
+export interface DebugCommandRequest {
+  commands: string[];
+}
+
+/** The execution receipt for one `SendDebugConsoleCommand` call. */
+export interface DebugCommandResponse {
+  request_id: string;
+  status: DebugCommandStatus;
+  error?: string;
+  commands: string[];
+}
+
 /**
  * Full debug workbench snapshot. Process start, transport connection and
  * debug-protocol readiness are reported separately and must not be conflated.

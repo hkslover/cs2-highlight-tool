@@ -167,12 +167,13 @@
                 :key="item.key"
                 size="small"
                 secondary
-                disabled
+                :disabled="!canSend"
+                @click="handleQuickCommand(item)"
               >
                 {{ t(item.labelKey) }}
               </n-button>
             </div>
-            <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
+            <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
           </n-space>
         </n-card>
 
@@ -189,8 +190,33 @@
               :placeholder="t('main.debug.cmd_placeholder')"
             />
             <div class="action-row">
-              <n-button type="primary" disabled>{{ t("main.debug.btn_send") }}</n-button>
-              <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
+              <n-button
+                type="primary"
+                :loading="sending"
+                :disabled="!canSend"
+                @click="handleSendCommand"
+              >
+                {{ t("main.debug.btn_send") }}
+              </n-button>
+              <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
+            </div>
+            <n-alert v-if="commandError" type="error" :bordered="false" size="small">
+              {{ commandError }}
+            </n-alert>
+            <div v-if="lastCommandResult" class="command-result">
+              <n-tag
+                size="small"
+                :bordered="false"
+                :type="lastCommandResult.status === 'executed' ? 'success' : 'error'"
+              >
+                {{ lastCommandResult.status === "executed" ? t("main.debug.cmd_executed") : t("main.debug.cmd_failed") }}
+              </n-tag>
+              <span class="setting-value setting-value--wrap">
+                {{ lastCommandResult.commands.join(" ; ") }}
+              </span>
+              <span v-if="lastCommandResult.error" class="setting-hint">
+                {{ lastCommandResult.error }}
+              </span>
             </div>
           </n-space>
         </n-card>
@@ -230,6 +256,7 @@ import { useSettingsStore } from "@/domains/settings/settings-state";
 import { useDebugSession } from "@/domains/debug";
 import { selectedEntry } from "@/domains/demo/demo-state";
 import type {
+  DebugCommandResponse,
   DebugLaunchRequest,
   DebugLaunchResolution,
   DebugSessionState,
@@ -251,10 +278,13 @@ const {
   initialized,
   launching,
   stopping,
+  sending,
+  lastCommandResult,
   errorMessage,
   initDebugSession,
   launchDebugGame,
   stopDebugGame,
+  sendDebugConsoleCommand,
 } = useDebugSession();
 
 const launch = reactive({
@@ -266,6 +296,7 @@ const launch = reactive({
 });
 
 const commandText = ref("");
+const commandError = ref("");
 const recordingResults = ref<DebugRecordingResult[]>([]);
 
 // Settings load asynchronously and the launch controls stay editable meanwhile.
@@ -334,11 +365,23 @@ const resolutionOptions = computed(() => [
 ]);
 
 const quickCommands = [
-  { key: "sky-off", labelKey: "main.debug.quick_sky_off" },
-  { key: "sky-on", labelKey: "main.debug.quick_sky_on" },
-  { key: "ui-hide", labelKey: "main.debug.quick_ui_hide" },
-  { key: "ui-show", labelKey: "main.debug.quick_ui_show" },
+  { key: "sky-off", labelKey: "main.debug.quick_sky_off", commands: ["r_drawskybox 0"] },
+  { key: "sky-on", labelKey: "main.debug.quick_sky_on", commands: ["r_drawskybox 1"] },
+  { key: "ui-hide", labelKey: "main.debug.quick_ui_hide", commands: ["cl_draw_only_deathnotices 1"] },
+  { key: "ui-show", labelKey: "main.debug.quick_ui_show", commands: ["cl_draw_only_deathnotices 0"] },
 ];
+
+const canSend = computed(
+  () => sessionStatus.value === "running" && sessionState.value.plugin_ready && !sending.value,
+);
+const commandDisabledHint = computed(() => {
+  if (sessionStatus.value !== "running") return t("main.debug.cmd_need_session");
+  if (!sessionState.value.plugin_enabled) return t("main.debug.cmd_need_plugin");
+  if (!sessionState.value.plugin_ready) {
+    return sessionState.value.plugin_message || t("main.debug.cmd_need_ready");
+  }
+  return "";
+});
 
 onMounted(async () => {
   await Promise.allSettled([initDebugSession(), settingsStore.init()]);
@@ -396,6 +439,37 @@ async function handleStop() {
   } catch {
     // Keep the failed state visible; the button retries the teardown.
   }
+}
+
+function describeCommandError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function sendCommands(commands: string[]) {
+  commandError.value = "";
+  try {
+    const result: DebugCommandResponse | null = await sendDebugConsoleCommand(commands);
+    if (result && result.status !== "executed") {
+      commandError.value = result.error || t("main.debug.cmd_failed");
+    }
+  } catch (error: unknown) {
+    commandError.value = describeCommandError(error);
+  }
+}
+
+async function handleQuickCommand(item: { commands: string[] }) {
+  await sendCommands([...item.commands]);
+}
+
+async function handleSendCommand() {
+  // The custom input stays one element so the engine receives the original
+  // string, including semicolons and quotes.
+  const raw = commandText.value.trim();
+  if (!raw) {
+    commandError.value = t("main.debug.cmd_empty");
+    return;
+  }
+  await sendCommands([raw]);
 }
 
 function goToImport() {
@@ -507,6 +581,13 @@ function goToImport() {
 .result-head {
   border-top: 1px solid #252c27;
   padding-top: 8px;
+}
+
+.command-result {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 760px) {

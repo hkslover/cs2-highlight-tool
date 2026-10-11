@@ -1,5 +1,7 @@
 import type {
   ClipSettings,
+  DebugCommandRequest,
+  DebugCommandResponse,
   DebugLaunchRequest,
   DebugPluginDLLOverrideState,
   DebugSessionState,
@@ -153,6 +155,9 @@ export interface BackendApi {
     settings: ClipActionSettings,
   ) => Promise<ClipActionSettings>;
   SaveClipSettings: (settings: ClipSettings) => Promise<ClipSettings>;
+  SendDebugConsoleCommand: (
+    request: DebugCommandRequest,
+  ) => Promise<DebugCommandResponse>;
   SetWorkspaceDir: (path: string) => Promise<void>;
   StopDebugGame: () => Promise<DebugSessionState>;
   ValidateWorkspaceDir: (path: string) => Promise<WorkspaceValidateResult>;

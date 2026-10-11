@@ -21,6 +21,9 @@ export type {
   DebugLaunchResolution,
   DebugLaunchRequest,
   DebugSessionState,
+  DebugCommandStatus,
+  DebugCommandRequest,
+  DebugCommandResponse,
 } from "./debug";
 
 export type {

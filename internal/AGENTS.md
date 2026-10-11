@@ -33,6 +33,7 @@
 - `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。多个调用者共享的长任务（如平台导入）必须用 `beginManagedWorkspaceTaskUse` 的工作目录 context 运行并持有所属准入直到真实任务退出；等待者取消不得取消共享任务，进度与提交等副作用只由真实任务执行。
 - 制作生命周期遵循根文件“制作、剪辑与清理”：活跃会话禁止重复生成，失败收尾保留重试所需状态；未确认进程退出、环境恢复前不得提前释放备份和占用。
 - 调试会话（`app/debug_session.go`、`app/debug_types.go`）是独立 runtime：持有工作目录 context 与文件使用权、环境 epoch、CS2 PID/待确认 HLAE 句柄和 `idle|starting|running|stopping|failed` 状态，复用 `produceLaunchMu` 准入并把占用接入 `produceBusyError`/`GetWorkActivity`，不得只依赖前端禁用按钮。环境准备按显式选项参数化（`gameInfoPrepOptions`、`preparePovForProduceWithOptions`、`prepareBrandForProduceWithOptions`），正式制作保持 plugin+brand+可选 POV 的旧默认；无插件模式必须在会话备份内临时移除残留 `csgo/plugin`，不得删除用户既有 VPK/DLL。未知 PID 保留启动器句柄与备份，确认退出后才恢复环境；失败收尾保留 runtime 供 `StopDebugGame` 重试。两种启动入口在准备新环境前必须统一重试已结束 runtime 的收尾，任一保留会话未释放时拒绝启动；`App.Shutdown` 先停止调试会话再停 WS/关闭 Store，停止失败时不得执行 epoch=0 的共享环境恢复。环境准备使用启动时冻结的同一配置快照（`prepareGameInfoWithConfig`、`preparePluginDLLWithConfig`、`preparePovWithConfig`、`prepareBrandWithConfig`），正式制作包装入口保持原语义；切换路由不得触发停止。
+- 调试命令通道（`app/debug_command.go`）复用 `producews` 的 `debug_session_ready`/`debug_execute`/`debug_command_result` 消息与当前连接：`producews` 只把 debug incoming 消息转给注册的 handler，不进入队列 ACK/完成处理；就绪要求插件针对本会话 `session_id` 握手且连接仍是当前连接，重连或断开使就绪与在途请求失败。在途请求按发送连接绑定：握手或传输刷新发现连接切换时立即失败旧连接请求，回执只接受同一连接上的匹配 `request_id`，不能只比 request ID。`SendDebugConsoleCommand` 仅 ready 时可调用，命令按序交给游戏线程，超时/断连不自动重发，等待在 `rt.done`、回执或超时三者之一结束时释放；首次 ready 由主动定时器到期更新并发射快照，不得只依赖后续快照读取判断超时；不得在 producews 状态锁内调用 Wails 或执行长等待。
 - 剪辑合成一次只允许一个任务：`app/edit_task.go` 的准入拒绝第二个活跃请求而不排队；任务持有工作目录文件使用权、任务专属临时目录和 `O_EXCL` 预留的唯一输出名，只有验证临时视频、确认任务未取消且预留路径仍保有本次文件身份后才 rename 提交并登记 history。失败、超时或取消只清理本任务登记的路径，不得删除已成功提交、被替换对象或其他任务的视频；工作目录取消不得被包装成编码器不可用，也不得触发编码器回退重试，提交成功后不再删除已发布文件。
 - HLAE 启动成功但 CS2 PID 未知时，保留启动器句柄并核对进程枚举；不能因 PID 为空直接恢复环境，也不能关闭归属不明的游戏进程。
 - 涉及会话退出、取消和 FFmpeg 合并时，检查等待、探测及子进程是否遵循现有取消/超时机制，避免收尾后旧任务继续写文件。
@@ -49,6 +50,8 @@
 - debug override 仅改变注入源 DLL，目标、备份和恢复复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
 - 修改生成计划时核对 take 命名、稳定 source ID、历史去重键与前端选择状态，不能仅验证 JSON 能序列化。
 - 批量生成在准入并停止旧会话后只读取一次 `config.Store` 快照；后续 job 不得重新读取配置而产生窗口、编码或命令设置漂移。规划函数不得读取时钟，批次时间戳由 App 注入。
+
+- 调试握手与回执在 runtime 锁内检查消息 `ConnID` 等于 `producews.GameConnID()`；旧 readLoop 延迟处理的有效握手、不兼容协议版本与回执都须忽略，不能覆盖新连接 ready 或失败新连接请求。保持 runtime → producews 状态锁顺序，producews 调用 handler 前须解锁。
 
 ## 日志与诊断
 

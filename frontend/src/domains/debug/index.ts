@@ -16,6 +16,7 @@ export {
   initDebugSession,
   launchDebugGame,
   resetDebugSessionForWorkspace,
+  sendDebugConsoleCommand,
   stopDebugGame,
   useDebugSession,
 } from "./debugSessionStore";

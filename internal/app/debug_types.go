@@ -22,6 +22,32 @@ type DebugLaunchRequest struct {
 	LaunchResolution string `json:"launch_resolution"`
 }
 
+// Debug protocol readiness and result statuses. `executed` means the plugin
+// handed the commands to the game thread; it is not a guarantee that a
+// particular console command had an observable effect.
+const (
+	DebugProtocolVersion = 1
+
+	DebugCommandStatusExecuted = "executed"
+	DebugCommandStatusFailed   = "failed"
+)
+
+// DebugCommandRequest is the public request of SendDebugConsoleCommand. Each
+// element is one console command string; a custom input keeps its semicolons
+// and quotes inside a single element, while quick settings may send several.
+type DebugCommandRequest struct {
+	Commands []string `json:"commands"`
+}
+
+// DebugCommandResponse is the public execution receipt. Status is `executed`
+// or `failed`; Error carries the plugin-reported failure when available.
+type DebugCommandResponse struct {
+	RequestID string   `json:"request_id"`
+	Status    string   `json:"status"`
+	Error     string   `json:"error,omitempty"`
+	Commands  []string `json:"commands"`
+}
+
 // DebugSessionState is the full public snapshot of the debug workbench. Process
 // start and plugin readiness are reported separately: a running CS2 PID does
 // not prove that the plugin transport is connected, and a connected transport

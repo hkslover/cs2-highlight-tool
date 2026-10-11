@@ -5,7 +5,12 @@ import {
   createDebugSessionCore,
   type DebugSessionCell,
 } from "./debugSessionCore";
-import type { DebugLaunchRequest, DebugSessionState } from "@/shared/types";
+import type {
+  DebugCommandRequest,
+  DebugCommandResponse,
+  DebugLaunchRequest,
+  DebugSessionState,
+} from "@/shared/types";
 
 const core = createDebugSessionCore({
   createCell<T>(initial: T): DebugSessionCell<T> {
@@ -20,12 +25,15 @@ const core = createDebugSessionCore({
     getSessionState: () => backend.GetDebugSessionState(),
     launchGame: (request: DebugLaunchRequest) => backend.LaunchDebugGame(request),
     stopGame: () => backend.StopDebugGame(),
+    sendCommand: (request: DebugCommandRequest) =>
+      backend.SendDebugConsoleCommand(request),
   },
 });
 
 export const initDebugSession = core.init;
 export const launchDebugGame = core.launch;
 export const stopDebugGame = core.stop;
+export const sendDebugConsoleCommand = core.sendCommand;
 
 /**
  * Clear local debug session facts when the workspace changes. The next debug
@@ -42,9 +50,12 @@ export function useDebugSession() {
     loading: core.loading as Readonly<Ref<boolean>>,
     launching: core.launching as Readonly<Ref<boolean>>,
     stopping: core.stopping as Readonly<Ref<boolean>>,
+    sending: core.sending as Readonly<Ref<boolean>>,
+    lastCommandResult: core.lastCommandResult as Readonly<Ref<DebugCommandResponse | null>>,
     errorMessage: core.errorMessage as Readonly<Ref<string>>,
     initDebugSession,
     launchDebugGame,
     stopDebugGame,
+    sendDebugConsoleCommand,
   };
 }

@@ -94,6 +94,7 @@ func New(wailsConfigData []byte) *App {
 		version:  version,
 		produceW: producews.NewDefault(nil),
 	}
+	a.attachDebugMessageHandler()
 	a.initWorkspaceLocked()
 	a.configureProduceDiagnostics(a.dataRoot())
 	return a

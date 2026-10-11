@@ -54,9 +54,10 @@
 
 - `/debug` 是调试会话页面，只在品牌点击 10 次激活 debug 后可用；进入/离开不改变正式设置，也不关闭调试游戏。
 - 会话状态由 `src/domains/debug/` 持有：先订阅 `debug_session_state_changed` 再读 `GetDebugSessionState`，按 `updated_at_ms` 与事件/快照优先级合并，事件不得被延迟快照回滚；工作目录切换调用 `resetDebugSessionForWorkspace` 清空本地草稿与旧结果。`launch`/`stop` 以 generation 守卫状态、错误与 loading 写入，迟到的成功或失败响应返回 `null` 且不得回写新工作目录；插件连接变化由后端重发 `debug_session_state_changed`，前端不另订阅 `produce_ws_state_changed`。
-- 启动选项草稿从已确认设置初始化，操作只调用 `LaunchDebugGame`/`StopDebugGame`，不调用 `SaveClipSettings`。`status` 为 `idle|starting|running|stopping|failed`，进程启动、插件连接与 `plugin_ready` 分开展示；后续步骤完成前不得把插件连接当作就绪。
+- 启动选项草稿从已确认设置初始化，操作只调用 `LaunchDebugGame`/`StopDebugGame`，不调用 `SaveClipSettings`。`status` 为 `idle|starting|running|stopping|failed`，进程启动、插件连接与 `plugin_ready` 分开展示；`plugin_ready` 只来自后端握手结果，不得把已连接当作就绪。
 - 启动后 `inject_plugin`、POV HUD、品牌 VPK、分辨率锁定并标记重启后生效；雷达随插件模式禁用/启用，与 POV HUD 独立。无插件模式显示“未启用插件”，不是连接失败。
-- 启动/停止按钮、忙碌态和错误来自会话 domain；未接入的命令、播放、录制按钮保持禁用并标注待接入。
+- 启动/停止按钮、忙碌态和错误来自会话 domain；未接入的播放、录制按钮保持禁用并标注待接入。
+- 快捷设置与自定义命令共用 `sendDebugConsoleCommand`（`SendDebugConsoleCommand`），只在 `status=running && plugin_ready` 时可用；自定义输入整体作为一个命令元素发送，保留分号与引号，不由前端做白名单。`sending`、请求错误与最近一次 `lastCommandResult` 由会话 domain 持有，`failed` 回执是结果不是抛错；工作目录切换清空最近结果。
 
 ## 验证与维护
 

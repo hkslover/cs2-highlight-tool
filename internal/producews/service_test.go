@@ -1118,3 +1118,91 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 	}
 	t.Fatalf("condition not met within %s", timeout)
 }
+
+func TestService_DebugMessagesReachHandlerWithoutQueueSideEffects(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	received := make(chan DebugIncomingMessage, 4)
+	svc.SetDebugMessageHandler(func(message DebugIncomingMessage) {
+		received <- message
+	})
+
+	conn := mustConnectGameClient(t, svc.Address())
+	defer conn.Close()
+	connID := svc.GameConnID()
+	if connID == 0 {
+		t.Fatal("connected client has no connection id")
+	}
+
+	mustWriteJSON(t, conn, map[string]any{
+		"name": "debug_session_ready",
+		"payload": map[string]any{
+			"session_id":       "dbg-1",
+			"protocol_version": 1,
+		},
+	})
+	mustWriteJSON(t, conn, map[string]any{
+		"name": "debug_command_result",
+		"payload": map[string]any{
+			"request_id": "req-1",
+			"status":     "executed",
+		},
+	})
+
+	for _, wantName := range []string{"debug_session_ready", "debug_command_result"} {
+		select {
+		case message := <-received:
+			if message.Name != wantName {
+				t.Fatalf("handler got %q, want %q", message.Name, wantName)
+			}
+			if message.ConnID != connID {
+				t.Fatalf("handler conn id = %d, want %d", message.ConnID, connID)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("handler did not receive %q", wantName)
+		}
+	}
+	if svc.GetQueueState().Running || svc.GetQueueState().PendingAck {
+		t.Fatalf("debug messages touched the produce queue: %+v", svc.GetQueueState())
+	}
+	if svc.GetTakeSnapshot().TotalTakes != 0 {
+		t.Fatal("debug messages were recorded as takes")
+	}
+}
+
+func TestService_SendCommandToConnRejectsStaleConnection(t *testing.T) {
+	svc := New("127.0.0.1:0", nil)
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop()
+
+	first := mustConnectGameClient(t, svc.Address())
+	firstID := svc.GameConnID()
+	if firstID == 0 {
+		t.Fatal("first client has no connection id")
+	}
+	_ = first.Close()
+
+	second := mustConnectGameClient(t, svc.Address())
+	defer second.Close()
+	waitFor(t, 2*time.Second, func() bool {
+		return svc.GameConnID() != 0 && svc.GameConnID() != firstID
+	})
+	secondID := svc.GameConnID()
+
+	if err := svc.SendCommandToConn(firstID, "debug_execute", map[string]any{"request_id": "stale"}); err == nil {
+		t.Fatal("a stale connection id was accepted")
+	}
+	if err := svc.SendCommandToConn(secondID, "debug_execute", map[string]any{"request_id": "fresh"}); err != nil {
+		t.Fatalf("SendCommandToConn on the current connection: %v", err)
+	}
+	message := mustReadWSMessage(t, second)
+	if message.Name != "debug_execute" {
+		t.Fatalf("received %q, want debug_execute", message.Name)
+	}
+}

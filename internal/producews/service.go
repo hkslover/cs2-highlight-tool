@@ -103,6 +103,21 @@ type incomingMessage struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// DebugIncomingMessage is a plugin message that belongs to the interactive
+// debug protocol instead of the produce queue. ConnID identifies the transport
+// connection it arrived on so the debug session can reject a leftover game
+// connection from an earlier session.
+type DebugIncomingMessage struct {
+	Name    string
+	Payload json.RawMessage
+	ConnID  uint64
+}
+
+// DebugMessageHandler receives debug-protocol messages from the plugin. It is
+// invoked on the websocket read goroutine, so it must never block or call back
+// into the service state lock.
+type DebugMessageHandler func(message DebugIncomingMessage)
+
 type outgoingMessage struct {
 	Name    string `json:"name"`
 	Payload any    `json:"payload,omitempty"`
@@ -207,6 +222,7 @@ type Service struct {
 	heartbeatCancel    context.CancelFunc
 	heartbeatWG        sync.WaitGroup
 	upgrader           websocket.Upgrader
+	debugHandler       DebugMessageHandler
 	wsState            WSState
 	queueState         QueueState
 	takeStates         map[string]TakeStatus
@@ -282,6 +298,14 @@ func (s *Service) SetDiagnostics(diagnostics *Diagnostics) {
 	if diagnostics != nil && started {
 		diagnostics.Start()
 	}
+}
+
+// SetDebugMessageHandler installs the debug-protocol sink. The handler runs on
+// the websocket read goroutine; passing nil detaches it.
+func (s *Service) SetDebugMessageHandler(handler DebugMessageHandler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.debugHandler = handler
 }
 
 func (s *Service) SetAckTimeout(timeout time.Duration) {
@@ -1074,6 +1098,55 @@ func (s *Service) SendCommand(name string, payload any) error {
 	return nil
 }
 
+// GameConnID returns the identity of the current game connection, or 0 when
+// no plugin is connected. Debug callers use it to prove that a readiness
+// handshake still belongs to the live connection.
+func (s *Service) GameConnID() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gameConn == nil {
+		return 0
+	}
+	return s.gameConnID
+}
+
+// SendCommandToConn writes a command only when connID still identifies the
+// current game connection. The check and the connection snapshot happen under
+// the state lock, so a reconnect cannot redirect a command that was authorized
+// for an older debug session connection.
+func (s *Service) SendCommandToConn(connID uint64, name string, payload any) error {
+	command := strings.TrimSpace(name)
+	if command == "" {
+		return fmt.Errorf("command name is empty")
+	}
+	if connID == 0 {
+		return fmt.Errorf("game websocket connection is not identified")
+	}
+
+	s.mu.Lock()
+	if !s.started {
+		s.mu.Unlock()
+		return fmt.Errorf("produce websocket server is not started")
+	}
+	if s.gameConn == nil || s.gameConnID != connID {
+		s.mu.Unlock()
+		return fmt.Errorf("game websocket connection has changed")
+	}
+	conn := s.gameConn
+	writeTimeout := s.writeTimeout
+	s.mu.Unlock()
+	err := s.writeOutgoing(conn, outgoingMessage{
+		Name:    command,
+		Payload: payload,
+	}, writeTimeout)
+	if err != nil {
+		s.recordDiagnostic("error", "write", "command_failed", "向游戏插件发送 WebSocket 命令失败", err, map[string]string{"name": command})
+		return err
+	}
+	s.recordDiagnostic("info", "write", "command_sent", "已向游戏插件发送 WebSocket 命令", nil, map[string]string{"name": command})
+	return nil
+}
+
 func (s *Service) waitForConnection() error {
 	s.mu.Lock()
 	waitTimeout := s.connectWait
@@ -1244,7 +1317,7 @@ func (s *Service) readLoop(connID uint64, conn *websocket.Conn) {
 			})
 			continue
 		}
-		known, payloadErr := s.handleIncomingMessage(message)
+		known, payloadErr := s.handleIncomingMessage(connID, message)
 		if !known {
 			s.recordDiagnostic("warning", "message", "unknown_name", "已忽略未知 WebSocket 消息", nil, map[string]string{
 				"conn_id":    strconv.FormatUint(connID, 10),
@@ -1358,8 +1431,20 @@ func (s *Service) onConnectionClosed(connID uint64, conn *websocket.Conn, closeE
 	}
 }
 
-func (s *Service) handleIncomingMessage(message incomingMessage) (bool, error) {
+func (s *Service) handleIncomingMessage(connID uint64, message incomingMessage) (bool, error) {
 	switch message.Name {
+	case "debug_session_ready", "debug_command_result":
+		// The interactive debug protocol shares the transport but never the
+		// queue acknowledgement or completion handlers. Forward the raw message
+		// to the debug session; the handler only enqueues a result and never
+		// blocks the read loop.
+		s.mu.Lock()
+		handler := s.debugHandler
+		s.mu.Unlock()
+		if handler != nil {
+			handler(DebugIncomingMessage{Name: message.Name, Payload: message.Payload, ConnID: connID})
+		}
+		return true, nil
 	case "status":
 		s.handleStatusAck()
 		return true, nil
