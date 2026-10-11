@@ -13,7 +13,7 @@ CSGOHud,#PopupManager,#ItemPreviewDebugManager,#TooltipManager,#ContextMenuManag
     margin-left: 0px;
     margin-right: 0px;
     margin-top: 0px;
-    margin-bottom: 80px;
+    margin-bottom: 100px;
     opacity: 0.15;
     transition-property: transform;
     transition-duration: .1s;
