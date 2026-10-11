@@ -9,6 +9,7 @@
         <n-step :title="t('main.steps.clips')" />
         <n-step :title="t('main.steps.produce')" />
         <n-step :title="t('main.steps.edit')" />
+        <n-step v-if="debugEnabled" :title="t('main.steps.debug')" />
       </n-steps>
     </div>
     <div class="main-view">
@@ -21,6 +22,7 @@
 import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { t } from "@/shared/i18n";
+import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import MainTopBannerAds from "@/features/ads/components/MainTopBannerAds.vue";
 import MainEntryPopupAd from "@/features/ads/components/MainEntryPopupAd.vue";
 import type { StartupAd } from "@/shared/types";
@@ -37,10 +39,12 @@ const stepMap: Record<string, number> = {
   "/clips": 2,
   "/produce": 3,
   "/edit": 4,
+  "/debug": 5,
 };
 
-const stepRoutes = ["/import", "/clips", "/produce", "/edit"];
+const stepRoutes = ["/import", "/clips", "/produce", "/edit", "/debug"];
 const isSettingsRoute = computed(() => route.path === "/settings");
+const { debugEnabled } = useDebugSettings();
 
 const currentStep = computed(() => {
   const path = route.path;

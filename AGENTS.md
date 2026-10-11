@@ -25,7 +25,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/ffmpegprofile/`、`internal/procutil/` | 编码能力探测与回退、平台进程工具 |
 | `internal/logging/`、`internal/changelog/` | 结构化日志与脱敏、内嵌版本更新说明 |
 | `frontend/src/app/` | 应用壳、导航、hash 路由 |
-| `frontend/src/features/` | `workspace-init`、`startup`、`import`、`clips`、`produce`、`edit`、`settings`、`ads`、`changelog` |
+| `frontend/src/features/` | `workspace-init`、`startup`、`import`、`clips`、`produce`、`edit`、`settings`、`debug`、`ads`、`changelog` |
 | `frontend/src/domains/` | 跨页面领域状态与无头业务逻辑（`clip-selection`、`demo`、`edit`、`production`、`settings`；仅 TypeScript，不放 Vue SFC） |
 | `frontend/src/shared/` | 通用类型、状态、视角映射、事件常量、i18n |
 | `frontend/src/shared/backend/` | 强类型 Wails 调用适配层、后端方法契约与统一边界错误 |
