@@ -47,3 +47,4 @@ tools/*.json
 
 #
 docs/superpowers/*
+tmp/*

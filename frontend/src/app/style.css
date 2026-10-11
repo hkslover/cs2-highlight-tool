@@ -36,6 +36,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-user-drag: none;
 }
 
 /* Custom smooth dark scrollbar */
@@ -67,10 +68,20 @@ body,
   min-height: 100vh;
   background: var(--bg-app);
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 body {
   overflow-x: hidden;
+}
+
+/* Keep text selection available for editing form values. */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 h1,
