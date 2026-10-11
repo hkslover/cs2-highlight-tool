@@ -1,0 +1,21 @@
+{
+  "vpk": "brand.vpk",
+  "bytes": 201207,
+  "sha256": "e93237e204f5125734aeb76d18ffb9c22fb8b6dad01ef6035ba319f6f307943a",
+  "image_dimensions": [
+    384,
+    128
+  ],
+  "entries": {
+    "panorama/styles/hud/hud.vcss_c": {
+      "bytes": 4327,
+      "crc32": "a994bf8f"
+    },
+    "panorama/images/custom/cs2ht_brand_logo_rgba.vtex_c": {
+      "bytes": 196680,
+      "crc32": "b6e22e3d"
+    }
+  },
+  "method": "Panorama DATA CRC rebuild from hud.brand.css; 384x128 single-mip RGBA8888 texture",
+  "runtime_tested": false
+}

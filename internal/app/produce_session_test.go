@@ -142,7 +142,7 @@ func TestPrepareGameInfoForProduce_NoBackupWhenAlreadyInjected(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(gameInfoPath), 0755); err != nil {
 		t.Fatalf("mkdir gameinfo dir: %v", err)
 	}
-	content := "Game\tcsgo/plugin\nGame\tcsgo/pov.vpk\nGame\tcsgo\n"
+	content := "Game\tcsgo/plugin\nGame\tcsgo/brand.vpk\nGame\tcsgo/pov.vpk\nGame\tcsgo\n"
 	if err := os.WriteFile(gameInfoPath, []byte(content), 0644); err != nil {
 		t.Fatalf("write gameinfo: %v", err)
 	}

@@ -127,6 +127,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - `GetWorkActivity` 返回 `produce_busy/storage_busy`。制作忙碌覆盖启动、录制、合成、收尾；目录清理还须避让导入、解析、剪辑合成、导出和失败后保留的制作环境。
 - 活跃制作会话禁止再次生成或启动；已结束会话才允许重试失败收尾，成功前不得重置片段状态或生成 JSON。后端须原子检查并保留文件使用权，不能仅依赖前端禁用按钮。
 - HLAE 已启动而 CS2 PID 未知时保留启动器句柄和回滚状态；确认启动器退出且 CS2 枚举为空后才恢复环境。枚举失败或仍有 CS2 时保留备份供重试，不关闭无法确认归属的游戏进程。
+- 录制始终部署并挂载内嵌 `internal/producegame/assets/brand.vpk`，不受设置开关控制；游戏目标为 `game/csgo/brand.vpk`，搜索路径为 `Game\tcsgo/brand.vpk`，与插件路径一起注入，先于可选 POV 路径。沿用 POV 文件生命周期：已有普通 VPK 不覆盖，仅删除本会话创建的文件；启动失败与录制收尾按环境 epoch 回滚，失败保留重试状态。入口为 `internal/app/produce_brand.go` 与 `plugin_generate_launch.go`。
 - `CSDM_WS_PORT` 始终为当前 producews 会话固定的 loopback 端口；`CSDM_LOG_PATH` 指向 `<dataDir>/logs/cs2-server-plugin.log`，插件打不开时按协议回退 `csdm.log`。
 - 仅制作队列成功结束后发送 `end_produce_session`（`payload.request_id`），插件以 `session_exit_ack` 确认并在游戏线程排入 quit。对应连接在有限窗口内断开属于正常收尾，不写 WS 错误或 incident；确认超时再回退 PID 关闭。跨仓库插件行为须另行核验。
 - 状态读取：`GetProduceWSState`、`GetProduceQueueState`、`GetProduceTakeSnapshot`、`GetProduceTakeFiles`、`GetProduceHistorySnapshot`。历史的 `history_type=produce_clip|edited_video` 和 `source_label` 为可选字段，缺省按录制片段处理。
@@ -134,7 +135,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 每次合成在 `<outputs>/edit` 下分配带随机后缀的唯一输出名（`O_EXCL` 原子预留）和任务专属临时目录：先写临时视频，验证后才 rename 提交并登记 history；提交前确认任务未取消，并校验预留路径仍是本任务创建的文件，被替换时保留原对象并拒绝覆盖。失败、超时或取消只清理本任务登记的路径，不覆盖既有视频；提交成功后即按成功登记 history，不删除已发布文件。FFprobe/FFmpeg 统一使用任务 context（探测为有限超时，合成超时与工作目录取消分别归类），取消后不进入编码器回退，并等待子进程与输出 reader 结束后才释放文件使用权。
 - “对方视角快节奏剪辑”默认关闭，只由 `frontend/src/domains/edit/fastEdit.ts` 对有完整可靠录制标记的 victim take 计算可选裁剪范围；仅同 Demo、回合、击杀者且在用户序列中相邻的镜头连续，组内使用硬切，killer、full_round_pov、旧素材或缺标记素材保持整段。导出请求冻结范围并在编辑期间禁用修改；录制成功后可在视频旁写入 `.fastedit.json` 元数据，旁车失败不得使录制失败。
 - `OpenProducedClipInFolder` / `ExportProduceHistoryVideos` 负责定位和导出产物。`GetOutputsStorageStats` / `OpenOutputsDirectory` / `ClearOutputsDirectory` 与 Demo 对应方法管理受管控目录；清理仅删除目标目录的直接子项，保留目录本身；统计大小包含所有文件，数量分别为 `video_count/demo_count`。
-- `GetGameInfoHealth` / `RepairGameInfo` 是 gameinfo 健康状态来源，状态为 `ok|needs_repair|unknown`。修复独立成行的 `Game\tcsgo/plugin` 或 `Game csgo/plugin` 残留，不依赖会话备份。
+- `GetGameInfoHealth` / `RepairGameInfo` 是 gameinfo 健康状态来源，状态为 `ok|needs_repair|unknown`。修复独立成行、以制表符或空格分隔的 `Game csgo/plugin`、`Game csgo/pov.vpk` 与 `Game csgo/brand.vpk` 残留，不依赖会话备份。
 - `ExportProduceWSLogs` 导出单个脱敏诊断文件，包含 WS/队列/take 快照、事件环、滚动 host 日志、incident 和插件日志尾部；无 Wails context 时写入 `<dataDir>/logs/producews-export-<timestamp>.txt`。
 
 ### 事件与其他入口

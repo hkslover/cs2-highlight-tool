@@ -239,6 +239,16 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		return result, nil
 	}
 
+	if err := a.prepareBrandForProduce(); err != nil {
+		result.LaunchStarted = false
+		result.LaunchError = err.Error()
+		result.LaunchedDemoPath = launchDemoPath
+		if rollbackErr := a.rollbackProduceLaunchEnvironment(0, envEpoch); rollbackErr != nil {
+			result.LaunchError = fmt.Sprintf("%s; 回滚制作环境失败: %v", result.LaunchError, rollbackErr)
+		}
+		return result, nil
+	}
+
 	cs2PID, err := a.launchHLAEGame()
 	if err != nil {
 		result.LaunchStarted = false
