@@ -77,6 +77,7 @@ export function useSplitter(
   function startResize(event: MouseEvent) {
     if (event.button !== 0) return;
     event.preventDefault();
+    window.getSelection()?.removeAllRanges();
     isResizing.value = true;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
