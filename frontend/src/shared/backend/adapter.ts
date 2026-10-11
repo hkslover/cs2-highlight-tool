@@ -127,6 +127,7 @@ export const backend: TypedBackendApi = {
   ParseDemoFile: bindBackendMethod("ParseDemoFile"),
   PickCS2Path: bindBackendMethod("PickCS2Path"),
   PickDebugPluginDLLOverride: bindBackendMethod("PickDebugPluginDLLOverride"),
+  PlayDebugDemo: bindBackendMethod("PlayDebugDemo"),
   PickDemoFiles: bindBackendMethod("PickDemoFiles"),
   PickRecordOutputDir: bindBackendMethod("PickRecordOutputDir"),
   PickWorkspaceDir: bindBackendMethod("PickWorkspaceDir"),

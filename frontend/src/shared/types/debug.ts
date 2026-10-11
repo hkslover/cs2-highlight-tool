@@ -39,6 +39,27 @@ export interface DebugCommandResponse {
 }
 
 /**
+ * Play one managed Demo in the running debug session. `commands` are optional
+ * debug-draft settings the plugin applies once the Demo can accept them; it
+ * never loads a produce sequence file.
+ */
+export interface DebugPlayDemoRequest {
+  demo_path: string;
+  commands?: string[];
+}
+
+/**
+ * Receipt for `PlayDebugDemo`. `executed` only proves the plugin handed
+ * `playdemo` to the engine; the real playback state is `demo_playing`.
+ */
+export interface DebugPlayDemoResponse {
+  request_id: string;
+  status: DebugCommandStatus;
+  error?: string;
+  demo_path: string;
+}
+
+/**
  * Full debug workbench snapshot. Process start, transport connection and
  * debug-protocol readiness are reported separately and must not be conflated.
  */
@@ -58,6 +79,11 @@ export interface DebugSessionState {
   plugin_connected: boolean;
   plugin_ready: boolean;
   plugin_message: string;
+
+  /** Last Demo a play request targeted, and the plugin-observed playback state. */
+  demo_path: string;
+  demo_playing: boolean;
+  demo_tick: number;
 
   error: string;
   updated_at_ms: number;

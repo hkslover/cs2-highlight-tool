@@ -198,6 +198,10 @@ export function PickWorkspaceDir() {
   return window['go']['app']['App']['PickWorkspaceDir']();
 }
 
+export function PlayDebugDemo(arg1) {
+  return window['go']['app']['App']['PlayDebugDemo'](arg1);
+}
+
 export function PreviewFullRoundPOV(arg1, arg2) {
   return window['go']['app']['App']['PreviewFullRoundPOV'](arg1, arg2);
 }

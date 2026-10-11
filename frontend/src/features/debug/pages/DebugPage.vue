@@ -143,15 +143,55 @@
           </div>
           <n-empty v-else size="small" :description="t('main.debug.demo_empty')" />
 
-          <div class="action-row">
-            <n-button size="small" secondary @click="goToImport">
-              {{ t("main.debug.btn_back_import") }}
-            </n-button>
-            <n-button size="small" type="primary" disabled>
-              {{ t("main.debug.btn_play_demo") }}
-            </n-button>
-            <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
-          </div>
+          <n-space vertical :size="10">
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.demo_playback_state") }}</span>
+              <n-tag size="small" :bordered="false" :type="playbackTagType">
+                {{ playbackLabel }}
+              </n-tag>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.demo_tick") }}</span>
+              <span class="setting-value">{{ sessionState.demo_tick }}</span>
+            </div>
+
+            <div class="action-row">
+              <n-button size="small" secondary @click="goToImport">
+                {{ t("main.debug.btn_back_import") }}
+              </n-button>
+              <n-button
+                size="small"
+                type="primary"
+                :loading="playingRequest"
+                :disabled="!canPlay"
+                @click="handlePlayDemo"
+              >
+                {{ t("main.debug.btn_play_demo") }}
+              </n-button>
+              <n-button size="small" secondary :disabled="!canSend" @click="handlePauseDemo">
+                {{ t("main.debug.btn_pause_demo") }}
+              </n-button>
+              <n-button size="small" secondary :disabled="!canSend" @click="handleResumeDemo">
+                {{ t("main.debug.btn_resume_demo") }}
+              </n-button>
+            </div>
+            <span v-if="!canPlay && playDisabledHint" class="setting-hint">{{ playDisabledHint }}</span>
+            <n-alert v-if="playError" type="error" :bordered="false" size="small">
+              {{ playError }}
+            </n-alert>
+            <div v-if="lastPlayResult" class="command-result">
+              <n-tag
+                size="small"
+                :bordered="false"
+                :type="lastPlayResult.status === 'executed' ? 'success' : 'error'"
+              >
+                {{ lastPlayResult.status === "executed" ? t("main.debug.play_executed") : t("main.debug.play_failed") }}
+              </n-tag>
+              <span v-if="lastPlayResult.error" class="setting-hint">
+                {{ lastPlayResult.error }}
+              </span>
+            </div>
+          </n-space>
         </n-card>
 
         <n-card size="small" :bordered="true" class="debug-card">
@@ -259,6 +299,7 @@ import type {
   DebugCommandResponse,
   DebugLaunchRequest,
   DebugLaunchResolution,
+  DebugPlayDemoResponse,
   DebugSessionState,
 } from "@/shared/types";
 
@@ -279,12 +320,15 @@ const {
   launching,
   stopping,
   sending,
+  playing: playingRequest,
   lastCommandResult,
+  lastPlayResult,
   errorMessage,
   initDebugSession,
   launchDebugGame,
   stopDebugGame,
   sendDebugConsoleCommand,
+  playDebugDemo,
 } = useDebugSession();
 
 const launch = reactive({
@@ -297,6 +341,7 @@ const launch = reactive({
 
 const commandText = ref("");
 const commandError = ref("");
+const playError = ref("");
 const recordingResults = ref<DebugRecordingResult[]>([]);
 
 // Settings load asynchronously and the launch controls stay editable meanwhile.
@@ -383,6 +428,22 @@ const commandDisabledHint = computed(() => {
   return "";
 });
 
+const canPlay = computed(
+  () =>
+    canSend.value &&
+    !playingRequest.value &&
+    !!selectedEntry.value &&
+    !!selectedEntry.value.file_path,
+);
+const playDisabledHint = computed(() => {
+  if (!selectedEntry.value) return t("main.debug.demo_empty");
+  return commandDisabledHint.value;
+});
+const playbackLabel = computed(() =>
+  sessionState.value.demo_playing ? t("main.debug.demo_playing") : t("main.debug.demo_stopped"),
+);
+const playbackTagType = computed(() => (sessionState.value.demo_playing ? "success" : "default"));
+
 onMounted(async () => {
   await Promise.allSettled([initDebugSession(), settingsStore.init()]);
   // A session that is already running owns the frozen launch options; otherwise
@@ -459,6 +520,45 @@ async function sendCommands(commands: string[]) {
 
 async function handleQuickCommand(item: { commands: string[] }) {
   await sendCommands([...item.commands]);
+}
+
+/**
+ * Debug-draft game commands applied when the Demo can accept them. The launch
+ * card currently only owns the POV radar toggle; 05 expands this from the
+ * dedicated debug settings draft.
+ */
+function buildPlaybackCommands(): string[] {
+  const commands: string[] = [];
+  if (launch.povRadar) commands.push("csdm_radar_pov 1");
+  return commands;
+}
+
+async function handlePlayDemo() {
+  const entry = selectedEntry.value;
+  if (!entry || !entry.file_path) {
+    playError.value = t("main.debug.demo_empty");
+    return;
+  }
+  playError.value = "";
+  try {
+    const result: DebugPlayDemoResponse | null = await playDebugDemo(
+      entry.file_path,
+      buildPlaybackCommands(),
+    );
+    if (result && result.status !== "executed") {
+      playError.value = result.error || t("main.debug.play_failed");
+    }
+  } catch (error: unknown) {
+    playError.value = describeCommandError(error);
+  }
+}
+
+async function handlePauseDemo() {
+  await sendCommands(["demo_pause"]);
+}
+
+async function handleResumeDemo() {
+  await sendCommands(["demo_resume"]);
 }
 
 async function handleSendCommand() {

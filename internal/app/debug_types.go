@@ -48,6 +48,36 @@ type DebugCommandResponse struct {
 	Commands  []string `json:"commands"`
 }
 
+// DebugPlayDemoRequest plays one managed Demo in the running debug session. It
+// never loads a produce sequence file: the plugin clears any queued sequences
+// and issues a quoted `playdemo` on the game thread. Commands are optional
+// debug-draft settings applied when the Demo can actually accept them; plugin
+// special actions (for example the POV radar) are initialized immediately.
+type DebugPlayDemoRequest struct {
+	DemoPath string   `json:"demo_path"`
+	Commands []string `json:"commands,omitempty"`
+}
+
+// DebugPlayDemoResponse is the receipt for PlayDebugDemo. `executed` only
+// proves the plugin handed `playdemo` to the engine; the actual playback state
+// is reported separately through DebugSessionState.DemoPlaying.
+type DebugPlayDemoResponse struct {
+	RequestID string `json:"request_id"`
+	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
+	DemoPath  string `json:"demo_path"`
+}
+
+// DebugDemoState is the plugin-observed playback state. It is only emitted on a
+// playback start/stop transition, so the desktop never mistakes a queued
+// `playdemo` for proof that the engine is actually playing the Demo.
+type DebugDemoState struct {
+	SessionID string `json:"session_id"`
+	DemoPath  string `json:"demo_path"`
+	Playing   bool   `json:"playing"`
+	Tick      int    `json:"tick"`
+}
+
 // DebugSessionState is the full public snapshot of the debug workbench. Process
 // start and plugin readiness are reported separately: a running CS2 PID does
 // not prove that the plugin transport is connected, and a connected transport
@@ -68,6 +98,13 @@ type DebugSessionState struct {
 	PluginConnected bool   `json:"plugin_connected"`
 	PluginReady     bool   `json:"plugin_ready"`
 	PluginMessage   string `json:"plugin_message"`
+
+	// DemoPath is the last Demo a play request targeted; DemoPlaying is the
+	// plugin-observed engine playback state, never inferred from a successful
+	// play receipt.
+	DemoPath    string `json:"demo_path"`
+	DemoPlaying bool   `json:"demo_playing"`
+	DemoTick    int    `json:"demo_tick"`
 
 	Error       string `json:"error"`
 	UpdatedAtMs int64  `json:"updated_at_ms"`

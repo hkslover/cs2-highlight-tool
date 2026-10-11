@@ -1433,7 +1433,7 @@ func (s *Service) onConnectionClosed(connID uint64, conn *websocket.Conn, closeE
 
 func (s *Service) handleIncomingMessage(connID uint64, message incomingMessage) (bool, error) {
 	switch message.Name {
-	case "debug_session_ready", "debug_command_result":
+	case "debug_session_ready", "debug_command_result", "debug_demo_state":
 		// The interactive debug protocol shares the transport but never the
 		// queue acknowledgement or completion handlers. Forward the raw message
 		// to the debug session; the handler only enqueues a result and never

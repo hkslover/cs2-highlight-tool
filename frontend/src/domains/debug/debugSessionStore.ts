@@ -9,6 +9,8 @@ import type {
   DebugCommandRequest,
   DebugCommandResponse,
   DebugLaunchRequest,
+  DebugPlayDemoRequest,
+  DebugPlayDemoResponse,
   DebugSessionState,
 } from "@/shared/types";
 
@@ -27,6 +29,8 @@ const core = createDebugSessionCore({
     stopGame: () => backend.StopDebugGame(),
     sendCommand: (request: DebugCommandRequest) =>
       backend.SendDebugConsoleCommand(request),
+    playDemo: (request: DebugPlayDemoRequest): Promise<DebugPlayDemoResponse> =>
+      backend.PlayDebugDemo(request),
   },
 });
 
@@ -34,6 +38,7 @@ export const initDebugSession = core.init;
 export const launchDebugGame = core.launch;
 export const stopDebugGame = core.stop;
 export const sendDebugConsoleCommand = core.sendCommand;
+export const playDebugDemo = core.playDemo;
 
 /**
  * Clear local debug session facts when the workspace changes. The next debug
@@ -51,11 +56,14 @@ export function useDebugSession() {
     launching: core.launching as Readonly<Ref<boolean>>,
     stopping: core.stopping as Readonly<Ref<boolean>>,
     sending: core.sending as Readonly<Ref<boolean>>,
+    playing: core.playing as Readonly<Ref<boolean>>,
     lastCommandResult: core.lastCommandResult as Readonly<Ref<DebugCommandResponse | null>>,
+    lastPlayResult: core.lastPlayResult as Readonly<Ref<DebugPlayDemoResponse | null>>,
     errorMessage: core.errorMessage as Readonly<Ref<string>>,
     initDebugSession,
     launchDebugGame,
     stopDebugGame,
     sendDebugConsoleCommand,
+    playDebugDemo,
   };
 }

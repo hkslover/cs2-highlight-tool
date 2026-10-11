@@ -2,6 +2,8 @@ import type {
   DebugCommandRequest,
   DebugCommandResponse,
   DebugLaunchRequest,
+  DebugPlayDemoRequest,
+  DebugPlayDemoResponse,
   DebugSessionState,
 } from "@/shared/types";
 
@@ -18,6 +20,7 @@ export interface DebugSessionBackend {
   launchGame: (request: DebugLaunchRequest) => Promise<DebugSessionState>;
   stopGame: () => Promise<DebugSessionState>;
   sendCommand: (request: DebugCommandRequest) => Promise<DebugCommandResponse>;
+  playDemo: (request: DebugPlayDemoRequest) => Promise<DebugPlayDemoResponse>;
 }
 
 export type DebugSessionSubscriber = (
@@ -47,6 +50,9 @@ export function emptyDebugSessionState(): DebugSessionState {
     plugin_connected: false,
     plugin_ready: false,
     plugin_message: "",
+    demo_path: "",
+    demo_playing: false,
+    demo_tick: 0,
     error: "",
     updated_at_ms: 0,
   };
@@ -99,7 +105,9 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
   const launching = options.createCell(false);
   const stopping = options.createCell(false);
   const sending = options.createCell(false);
+  const playing = options.createCell(false);
   const lastCommandResult = options.createCell<DebugCommandResponse | null>(null);
+  const lastPlayResult = options.createCell<DebugPlayDemoResponse | null>(null);
   const errorMessage = options.createCell("");
 
   let latestUpdatedAt = 0;
@@ -235,6 +243,31 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     }
   }
 
+  /**
+   * Play one managed Demo. The receipt only proves the plugin queued the play
+   * command; the real playback state arrives through `sessionState`.
+   */
+  async function playDemo(
+    demoPath: string,
+    commands: string[] = [],
+  ): Promise<DebugPlayDemoResponse | null> {
+    const currentGeneration = generation;
+    playing.value = true;
+    try {
+      const result = await options.backend.playDemo({
+        demo_path: demoPath,
+        commands,
+      });
+      if (currentGeneration !== generation) return null;
+      lastPlayResult.value = result;
+      return result;
+    } finally {
+      if (currentGeneration === generation) {
+        playing.value = false;
+      }
+    }
+  }
+
   /** Drop every local session fact and the event subscription. */
   function dispose(): void {
     generation++;
@@ -246,7 +279,9 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     launching.value = false;
     stopping.value = false;
     sending.value = false;
+    playing.value = false;
     lastCommandResult.value = null;
+    lastPlayResult.value = null;
     errorMessage.value = "";
     latestUpdatedAt = 0;
     latestSource = undefined;
@@ -260,12 +295,15 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     launching,
     stopping,
     sending,
+    playing,
     lastCommandResult,
+    lastPlayResult,
     errorMessage,
     init,
     launch,
     stop,
     sendCommand,
+    playDemo,
     dispose,
   };
 }

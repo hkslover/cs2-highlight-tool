@@ -154,6 +154,38 @@ export namespace app {
 	        this.launch_resolution = source["launch_resolution"];
 	    }
 	}
+	export class DebugPlayDemoRequest {
+	    demo_path: string;
+	    commands?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugPlayDemoRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.demo_path = source["demo_path"];
+	        this.commands = source["commands"];
+	    }
+	}
+	export class DebugPlayDemoResponse {
+	    request_id: string;
+	    status: string;
+	    error?: string;
+	    demo_path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugPlayDemoResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.request_id = source["request_id"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.demo_path = source["demo_path"];
+	    }
+	}
 	export class DebugPluginDLLOverrideState {
 	    active: boolean;
 	    path: string;
@@ -182,6 +214,9 @@ export namespace app {
 	    plugin_connected: boolean;
 	    plugin_ready: boolean;
 	    plugin_message: string;
+	    demo_path: string;
+	    demo_playing: boolean;
+	    demo_tick: number;
 	    error: string;
 	    updated_at_ms: number;
 	
@@ -204,6 +239,9 @@ export namespace app {
 	        this.plugin_connected = source["plugin_connected"];
 	        this.plugin_ready = source["plugin_ready"];
 	        this.plugin_message = source["plugin_message"];
+	        this.demo_path = source["demo_path"];
+	        this.demo_playing = source["demo_playing"];
+	        this.demo_tick = source["demo_tick"];
 	        this.error = source["error"];
 	        this.updated_at_ms = source["updated_at_ms"];
 	    }

@@ -3,6 +3,8 @@ import type {
   DebugCommandRequest,
   DebugCommandResponse,
   DebugLaunchRequest,
+  DebugPlayDemoRequest,
+  DebugPlayDemoResponse,
   DebugPluginDLLOverrideState,
   DebugSessionState,
   DemoStorageStats,
@@ -158,6 +160,7 @@ export interface BackendApi {
   SendDebugConsoleCommand: (
     request: DebugCommandRequest,
   ) => Promise<DebugCommandResponse>;
+  PlayDebugDemo: (request: DebugPlayDemoRequest) => Promise<DebugPlayDemoResponse>;
   SetWorkspaceDir: (path: string) => Promise<void>;
   StopDebugGame: () => Promise<DebugSessionState>;
   ValidateWorkspaceDir: (path: string) => Promise<WorkspaceValidateResult>;

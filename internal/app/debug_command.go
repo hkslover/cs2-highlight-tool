@@ -35,6 +35,15 @@ type debugExecutePayload struct {
 	Commands  []string `json:"commands"`
 }
 
+// debugPlayDemoPayload plays one managed Demo without loading any produce
+// sequence file. Commands are debug-draft settings the plugin applies when the
+// Demo actually starts playing; plugin special actions are initialized earlier.
+type debugPlayDemoPayload struct {
+	RequestID string   `json:"request_id"`
+	DemoPath  string   `json:"demo_path"`
+	Commands  []string `json:"commands,omitempty"`
+}
+
 // debugPendingCommand binds one in-flight receipt to the connection it was
 // sent on. A result from another connection, or a reconnect that replaces the
 // connection, must not satisfy or keep alive a request that belongs to the old
@@ -70,6 +79,8 @@ func (a *App) handleDebugIncomingMessage(message producews.DebugIncomingMessage)
 		a.handleDebugSessionReady(message)
 	case "debug_command_result":
 		a.handleDebugCommandResult(message)
+	case "debug_demo_state":
+		a.handleDebugDemoState(message)
 	}
 }
 
@@ -247,53 +258,65 @@ func (a *App) onDebugReadyTimeout(rt *debugSessionRuntime) {
 	a.emitDebugSessionStateAsync()
 }
 
-// SendDebugConsoleCommand sends one debug request and waits for the game-thread
-// receipt. It refuses to run without a current, ready debug session, and a
-// timeout or disconnect fails the request instead of resending it.
-func (a *App) SendDebugConsoleCommand(req DebugCommandRequest) (DebugCommandResponse, error) {
-	commands := normalizeDebugCommands(req.Commands)
-	if len(commands) == 0 {
-		return DebugCommandResponse{}, fmt.Errorf("请输入要执行的命令")
-	}
-
+// debugReadyRuntime returns the current runtime and the live connection id
+// authorized for a new debug request. It refuses to run without a current,
+// ready plugin debug session; a connected transport alone is never proof of
+// the debug protocol.
+func (a *App) debugReadyRuntime() (*debugSessionRuntime, uint64, error) {
 	rt := a.debugRuntimeForAdmission()
 	if rt == nil || debugRuntimeDone(rt) {
-		return DebugCommandResponse{}, fmt.Errorf("未启动调试会话，无法发送命令")
+		return nil, 0, fmt.Errorf("未启动调试会话，无法发送命令")
 	}
-
 	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	if !rt.request.InjectPlugin {
-		rt.mu.Unlock()
-		return DebugCommandResponse{}, fmt.Errorf("当前调试会话未启用插件，无法远程执行命令")
+		return nil, 0, fmt.Errorf("当前调试会话未启用插件，无法远程执行命令")
 	}
 	if !rt.debugReady {
-		protocolError := rt.debugProtocolError
-		rt.mu.Unlock()
-		if protocolError != "" {
-			return DebugCommandResponse{}, fmt.Errorf("%s", protocolError)
+		if rt.debugProtocolError != "" {
+			return nil, 0, fmt.Errorf("%s", rt.debugProtocolError)
 		}
-		return DebugCommandResponse{}, fmt.Errorf("插件调试协议未就绪，请确认已加载支持调试的插件")
+		return nil, 0, fmt.Errorf("插件调试协议未就绪，请确认已加载支持调试的插件")
 	}
-	readyConnID := rt.debugReadyConnID
-	rt.mu.Unlock()
+	return rt, rt.debugReadyConnID, nil
+}
 
+// sendDebugRequest sends one debug-protocol request bound to the ready
+// connection and waits for its game-thread receipt. A timeout or disconnect
+// fails the request instead of resending it; the payload is built only after
+// the request id is known so the receipt can be correlated.
+func (a *App) sendDebugRequest(name string, buildPayload func(requestID string) any) (DebugCommandResponse, error) {
+	rt, readyConnID, err := a.debugReadyRuntime()
+	if err != nil {
+		return DebugCommandResponse{}, err
+	}
+	return a.sendDebugRequestOnRuntime(rt, readyConnID, name, buildPayload)
+}
+
+// Keep playback validation, transmission and completion tied to one runtime.
+// A stop/relaunch between these steps must not redirect an old request.
+func (a *App) sendDebugRequestOnRuntime(rt *debugSessionRuntime, readyConnID uint64, name string, buildPayload func(requestID string) any) (DebugCommandResponse, error) {
 	if a.produceW == nil {
 		return DebugCommandResponse{}, fmt.Errorf("制作 WebSocket 服务未初始化")
+	}
+	if rt == nil || a.debugRuntimeForAdmission() != rt {
+		return DebugCommandResponse{}, fmt.Errorf("调试会话已更换，命令未执行")
 	}
 
 	requestID := newDebugRequestID()
 	waiter := make(chan DebugCommandResponse, 1)
 	rt.mu.Lock()
+	if debugRuntimeDone(rt) || !rt.debugReady || rt.debugReadyConnID != readyConnID || a.produceW.GameConnID() != readyConnID {
+		rt.mu.Unlock()
+		return DebugCommandResponse{}, fmt.Errorf("调试会话或插件连接已更换，命令未执行")
+	}
 	if rt.debugPending == nil {
 		rt.debugPending = make(map[string]*debugPendingCommand)
 	}
 	rt.debugPending[requestID] = &debugPendingCommand{connID: readyConnID, waiter: waiter}
 	rt.mu.Unlock()
 
-	if err := a.produceW.SendCommandToConn(readyConnID, "debug_execute", debugExecutePayload{
-		RequestID: requestID,
-		Commands:  commands,
-	}); err != nil {
+	if err := a.produceW.SendCommandToConn(readyConnID, name, buildPayload(requestID)); err != nil {
 		rt.mu.Lock()
 		delete(rt.debugPending, requestID)
 		rt.mu.Unlock()
@@ -304,10 +327,7 @@ func (a *App) SendDebugConsoleCommand(req DebugCommandRequest) (DebugCommandResp
 	defer timer.Stop()
 	select {
 	case result := <-waiter:
-		result.Commands = commands
-		if result.Error == "" && result.Status != DebugCommandStatusExecuted {
-			result.Error = "插件执行命令失败"
-		}
+		result.RequestID = requestID
 		return result, nil
 	case <-timer.C:
 		rt.mu.Lock()
@@ -317,6 +337,28 @@ func (a *App) SendDebugConsoleCommand(req DebugCommandRequest) (DebugCommandResp
 	case <-rt.done:
 		return DebugCommandResponse{}, fmt.Errorf("调试会话已结束，命令未执行")
 	}
+}
+
+// SendDebugConsoleCommand sends one debug request and waits for the game-thread
+// receipt. It refuses to run without a current, ready debug session, and a
+// timeout or disconnect fails the request instead of resending it.
+func (a *App) SendDebugConsoleCommand(req DebugCommandRequest) (DebugCommandResponse, error) {
+	commands := normalizeDebugCommands(req.Commands)
+	if len(commands) == 0 {
+		return DebugCommandResponse{}, fmt.Errorf("请输入要执行的命令")
+	}
+
+	result, err := a.sendDebugRequest("debug_execute", func(requestID string) any {
+		return debugExecutePayload{RequestID: requestID, Commands: commands}
+	})
+	if err != nil {
+		return DebugCommandResponse{}, err
+	}
+	result.Commands = commands
+	if result.Error == "" && result.Status != DebugCommandStatusExecuted {
+		result.Error = "插件执行命令失败"
+	}
+	return result, nil
 }
 
 // normalizeDebugCommands trims whitespace and drops empty entries. A custom

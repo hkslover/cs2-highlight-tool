@@ -25,6 +25,11 @@ function createCore(overrides = {}) {
       status: "executed",
       commands: request.commands,
     }),
+    playDemo: async (request) => ({
+      request_id: "req-play-default",
+      status: "executed",
+      demo_path: request.demo_path,
+    }),
     ...overrides.backend,
   };
   const core = createDebugSessionCore({
@@ -278,6 +283,72 @@ test("a failed receipt is kept as a result, not a thrown error", async () => {
   assert.equal(result.status, "failed");
   assert.equal(core.lastCommandResult.value.error, "Radar POV hook installation failed");
   assert.equal(core.errorMessage.value, "");
+});
+
+test("playDemo forwards the managed path and draft commands", async () => {
+  const seen = [];
+  const { core } = createCore({
+    backend: {
+      playDemo: async (request) => {
+        seen.push(request);
+        return {
+          request_id: "req-play-1",
+          status: "executed",
+          demo_path: request.demo_path,
+        };
+      },
+    },
+  });
+  await core.init();
+
+  const result = await core.playDemo("/data/demo/raw/match.dem", ["csdm_radar_pov 1"]);
+  assert.equal(result.status, "executed");
+  assert.equal(result.demo_path, "/data/demo/raw/match.dem");
+  assert.deepEqual(seen[0], {
+    demo_path: "/data/demo/raw/match.dem",
+    commands: ["csdm_radar_pov 1"],
+  });
+  assert.equal(core.lastPlayResult.value.request_id, "req-play-1");
+  assert.equal(core.playing.value, false);
+});
+
+test("a play receipt is not proof of playback and dispose clears it", async () => {
+  const { core } = createCore({
+    backend: {
+      getSessionState: async () =>
+        session({ session_id: "s1", status: "running", demo_playing: false, updated_at_ms: 10 }),
+      playDemo: async () => ({
+        request_id: "req-play-2",
+        status: "executed",
+        demo_path: "/data/demo/raw/match.dem",
+      }),
+    },
+  });
+  await core.init();
+
+  await core.playDemo("/data/demo/raw/match.dem");
+  assert.equal(core.sessionState.value.demo_playing, false, "only the plugin state claims playback");
+  assert.equal(core.lastPlayResult.value.status, "executed");
+
+  core.dispose();
+  assert.equal(core.lastPlayResult.value, null);
+  assert.equal(core.playing.value, false);
+  assert.equal(core.sessionState.value.demo_playing, false);
+});
+
+test("a transport failure during play rejects and keeps the session error empty", async () => {
+  const { core } = createCore({
+    backend: {
+      playDemo: async () => {
+        throw new Error("Demo 文件不可用");
+      },
+    },
+  });
+  await core.init();
+
+  await assert.rejects(core.playDemo("/missing.dem"), /Demo 文件不可用/);
+  assert.equal(core.playing.value, false);
+  assert.equal(core.errorMessage.value, "", "play errors stay out of the session error cell");
 });
 
 test("a transport failure rejects and clears the previous result on dispose", async () => {

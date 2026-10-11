@@ -55,6 +55,13 @@ type debugSessionRuntime struct {
 	debugReadyDeadline  time.Time
 	debugReadyTimer     *time.Timer
 	debugPending        map[string]*debugPendingCommand
+
+	// Demo playback state is only ever set from a plugin `debug_demo_state`
+	// transition (or cleared when the transport that observed it is gone).
+	debugDemoPath     string
+	debugDemoPlaying  bool
+	debugDemoTick     int
+	debugDemoRevision uint64
 }
 
 func newDebugSessionID() string {
@@ -145,8 +152,12 @@ func (a *App) refreshDebugPluginState() {
 	switch {
 	case !connected:
 		a.failDebugCommandChannelLocked(rt, "插件连接已断开，命令未执行")
+		// Playback state cannot be confirmed without the plugin that observed
+		// it. Clear it instead of leaving a stale "playing" on the page.
+		rt.debugDemoPlaying = false
 	case rt.debugReady && a.produceW != nil && a.produceW.GameConnID() != rt.debugReadyConnID:
 		a.failDebugCommandChannelLocked(rt, "插件连接已重建，等待调试协议就绪")
+		rt.debugDemoPlaying = false
 	}
 	rt.updatedAtMs = nowMs()
 	rt.mu.Unlock()
@@ -181,6 +192,9 @@ func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
 		LaunchResolution: rt.request.LaunchResolution,
 		ProcessStarted:   rt.processStarted,
 		CS2PID:           rt.cs2PID,
+		DemoPath:         rt.debugDemoPath,
+		DemoPlaying:      rt.debugDemoPlaying,
+		DemoTick:         rt.debugDemoTick,
 		Error:            rt.lastError,
 		UpdatedAtMs:      rt.updatedAtMs,
 	}

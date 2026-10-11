@@ -105,6 +105,8 @@ export function PickRecordOutputDir():Promise<string>;
 
 export function PickWorkspaceDir():Promise<string>;
 
+export function PlayDebugDemo(arg1:app.DebugPlayDemoRequest):Promise<app.DebugPlayDemoResponse>;
+
 export function PreviewFullRoundPOV(arg1:string,arg2:string):Promise<demo.FullRoundPOVPlan>;
 
 export function ProbeClipDuration(arg1:string):Promise<number>;

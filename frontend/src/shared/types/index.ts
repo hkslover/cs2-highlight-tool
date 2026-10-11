@@ -24,6 +24,8 @@ export type {
   DebugCommandStatus,
   DebugCommandRequest,
   DebugCommandResponse,
+  DebugPlayDemoRequest,
+  DebugPlayDemoResponse,
 } from "./debug";
 
 export type {

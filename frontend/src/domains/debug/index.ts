@@ -15,6 +15,7 @@ export type {
 export {
   initDebugSession,
   launchDebugGame,
+  playDebugDemo,
   resetDebugSessionForWorkspace,
   sendDebugConsoleCommand,
   stopDebugGame,
