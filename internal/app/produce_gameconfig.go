@@ -70,6 +70,14 @@ func (a *App) prepareGameInfoForProduceWithOptions(opts gameInfoPrepOptions) err
 	if err != nil {
 		return err
 	}
+	return a.prepareGameInfoWithConfig(cfg, opts)
+}
+
+// prepareGameInfoWithConfig prepares the gameinfo search paths from one frozen
+// config snapshot. Every helper in a launch pipeline must share that snapshot
+// so a concurrent CS2 path change cannot split the prepared install from the
+// one HLAE starts.
+func (a *App) prepareGameInfoWithConfig(cfg *config.Config, opts gameInfoPrepOptions) error {
 	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
 	if err != nil {
 		return err
@@ -292,6 +300,11 @@ func (a *App) preparePovForProduceWithOptions(povHudEnabled bool) error {
 	if err != nil {
 		return err
 	}
+	return a.preparePovWithConfig(cfg, povHudEnabled)
+}
+
+// preparePovWithConfig installs the POV VPK from one frozen config snapshot.
+func (a *App) preparePovWithConfig(cfg *config.Config, povHudEnabled bool) error {
 	if !povHudEnabled {
 		// Toggle off — leave POV session state empty. A pre-existing pov.vpk is
 		// never deleted; the disabled search path is handled by gameinfo prep.
@@ -350,6 +363,12 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 	if err != nil {
 		return err
 	}
+	return a.preparePluginDLLWithConfig(cfg)
+}
+
+// preparePluginDLLWithConfig injects the plugin DLL resolved from one frozen
+// config snapshot.
+func (a *App) preparePluginDLLWithConfig(cfg *config.Config) (retErr error) {
 	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
 	if err != nil {
 		return err

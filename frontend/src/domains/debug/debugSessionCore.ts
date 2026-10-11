@@ -160,33 +160,47 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     return current;
   }
 
-  async function launch(request: DebugLaunchRequest): Promise<DebugSessionState> {
+  async function launch(request: DebugLaunchRequest): Promise<DebugSessionState | null> {
+    const currentGeneration = generation;
     launching.value = true;
     errorMessage.value = "";
     try {
       const next = await options.backend.launchGame(request);
+      // A workspace switch disposes the store while the request is in flight;
+      // the late response must not repopulate the cleared state.
+      if (currentGeneration !== generation) return null;
       apply(next, "snapshot");
       return next;
     } catch (error: unknown) {
-      errorMessage.value = error instanceof Error ? error.message : String(error);
+      if (currentGeneration === generation) {
+        errorMessage.value = error instanceof Error ? error.message : String(error);
+      }
       throw error;
     } finally {
-      launching.value = false;
+      if (currentGeneration === generation) {
+        launching.value = false;
+      }
     }
   }
 
-  async function stop(): Promise<DebugSessionState> {
+  async function stop(): Promise<DebugSessionState | null> {
+    const currentGeneration = generation;
     stopping.value = true;
     errorMessage.value = "";
     try {
       const next = await options.backend.stopGame();
+      if (currentGeneration !== generation) return null;
       apply(next, "snapshot");
       return next;
     } catch (error: unknown) {
-      errorMessage.value = error instanceof Error ? error.message : String(error);
+      if (currentGeneration === generation) {
+        errorMessage.value = error instanceof Error ? error.message : String(error);
+      }
       throw error;
     } finally {
-      stopping.value = false;
+      if (currentGeneration === generation) {
+        stopping.value = false;
+      }
     }
   }
 

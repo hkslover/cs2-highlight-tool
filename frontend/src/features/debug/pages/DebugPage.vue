@@ -382,7 +382,9 @@ function buildLaunchRequest(): DebugLaunchRequest {
 async function handleLaunch() {
   try {
     const state = await launchDebugGame(buildLaunchRequest());
-    applySessionToDraft(state);
+    // A null result means a workspace switch disposed the store while the
+    // request was in flight; the draft must not adopt the stale options.
+    if (state) applySessionToDraft(state);
   } catch {
     // The core keeps the backend error in `errorMessage` for the session card.
   }

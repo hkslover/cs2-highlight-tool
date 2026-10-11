@@ -25,12 +25,19 @@ func (a *App) prepareBrandForProduce() error {
 // disabled for the current (debug) session. A pre-existing brand.vpk is never
 // deleted; the disabled search path is handled by gameinfo preparation.
 func (a *App) prepareBrandForProduceWithOptions(brandEnabled bool) error {
-	if !brandEnabled {
-		return nil
-	}
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return err
+	}
+	return a.prepareBrandWithConfig(cfg, brandEnabled)
+}
+
+// prepareBrandWithConfig installs the brand VPK from one frozen config snapshot.
+// A pre-existing brand.vpk is never deleted; disabling branding only skips the
+// install, and the disabled search path is handled by gameinfo preparation.
+func (a *App) prepareBrandWithConfig(cfg *config.Config, brandEnabled bool) error {
+	if !brandEnabled {
+		return nil
 	}
 	a.produceStateMu.Lock()
 	gameInfoPath := strings.TrimSpace(a.produceState.gameInfo.gameInfoPath)

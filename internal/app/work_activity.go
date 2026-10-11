@@ -258,6 +258,12 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 		a.produceLaunchMu.Unlock()
 		return nil, fmt.Errorf("制作会话收尾尚未成功，请先重试制作以恢复环境")
 	}
+	// A debug runtime that finished with a failed teardown still owns the shared
+	// environment and its backups; clearing directories would overwrite them.
+	if a.debugRetainedForActivity() {
+		a.produceLaunchMu.Unlock()
+		return nil, fmt.Errorf("调试会话收尾尚未成功，请先重试关闭调试游戏")
+	}
 	if requireWorkspace {
 		dataDir := snapshot.root
 		if snapshot.session != nil && snapshot.session.isClosed() {

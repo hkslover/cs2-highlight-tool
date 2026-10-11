@@ -152,3 +152,83 @@ test("dispose drops local facts and ignores late events", async () => {
   lateCallback(session({ session_id: "s1", status: "running", updated_at_ms: 99 }));
   assert.equal(core.sessionState.value.status, "idle");
 });
+
+const launchRequest = {
+  inject_plugin: true,
+  pov_hud_enabled: false,
+  brand_enabled: true,
+  pov_radar_enabled: false,
+  launch_resolution: "4:3",
+};
+
+test("a late launch response after dispose cannot repopulate the store", async () => {
+  let resolveLaunch;
+  const launchPromise = new Promise((resolve) => {
+    resolveLaunch = resolve;
+  });
+  const { core } = createCore({ backend: { launchGame: () => launchPromise } });
+  await core.init();
+
+  const pending = core.launch(launchRequest);
+  core.dispose();
+  resolveLaunch(session({ session_id: "old-workspace", status: "running", cs2_pid: 5, updated_at_ms: 999 }));
+
+  assert.equal(await pending, null, "a stale response must report that it was dropped");
+  assert.equal(core.sessionState.value.status, "idle");
+  assert.equal(core.sessionState.value.session_id, "");
+  assert.equal(core.sessionState.value.cs2_pid, 0);
+  assert.equal(core.launching.value, false);
+});
+
+test("a late launch failure after dispose cannot write the old error", async () => {
+  let rejectLaunch;
+  const launchPromise = new Promise((_resolve, reject) => {
+    rejectLaunch = reject;
+  });
+  const { core } = createCore({ backend: { launchGame: () => launchPromise } });
+  await core.init();
+
+  const pending = core.launch(launchRequest);
+  core.dispose();
+  rejectLaunch(new Error("old workspace failure"));
+
+  await assert.rejects(pending, /old workspace failure/);
+  assert.equal(core.errorMessage.value, "");
+  assert.equal(core.launching.value, false);
+});
+
+test("a stale request cannot clear a newer request's loading state", async () => {
+  let resolveOld;
+  const oldPromise = new Promise((resolve) => {
+    resolveOld = resolve;
+  });
+  let resolveNew;
+  const newPromise = new Promise((resolve) => {
+    resolveNew = resolve;
+  });
+  let launchCount = 0;
+  const { core } = createCore({
+    backend: {
+      launchGame: () => {
+        launchCount += 1;
+        return launchCount === 1 ? oldPromise : newPromise;
+      },
+    },
+  });
+  await core.init();
+
+  const oldRequest = core.launch(launchRequest);
+  core.dispose();
+  await core.init();
+  const newRequest = core.launch(launchRequest);
+
+  resolveOld(session({ session_id: "old", status: "running", updated_at_ms: 10 }));
+  assert.equal(await oldRequest, null);
+  assert.equal(core.launching.value, true, "the newer request is still loading");
+  assert.equal(core.sessionState.value.session_id, "");
+
+  resolveNew(session({ session_id: "new", status: "running", updated_at_ms: 20 }));
+  assert.equal((await newRequest).session_id, "new");
+  assert.equal(core.launching.value, false);
+  assert.equal(core.sessionState.value.session_id, "new");
+});

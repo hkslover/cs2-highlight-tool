@@ -32,7 +32,12 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		return &GeneratePluginJSONBatchResult{Results: []GeneratePluginJSONBatchItemResult{}, LaunchError: err.Error()}, nil
 	}
 	// Retry only an already-finished session's failed teardown, before any
-	// JSON writes, history filtering or shared take-state reset.
+	// JSON writes, history filtering or shared take-state reset. Both runtimes
+	// own the same shared environment, so a retained debug session must be
+	// released before this pipeline prepares a new epoch.
+	if err := a.stopDebugSessionWorker(); err != nil {
+		return &GeneratePluginJSONBatchResult{Results: []GeneratePluginJSONBatchItemResult{}, LaunchError: err.Error()}, nil
+	}
 	if err := a.stopProduceSessionWorker(); err != nil {
 		return &GeneratePluginJSONBatchResult{Results: []GeneratePluginJSONBatchItemResult{}, LaunchError: err.Error()}, nil
 	}

@@ -229,6 +229,12 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.produceW.SetEmitter(func(name string, payload any) {
 		wruntime.EventsEmit(ctx, name, payload)
+		// A debug session's transport state is part of its public snapshot. The
+		// websocket service owns connection transitions, so re-emit the debug
+		// snapshot when it changes instead of leaving the page on a stale value.
+		if name == "produce_ws_state_changed" {
+			a.refreshDebugPluginState()
+		}
 	})
 	if err := a.produceW.Start(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("start produce websocket server failed: %v", err))
@@ -264,16 +270,23 @@ func (a *App) Shutdown(ctx context.Context) {
 	// A failed stop retains the runtime and its backups for next-start recovery.
 	// The debug session is stopped first: it owns a workspace file reservation
 	// that the session close below would otherwise wait on.
-	if err := a.stopDebugSessionWorker(); err != nil {
+	debugStopErr := a.stopDebugSessionWorker()
+	if debugStopErr != nil {
 		if ctx != nil {
-			wruntime.LogError(ctx, fmt.Sprintf("stop debug session on shutdown failed: %v", err))
+			wruntime.LogError(ctx, fmt.Sprintf("stop debug session on shutdown failed: %v", debugStopErr))
 		}
 	}
-	if err := a.stopProduceSessionWorker(); err != nil {
+	produceStopErr := a.stopProduceSessionWorker()
+	if produceStopErr != nil {
 		if ctx != nil {
-			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", err))
+			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", produceStopErr))
 		}
-	} else if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil {
+	}
+	// forceRestoreProduceEnvironmentForProduce uses the shared produce
+	// environment state and bypasses the per-runtime exit proof. It is only
+	// safe after every owned runtime released that state; a retained debug or
+	// produce runtime keeps its backups for the next start.
+	if err := a.restoreSharedEnvironmentAfterShutdown(debugStopErr, produceStopErr); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("restore produce environment failed: %v", err))
 	}
 	if session := a.workspaceSnapshot().session; session != nil {
@@ -284,6 +297,18 @@ func (a *App) Shutdown(ctx context.Context) {
 	if err := a.produceW.Stop(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("stop produce websocket server failed: %v", err))
 	}
+}
+
+// restoreSharedEnvironmentAfterShutdown restores the shared produce
+// environment only when every owned runtime released it during shutdown. A
+// retained debug or produce runtime still owns the gameinfo/plugin/VPK state
+// and its backups, so an unconditional epoch-0 restore would bypass the
+// "process exit confirmed" guard and destroy the retry state.
+func (a *App) restoreSharedEnvironmentAfterShutdown(debugStopErr, produceStopErr error) error {
+	if debugStopErr != nil || produceStopErr != nil {
+		return nil
+	}
+	return a.forceRestoreProduceEnvironmentForProduce()
 }
 
 func resolveExecutableDir() string {

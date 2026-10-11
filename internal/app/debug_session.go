@@ -116,6 +116,26 @@ func (a *App) emitDebugSessionState() {
 	wailsruntime.EventsEmit(a.ctx, "debug_session_state_changed", a.GetDebugSessionState())
 }
 
+// refreshDebugPluginState re-emits the debug snapshot after a transport change.
+// The websocket service owns connection transitions and emits
+// produce_ws_state_changed; without this the debug page would keep showing the
+// connection value captured at launch. It still forces plugin_ready=false
+// because a transport connection is not proof of the debug protocol.
+func (a *App) refreshDebugPluginState() {
+	rt := a.debugRuntimeForAdmission()
+	if rt == nil || debugRuntimeDone(rt) {
+		return
+	}
+	rt.mu.Lock()
+	if !rt.request.InjectPlugin {
+		rt.mu.Unlock()
+		return
+	}
+	rt.updatedAtMs = nowMs()
+	rt.mu.Unlock()
+	a.emitDebugSessionState()
+}
+
 // GetDebugSessionState returns the current public snapshot. It never infers a
 // plugin debug connection from the process state.
 func (a *App) GetDebugSessionState() DebugSessionState {
@@ -184,8 +204,14 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 	if err := a.produceBusyError(); err != nil {
 		return a.GetDebugSessionState(), err
 	}
-	// Retry a finished-but-failed teardown before preparing a new environment.
+	// Retry a finished-but-failed teardown of either runtime before preparing a
+	// new environment. Both modes share the same gameinfo/DLL/VPK state, so a
+	// retained produce session must be released before this launch can safely
+	// advance the environment epoch.
 	if err := a.stopDebugSessionWorker(); err != nil {
+		return a.GetDebugSessionState(), err
+	}
+	if err := a.stopProduceSessionWorker(); err != nil {
 		return a.GetDebugSessionState(), err
 	}
 
@@ -217,7 +243,7 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 		return a.failDebugLaunch(rt, err)
 	}
 
-	if err := a.prepareGameInfoForProduceWithOptions(gameInfoPrepOptions{
+	if err := a.prepareGameInfoWithConfig(cfg, gameInfoPrepOptions{
 		InjectPlugin:  normalized.InjectPlugin,
 		BrandEnabled:  normalized.BrandEnabled,
 		PovHudEnabled: normalized.PovHudEnabled,
@@ -225,14 +251,14 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 		return a.failDebugLaunch(rt, err)
 	}
 	if normalized.InjectPlugin {
-		if err := a.preparePluginDLLForProduce(); err != nil {
+		if err := a.preparePluginDLLWithConfig(cfg); err != nil {
 			return a.failDebugLaunch(rt, err)
 		}
 	}
-	if err := a.preparePovForProduceWithOptions(normalized.PovHudEnabled); err != nil {
+	if err := a.preparePovWithConfig(cfg, normalized.PovHudEnabled); err != nil {
 		return a.failDebugLaunch(rt, err)
 	}
-	if err := a.prepareBrandForProduceWithOptions(normalized.BrandEnabled); err != nil {
+	if err := a.prepareBrandWithConfig(cfg, normalized.BrandEnabled); err != nil {
 		return a.failDebugLaunch(rt, err)
 	}
 
