@@ -26,7 +26,10 @@ func (a *App) GetWorkActivity() WorkActivity {
 	// teardownErr is only read after done closes. A failed teardown retains
 	// ownership of files, but a new launch may retry that completed teardown.
 	retained := runtime != nil && (!produceRuntimeDone(runtime) || runtime.teardownErr != nil)
-	debugRetained := a.debugRetainedForActivity()
+	// debugRecordingBusyError reports an active recording/merge even after the
+	// debug session was closed: the segment still owns ffmpeg work and the
+	// workspace files it will clean up.
+	debugRetained := a.debugRetainedForActivity() || a.debugActiveRecordingTask() != nil
 	a.managedFilesMu.Lock()
 	storageBusy := a.managedFileUsers > 0 || a.managedFilesClearing
 	a.managedFilesMu.Unlock()
@@ -54,6 +57,11 @@ func (a *App) produceBusyError() error {
 	// session; both the produce launch pipeline and directory clearing must be
 	// rejected until it is stopped.
 	if err := a.debugBusyError(); err != nil {
+		return err
+	}
+	// A manual debug recording or its bounded merge also owns workspace files
+	// and ffmpeg, so a new session must wait for it to finish or fail.
+	if err := a.debugRecordingBusyError(); err != nil {
 		return err
 	}
 	return nil

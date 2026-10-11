@@ -260,6 +260,60 @@ export namespace app {
 	        this.path = source["path"];
 	    }
 	}
+	export class DebugRecordingRequest {
+	    record_fps: number;
+	    record_quality: string;
+	    video_preset: string;
+	    keep_intermediate_files: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugRecordingRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
+	        this.video_preset = source["video_preset"];
+	        this.keep_intermediate_files = source["keep_intermediate_files"];
+	    }
+	}
+	export class DebugRecordingStatus {
+	    recording_id: string;
+	    demo_path: string;
+	    take_name: string;
+	    status: string;
+	    error?: string;
+	    directory: string;
+	    video_path?: string;
+	    audio_path?: string;
+	    final_path?: string;
+	    start_tick?: number;
+	    end_tick?: number;
+	    started_at_ms: number;
+	    updated_at_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugRecordingStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.recording_id = source["recording_id"];
+	        this.demo_path = source["demo_path"];
+	        this.take_name = source["take_name"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.directory = source["directory"];
+	        this.video_path = source["video_path"];
+	        this.audio_path = source["audio_path"];
+	        this.final_path = source["final_path"];
+	        this.start_tick = source["start_tick"];
+	        this.end_tick = source["end_tick"];
+	        this.started_at_ms = source["started_at_ms"];
+	        this.updated_at_ms = source["updated_at_ms"];
+	    }
+	}
 	export class DebugSessionState {
 	    session_id: string;
 	    status: string;
@@ -279,6 +333,8 @@ export namespace app {
 	    demo_playing: boolean;
 	    demo_paused: boolean;
 	    demo_play_pending: boolean;
+	    recording?: DebugRecordingStatus;
+	    recordings: DebugRecordingStatus[];
 	    error: string;
 	    updated_at_ms: number;
 	
@@ -306,9 +362,29 @@ export namespace app {
 	        this.demo_playing = source["demo_playing"];
 	        this.demo_paused = source["demo_paused"];
 	        this.demo_play_pending = source["demo_play_pending"];
+	        this.recording = this.convertValues(source["recording"], DebugRecordingStatus);
+	        this.recordings = this.convertValues(source["recordings"], DebugRecordingStatus);
 	        this.error = source["error"];
 	        this.updated_at_ms = source["updated_at_ms"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	
 	export class DebugSettingsDraft {

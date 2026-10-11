@@ -263,6 +263,9 @@ func (a *App) installWorkspaceLocked(root string, service *envsetup.Service) *wo
 	// A new workspace identity must not reuse in-flight import tasks from the
 	// previous one; the coordinator is recreated lazily on the next import.
 	a.platformImports = nil
+	// Manual debug recording results are workspace-scoped: their files live under
+	// the previous root and must not be shown or retried after a switch.
+	a.resetDebugRecordings()
 	return session
 }
 

@@ -30,6 +30,9 @@ export type {
   DebugSettingsDraft,
   DebugSettingPlan,
   DebugConsolePlan,
+  DebugRecordingStatusValue,
+  DebugRecordingRequest,
+  DebugRecordingStatus,
 } from "./debug";
 
 export type {

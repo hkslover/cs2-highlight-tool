@@ -30,6 +30,10 @@ function createCore(overrides = {}) {
       status: "executed",
       demo_path: request.demo_path,
     }),
+    startRecording: async () => session(),
+    stopRecording: async () => session(),
+    retryRecordingMerge: async () => session(),
+    openRecordingInFolder: async () => {},
     ...overrides.backend,
   };
   const core = createDebugSessionCore({
@@ -376,6 +380,8 @@ test("the snapshot carries structured plugin state and pause facts without a tic
   assert.equal(idle.plugin_state, "");
   assert.equal(idle.demo_paused, false);
   assert.equal(idle.demo_play_pending, false);
+  assert.equal(idle.recording, null);
+  assert.deepEqual(idle.recordings, []);
   assert.ok(!("demo_tick" in idle), "the removed current-tick field must not come back");
 
   const merged = mergeDebugSessionState(
@@ -424,4 +430,159 @@ test("the snapshot carries structured plugin state and pause facts without a tic
   assert.equal(stopped.value.plugin_state, "waiting_connection");
   assert.equal(stopped.value.demo_playing, false);
   assert.equal(stopped.value.demo_paused, false);
+});
+
+const recordingRequest = {
+  record_fps: 60,
+  record_quality: "high",
+  video_preset: "c1",
+  keep_intermediate_files: false,
+};
+
+const recordingSegment = {
+  recording_id: "rec-1",
+  demo_path: "/data/demo/raw/match.dem",
+  take_name: "take0000",
+  status: "recording",
+  directory: "/data/outputs/debug/dbg-1/rec-1",
+  video_path: "/data/outputs/debug/dbg-1/rec-1/take0000.mp4",
+  audio_path: "/data/outputs/debug/dbg-1/rec-1/take0000/audio.wav",
+  started_at_ms: 5,
+  updated_at_ms: 10,
+};
+
+test("startRecording forwards the frozen segment and applies the snapshot", async () => {
+  const seen = [];
+  const { core } = createCore({
+    backend: {
+      startRecording: async (request) => {
+        seen.push(request);
+        return session({
+          session_id: "s1",
+          status: "running",
+          demo_playing: true,
+          recording: { ...recordingSegment, status: "starting" },
+          recordings: [{ ...recordingSegment, status: "starting" }],
+          updated_at_ms: 10,
+        });
+      },
+    },
+  });
+  await core.init();
+
+  const next = await core.startRecording(recordingRequest);
+  assert.deepEqual(seen[0], recordingRequest);
+  assert.equal(next.recording.status, "starting");
+  assert.equal(core.sessionState.value.recording.status, "starting");
+  assert.equal(core.startingRecording.value, false);
+});
+
+test("stopRecording keeps the backend status and clears its own loading flag", async () => {
+  const { core } = createCore({
+    backend: {
+      stopRecording: async () =>
+        session({
+          session_id: "s1",
+          status: "running",
+          recording: { ...recordingSegment, status: "merging" },
+          updated_at_ms: 20,
+        }),
+    },
+  });
+  await core.init();
+
+  const next = await core.stopRecording();
+  assert.equal(next.recording.status, "merging");
+  assert.equal(core.sessionState.value.recording.status, "merging");
+  assert.equal(core.stoppingRecording.value, false);
+});
+
+test("retryRecordingMerge tracks the segment id and forwards only that id", async () => {
+  const seen = [];
+  const { core } = createCore({
+    backend: {
+      retryRecordingMerge: async (recordingID) => {
+        seen.push(recordingID);
+        return session({
+          recording: { ...recordingSegment, recording_id: recordingID, status: "merging" },
+          updated_at_ms: 30,
+        });
+      },
+    },
+  });
+  await core.init();
+
+  await core.retryRecordingMerge("rec-9");
+  assert.deepEqual(seen, ["rec-9"]);
+  assert.equal(core.retryingRecording.value, null);
+  assert.equal(core.sessionState.value.recording.recording_id, "rec-9");
+});
+
+test("openRecordingInFolder rejects without touching the session error cell", async () => {
+  const { core } = createCore({
+    backend: {
+      openRecordingInFolder: async () => {
+        throw new Error("录制目录不在受管控输出目录内");
+      },
+    },
+  });
+  await core.init();
+
+  await assert.rejects(core.openRecordingInFolder("rec-1"), /受管控/);
+  assert.equal(core.errorMessage.value, "");
+
+  core.dispose();
+  assert.equal(core.startingRecording.value, false);
+  assert.equal(core.stoppingRecording.value, false);
+  assert.equal(core.retryingRecording.value, null);
+  assert.equal(core.sessionState.value.recording, null);
+});
+
+// A recording-only change advances the backend snapshot version, so a delayed
+// read that still carries the older segment must not roll the page back.
+test("a delayed snapshot cannot roll back a newer recording event", () => {
+  const mergingRecording = { ...recordingSegment, status: "merging" };
+  const startingRecording = { ...recordingSegment, status: "starting" };
+  const current = {
+    value: session({
+      recording: mergingRecording,
+      recordings: [mergingRecording],
+      updated_at_ms: 500,
+    }),
+    latestUpdatedAt: 500,
+    latestSource: "event",
+  };
+  const merged = mergeDebugSessionState(
+    current,
+    session({ recording: startingRecording, recordings: [startingRecording], updated_at_ms: 400 }),
+    "snapshot",
+  );
+  assert.equal(merged.value.recording.status, "merging");
+  assert.equal(merged.value.recordings[0].status, "merging");
+  assert.equal(merged.latestUpdatedAt, 500);
+});
+
+// The recording list is part of the merged payload: a snapshot at the same
+// version as the last event still loses to the event, so a failed segment does
+// not disappear behind an equal-timestamp read.
+test("an equal-version snapshot cannot replace a recording event", () => {
+  const completedRecording = { ...recordingSegment, status: "completed", final_path: "/out/final.mp4" };
+  const failedRecording = { ...recordingSegment, status: "failed", error: "合并失败" };
+  const current = {
+    value: session({
+      recording: null,
+      recordings: [completedRecording],
+      updated_at_ms: 700,
+    }),
+    latestUpdatedAt: 700,
+    latestSource: "event",
+  };
+  const merged = mergeDebugSessionState(
+    current,
+    session({ recording: null, recordings: [failedRecording], updated_at_ms: 700 }),
+    "snapshot",
+  );
+  assert.equal(merged.value.recordings[0].status, "completed");
+  assert.equal(merged.value.recordings[0].final_path, "/out/final.mp4");
+  assert.equal(merged.latestSource, "event");
 });

@@ -7,6 +7,7 @@ import type {
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
   DebugPluginDLLOverrideState,
+  DebugRecordingRequest,
   DebugSessionState,
   DebugSettingsDraft,
   DemoStorageStats,
@@ -134,6 +135,7 @@ export interface BackendApi {
   ListWanmeiRecentMatches: (page: number) => Promise<WanmeiMatchListResult>;
   OpenDemoDirectory: () => Promise<void>;
   OpenDemoInFolder: (demoPath: string) => Promise<void>;
+  OpenDebugRecordingInFolder: (recordingID: string) => Promise<void>;
   OpenExternalURL: (rawURL: string) => Promise<void>;
   OpenManualDownload: (componentID: string) => Promise<void>;
   OpenOutputsDirectory: () => Promise<void>;
@@ -156,6 +158,7 @@ export interface BackendApi {
   ) => Promise<PlatformClientCloseResult>;
   ResetWorkspace: () => Promise<void>;
   RetryStartupComponent: (componentID: string) => Promise<StartupState>;
+  RetryDebugRecordingMerge: (recordingID: string) => Promise<DebugSessionState>;
   RunStartupChecks: () => Promise<StartupState>;
   SaveClipActionSettings: (
     settings: ClipActionSettings,
@@ -166,7 +169,9 @@ export interface BackendApi {
   ) => Promise<DebugCommandResponse>;
   PlayDebugDemo: (request: DebugPlayDemoRequest) => Promise<DebugPlayDemoResponse>;
   SetWorkspaceDir: (path: string) => Promise<void>;
+  StartDebugRecording: (request: DebugRecordingRequest) => Promise<DebugSessionState>;
   StopDebugGame: () => Promise<DebugSessionState>;
+  StopDebugRecording: () => Promise<DebugSessionState>;
   ValidateWorkspaceDir: (path: string) => Promise<WorkspaceValidateResult>;
 }
 

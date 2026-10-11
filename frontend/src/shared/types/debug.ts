@@ -125,6 +125,49 @@ export interface DebugConsolePlan {
 }
 
 /**
+ * One manual debug recording segment. It is deliberately not a produce take:
+ * it carries no kill/view metadata, is never registered in the produce
+ * history, and a failed merge keeps both source paths retryable.
+ */
+export type DebugRecordingStatusValue =
+  | "starting"
+  | "recording"
+  | "stopping"
+  | "merging"
+  | "completed"
+  | "failed";
+
+/** Segment configuration frozen when a manual recording starts. */
+export interface DebugRecordingRequest {
+  record_fps: number;
+  record_quality: ClipSettings["record_quality"];
+  video_preset: ClipSettings["video_preset"];
+  /** Reuses the debug session option: keep this segment's raw video/audio. */
+  keep_intermediate_files: boolean;
+}
+
+/**
+ * One manual recording result shown in the debug workbench list. `directory`
+ * is the unique per-segment directory; `video_path`/`audio_path` are the
+ * expected raw files and `final_path` is only set after a successful merge.
+ */
+export interface DebugRecordingStatus {
+  recording_id: string;
+  demo_path: string;
+  take_name: string;
+  status: DebugRecordingStatusValue;
+  error?: string;
+  directory: string;
+  video_path?: string;
+  audio_path?: string;
+  final_path?: string;
+  start_tick?: number;
+  end_tick?: number;
+  started_at_ms: number;
+  updated_at_ms: number;
+}
+
+/**
  * Full debug workbench snapshot. Process start, transport connection and
  * debug-protocol readiness are reported separately and must not be conflated.
  */
@@ -152,6 +195,15 @@ export interface DebugSessionState {
   demo_paused: boolean;
   /** A sent play request has not yet been confirmed by an engine observation. */
   demo_play_pending: boolean;
+
+  /**
+   * The active manual recording segment (starting/recording/stopping/merging),
+   * or null when none is active. `recordings` is the workspace result list
+   * (active segment included), newest last, and survives closing the game so a
+   * failed merge stays visible and retryable.
+   */
+  recording: DebugRecordingStatus | null;
+  recordings: DebugRecordingStatus[];
 
   error: string;
   updated_at_ms: number;

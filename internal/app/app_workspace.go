@@ -161,6 +161,11 @@ func (a *App) ResetWorkspace() error {
 	}
 	defer releaseTransition()
 
+	// The transition gate already rejected an active debug recording/merge, so
+	// the result list can be dropped before the directory is removed. Its files
+	// are about to be deleted and must never be reopened or retried.
+	a.resetDebugRecordings()
+
 	a.serviceMu.Lock()
 	configuredDataDir := a.dataDir
 	pendingDataDir := a.workspaceResetPendingPath

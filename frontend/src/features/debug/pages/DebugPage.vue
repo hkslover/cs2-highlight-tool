@@ -501,11 +501,49 @@
 
           <n-space vertical :size="10">
             <span class="setting-hint">{{ t("main.debug.record_hint") }}</span>
-            <div class="action-row">
-              <n-button type="primary" disabled>{{ t("main.debug.btn_start_record") }}</n-button>
-              <n-button secondary disabled>{{ t("main.debug.btn_stop_record") }}</n-button>
-              <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
+
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.record_status") }}</span>
+              <n-tag size="small" :bordered="false" :type="activeRecordingTagType">
+                {{ activeRecordingLabel }}
+              </n-tag>
             </div>
+            <div v-if="sessionState.recording" class="setting-row">
+              <span class="setting-label">{{ t("main.debug.record_current_demo") }}</span>
+              <span
+                class="setting-value setting-value--path"
+                :title="sessionState.recording.demo_path"
+              >
+                {{ sessionState.recording.demo_path || t("main.debug.value_none") }}
+              </span>
+            </div>
+
+            <div class="action-row">
+              <n-button
+                type="primary"
+                :loading="startingRecording"
+                :disabled="!canStartRecording"
+                @click="handleStartRecording"
+              >
+                {{ t("main.debug.btn_start_record") }}
+              </n-button>
+              <n-button
+                secondary
+                :loading="stoppingRecording"
+                :disabled="!canStopRecording"
+                @click="handleStopRecording"
+              >
+                {{ t("main.debug.btn_stop_record") }}
+              </n-button>
+              <span v-if="!canStartRecording && recordDisabledHint" class="setting-hint">
+                {{ recordDisabledHint }}
+              </span>
+            </div>
+            <span class="setting-hint">{{ t("main.debug.record_custom_note") }}</span>
+            <n-alert v-if="recordError" type="error" :bordered="false" size="small">
+              {{ recordError }}
+            </n-alert>
+
             <div class="result-head">
               <span class="setting-label">{{ t("main.debug.result_title") }}</span>
             </div>
@@ -514,6 +552,54 @@
               size="small"
               :description="t('main.debug.record_empty')"
             />
+            <div v-else class="recording-list">
+              <div
+                v-for="item in recordingResults"
+                :key="item.recording_id"
+                class="recording-item"
+              >
+                <div class="setting-row">
+                  <span class="setting-label setting-label--id">{{ item.recording_id }}</span>
+                  <div class="setting-control">
+                    <n-tag size="small" :bordered="false" :type="recordingTagType(item.status)">
+                      {{ recordingStatusLabel(item.status) }}
+                    </n-tag>
+                    <n-button size="tiny" secondary @click="handleOpenRecordingFolder(item.recording_id)">
+                      {{ t("main.debug.btn_open_result") }}
+                    </n-button>
+                    <n-button
+                      v-if="item.status === 'failed'"
+                      size="tiny"
+                      type="primary"
+                      :loading="retryingRecording === item.recording_id"
+                      :disabled="recordingBusy"
+                      @click="handleRetryMerge(item.recording_id)"
+                    >
+                      {{ t("main.debug.btn_retry_merge") }}
+                    </n-button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <span class="setting-label">{{ t("main.debug.record_demo") }}</span>
+                  <span class="setting-value setting-value--path" :title="item.demo_path">
+                    {{ item.demo_path || t("main.debug.value_none") }}
+                  </span>
+                </div>
+                <div class="setting-row">
+                  <span class="setting-label">{{ t("main.debug.record_final_path") }}</span>
+                  <span
+                    class="setting-value setting-value--path"
+                    :title="item.final_path || item.directory"
+                  >
+                    {{ item.final_path || item.directory || t("main.debug.value_none") }}
+                  </span>
+                </div>
+                <span v-if="item.error" class="setting-hint">{{ item.error }}</span>
+              </div>
+            </div>
+            <n-alert v-if="recordFolderError" type="error" :bordered="false" size="small">
+              {{ recordFolderError }}
+            </n-alert>
           </n-space>
         </n-card>
       </div>
@@ -535,7 +621,9 @@ import {
   useDebugSession,
   useDebugSettingsDraft,
   type DebugSwitchKey,
-} from "@/domains/debug";import { demoList, selectedEntry } from "@/domains/demo/demo-state";
+} from "@/domains/debug";
+import { demoList, selectedEntry } from "@/domains/demo/demo-state";
+import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type {
   ClipSettings,
   DebugCommandResponse,
@@ -543,16 +631,12 @@ import type {
   DebugLaunchResolution,
   DebugPlayDemoResponse,
   DebugPluginState,
+  DebugRecordingStatus,
+  DebugRecordingStatusValue,
   DebugSessionState,
 } from "@/shared/types";
 
 type LaunchResolution = DebugLaunchResolution;
-
-interface DebugRecordingResult {
-  id: string;
-  name: string;
-  status: string;
-}
 
 interface LiveSettingRow {
   key: DebugSwitchKey;
@@ -568,6 +652,9 @@ const {
   stopping,
   sending,
   playing: playingRequest,
+  startingRecording,
+  stoppingRecording,
+  retryingRecording,
   lastCommandResult,
   lastPlayResult,
   errorMessage,
@@ -576,7 +663,12 @@ const {
   stopDebugGame,
   sendDebugConsoleCommand,
   playDebugDemo,
+  startDebugRecording,
+  stopDebugRecording,
+  retryDebugRecordingMerge,
+  openDebugRecordingInFolder,
 } = useDebugSession();
+const { keepProduceIntermediates } = useDebugSettings();
 const { debugDemoKey, ensureDebugDemoSelection, selectDebugDemo } =
   useDebugDemoSelection();
 const {
@@ -615,7 +707,8 @@ const recordingApplyError = ref("");
 const applyingAll = ref(false);
 const applyingRecording = ref(false);
 const applyingLifetime = ref(false);
-const recordingResults = ref<DebugRecordingResult[]>([]);
+const recordError = ref("");
+const recordFolderError = ref("");
 // The Demo-list watcher must not preempt the import-page default before the
 // first mount-time selection ran.
 let demoSelectionInitialized = false;
@@ -851,7 +944,10 @@ const canApplyRecording = computed(
     settingsPlan.value !== null &&
     !applyingAll.value &&
     !applyingRecording.value &&
-    !applyingLifetime.value,
+    !applyingLifetime.value &&
+    // The next-segment recording settings are frozen while a segment is active;
+    // applying them mid-recording would change the running configuration.
+    !recordingBusy.value,
 );
 
 // Apply and reload share admission: a reload must not steal the plan request
@@ -865,11 +961,15 @@ const canPlay = computed(
     canSend.value &&
     !playingRequest.value &&
     !sessionState.value.demo_play_pending &&
+    // A recording or its merge owns the current Demo; switching it now would
+    // make the segment's Demo metadata lie.
+    !recordingBusy.value &&
     !!selectedDebugDemo.value &&
     !!selectedDebugDemo.value.file_path,
 );
 const playDisabledHint = computed(() => {
   if (!selectedDebugDemo.value) return t("main.debug.demo_empty");
+  if (recordingBusy.value) return t("main.debug.record_busy_demo_hint");
   if (sessionState.value.demo_play_pending) return t("main.debug.pause_pending_hint");
   return commandDisabledHint.value;
 });
@@ -901,6 +1001,122 @@ const pauseButtonLabel = computed(() =>
 const pauseButtonType = computed(() =>
   sessionState.value.demo_paused ? "success" : "warning",
 );
+
+// ---- Manual recording ----
+
+/** The backend-owned active segment; null when the workbench is between takes. */
+const activeRecording = computed<DebugRecordingStatus | null>(
+  () => sessionState.value.recording ?? null,
+);
+const recordingBusy = computed(() => activeRecording.value !== null);
+const recordingResults = computed(() => [...sessionState.value.recordings].reverse());
+
+const recordingStatusLabels: Record<DebugRecordingStatusValue, string> = {
+  starting: "main.debug.record_status_starting",
+  recording: "main.debug.record_status_recording",
+  stopping: "main.debug.record_status_stopping",
+  merging: "main.debug.record_status_merging",
+  completed: "main.debug.record_status_completed",
+  failed: "main.debug.record_status_failed",
+};
+
+function recordingStatusLabel(status: DebugRecordingStatusValue): string {
+  return t(recordingStatusLabels[status] ?? "main.debug.record_status_failed");
+}
+
+function recordingTagType(
+  status: DebugRecordingStatusValue,
+): "default" | "warning" | "success" | "error" {
+  switch (status) {
+    case "recording":
+      return "success";
+    case "starting":
+    case "stopping":
+    case "merging":
+      return "warning";
+    case "failed":
+      return "error";
+    default:
+      return "default";
+  }
+}
+
+const activeRecordingLabel = computed(() => {
+  const active = activeRecording.value;
+  if (!active) return t("main.debug.record_no_active");
+  return recordingStatusLabel(active.status);
+});
+const activeRecordingTagType = computed<"default" | "warning" | "success" | "error">(() =>
+  activeRecording.value ? recordingTagType(activeRecording.value.status) : "default",
+);
+
+// A start needs a confirmed playing Demo, a ready plugin and no active
+// segment; the backend re-checks the same admission atomically.
+const canStartRecording = computed(
+  () =>
+    canSend.value &&
+    sessionState.value.demo_playing &&
+    !sessionState.value.demo_play_pending &&
+    !recordingBusy.value &&
+    !startingRecording.value,
+);
+const canStopRecording = computed(() => {
+  const active = activeRecording.value;
+  return (
+    canSend.value &&
+    !!active &&
+    (active.status === "starting" || active.status === "recording") &&
+    !stoppingRecording.value
+  );
+});
+const recordDisabledHint = computed(() => {
+  if (!sessionState.value.demo_playing) return t("main.debug.record_need_play");
+  if (recordingBusy.value) return t("main.debug.record_active_hint");
+  return commandDisabledHint.value || t("main.debug.record_need_session");
+});
+
+async function handleStartRecording() {
+  if (!canStartRecording.value) return;
+  recordError.value = "";
+  try {
+    await startDebugRecording({
+      record_fps: settingsDraft.value.record_fps,
+      record_quality: settingsDraft.value.record_quality,
+      video_preset: settingsDraft.value.video_preset,
+      keep_intermediate_files: keepProduceIntermediates.value,
+    });
+  } catch (error: unknown) {
+    recordError.value = describeCommandError(error);
+  }
+}
+
+async function handleStopRecording() {
+  if (!canStopRecording.value) return;
+  recordError.value = "";
+  try {
+    await stopDebugRecording();
+  } catch (error: unknown) {
+    recordError.value = describeCommandError(error);
+  }
+}
+
+async function handleRetryMerge(recordingID: string) {
+  recordError.value = "";
+  try {
+    await retryDebugRecordingMerge(recordingID);
+  } catch (error: unknown) {
+    recordError.value = describeCommandError(error);
+  }
+}
+
+async function handleOpenRecordingFolder(recordingID: string) {
+  recordFolderError.value = "";
+  try {
+    await openDebugRecordingInFolder(recordingID);
+  } catch (error: unknown) {
+    recordFolderError.value = describeCommandError(error);
+  }
+}
 
 const formalSettings = computed<ClipSettings | null>(() => sourceSettings.value);
 
@@ -1344,6 +1560,27 @@ function goToImport() {
 .result-head {
   border-top: 1px solid #252c27;
   padding-top: 8px;
+}
+
+.recording-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recording-item {
+  border: 1px solid #252c27;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.setting-label--id {
+  color: #97a49c;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
 }
 
 .command-result {

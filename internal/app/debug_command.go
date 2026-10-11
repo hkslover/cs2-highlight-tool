@@ -44,6 +44,37 @@ type debugPlayDemoPayload struct {
 	Commands  []string `json:"commands,omitempty"`
 }
 
+// debugRecordStartPayload starts one manual recording segment. Commands carry
+// the recording initialization and the final `mirv_streams record start`, so
+// the game thread can run the whole ordered batch and answer only afterwards.
+type debugRecordStartPayload struct {
+	RequestID   string   `json:"request_id"`
+	RecordingID string   `json:"recording_id"`
+	DemoPath    string   `json:"demo_path"`
+	TakeName    string   `json:"take_name"`
+	Commands    []string `json:"commands"`
+}
+
+// debugRecordStopPayload ends one manual recording segment without quitting or
+// disconnecting the game.
+type debugRecordStopPayload struct {
+	RequestID   string `json:"request_id"`
+	RecordingID string `json:"recording_id"`
+}
+
+// debugRecordStatusPayload is the plugin's manual recording boundary
+// observation, emitted by the game thread right after the real
+// `mirv_streams record start`/`end` command ran.
+type debugRecordStatusPayload struct {
+	SessionID   string `json:"session_id"`
+	RecordingID string `json:"recording_id"`
+	DemoPath    string `json:"demo_path"`
+	TakeName    string `json:"take_name"`
+	RecordPhase string `json:"record_phase"`
+	Tick        int    `json:"tick"`
+	TsMs        int64  `json:"ts_ms"`
+}
+
 // debugPendingCommand binds one in-flight receipt to the connection it was
 // sent on. A result from another connection, or a reconnect that replaces the
 // connection, must not satisfy or keep alive a request that belongs to the old
@@ -81,6 +112,8 @@ func (a *App) handleDebugIncomingMessage(message producews.DebugIncomingMessage)
 		a.handleDebugCommandResult(message)
 	case "debug_demo_state":
 		a.handleDebugDemoState(message)
+	case "debug_record_status":
+		a.handleDebugRecordStatus(message)
 	}
 }
 
@@ -128,7 +161,7 @@ func (a *App) handleDebugSessionReady(message producews.DebugIncomingMessage) {
 		rt.debugReadyConnID = 0
 		rt.debugReadySessionID = ""
 		rt.debugProtocolError = "插件调试协议版本不受支持，请更新插件"
-		rt.updatedAtMs = nowMs()
+		rt.updatedAtMs = a.nextDebugStamp()
 		rt.mu.Unlock()
 		a.emitDebugSessionStateAsync()
 		return
@@ -143,7 +176,7 @@ func (a *App) handleDebugSessionReady(message producews.DebugIncomingMessage) {
 	rt.debugReadyConnID = message.ConnID
 	rt.debugReadySessionID = sessionID
 	rt.debugProtocolError = ""
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	a.emitDebugSessionStateAsync()
 }
@@ -258,7 +291,7 @@ func (a *App) onDebugReadyTimeout(rt *debugSessionRuntime) {
 		rt.mu.Unlock()
 		return
 	}
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	a.emitDebugSessionStateAsync()
 }
@@ -286,12 +319,33 @@ func (a *App) debugReadyRuntime() (*debugSessionRuntime, uint64, error) {
 	return rt, rt.debugReadyConnID, nil
 }
 
+// debugPublicRuntime is the admission for public debug operations that act on
+// the live game (console commands, Demo playback, manual recording start and
+// stop). Besides protocol readiness it requires the session to still be running:
+// once StopDebugGame set the stopping status the environment is already being
+// torn down, and accepting new work would leave it without a normal end. The
+// internal recording stop path keeps using debugReadyRuntime so closing the game
+// can always end the segment it owns.
+func (a *App) debugPublicRuntime() (*debugSessionRuntime, uint64, error) {
+	rt, connID, err := a.debugReadyRuntime()
+	if err != nil {
+		return nil, 0, err
+	}
+	rt.mu.Lock()
+	status := rt.status
+	rt.mu.Unlock()
+	if status != DebugStatusRunning {
+		return nil, 0, fmt.Errorf("调试会话正在关闭，已拒绝新的操作")
+	}
+	return rt, connID, nil
+}
+
 // sendDebugRequest sends one debug-protocol request bound to the ready
 // connection and waits for its game-thread receipt. A timeout or disconnect
 // fails the request instead of resending it; the payload is built only after
 // the request id is known so the receipt can be correlated.
 func (a *App) sendDebugRequest(name string, buildPayload func(requestID string) any) (DebugCommandResponse, error) {
-	rt, readyConnID, err := a.debugReadyRuntime()
+	rt, readyConnID, err := a.debugPublicRuntime()
 	if err != nil {
 		return DebugCommandResponse{}, err
 	}

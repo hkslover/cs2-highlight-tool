@@ -84,6 +84,32 @@ type App struct {
 	// never while waiting on the game process or file I/O.
 	debugStateMu sync.Mutex
 	debugRuntime *debugSessionRuntime
+
+	// debugRecordingsMu guards the App-scoped manual recording result list. The
+	// tasks live outside the session runtime so a failed merge stays retryable
+	// after the game was closed; they are cleared when the workspace changes.
+	debugRecordingsMu   sync.Mutex
+	debugRecordings     map[string]*debugRecordingTask
+	debugRecordingOrder []string
+
+	// debugWorkbenchOpMu serializes the interactive workbench mutations that
+	// must not interleave: switching/starting the Demo playback, starting or
+	// stopping a manual recording, and retrying a failed merge. Plugin event
+	// handlers never take it (they must stay able to deliver the receipt the
+	// holder is waiting for), so it only orders public operations.
+	debugWorkbenchOpMu sync.Mutex
+
+	// debugClockMu guards debugClockMs, the shared strictly increasing stamp
+	// source for every debug workbench mutation. Session and recording changes
+	// both draw from it, and the snapshot version is the newest stamp actually
+	// reflected by the returned data, so the frontend can order any pair of
+	// events/reads even when two changes happen within one millisecond.
+	debugClockMu sync.Mutex
+	debugClockMs int64
+	// debugSnapshotFloorMs stamps a change of the recording collection itself
+	// (for example a workspace reset that cleared the list) when no task is left
+	// to carry the stamp, so the snapshot version never moves backwards.
+	debugSnapshotFloorMs int64
 }
 
 func New(wailsConfigData []byte) *App {

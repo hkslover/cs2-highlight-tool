@@ -13,6 +13,7 @@ import type {
   DebugLaunchRequest,
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
+  DebugRecordingRequest,
   DebugSessionState,
 } from "../../shared/types/index.js";
 
@@ -33,6 +34,13 @@ const core = createDebugSessionCore({
       backend.SendDebugConsoleCommand(request),
     playDemo: (request: DebugPlayDemoRequest): Promise<DebugPlayDemoResponse> =>
       backend.PlayDebugDemo(request),
+    startRecording: (request: DebugRecordingRequest): Promise<DebugSessionState> =>
+      backend.StartDebugRecording(request),
+    stopRecording: (): Promise<DebugSessionState> => backend.StopDebugRecording(),
+    retryRecordingMerge: (recordingID: string): Promise<DebugSessionState> =>
+      backend.RetryDebugRecordingMerge(recordingID),
+    openRecordingInFolder: (recordingID: string): Promise<void> =>
+      backend.OpenDebugRecordingInFolder(recordingID),
   },
 });
 
@@ -41,6 +49,10 @@ export const launchDebugGame = core.launch;
 export const stopDebugGame = core.stop;
 export const sendDebugConsoleCommand = core.sendCommand;
 export const playDebugDemo = core.playDemo;
+export const startDebugRecording = core.startRecording;
+export const stopDebugRecording = core.stopRecording;
+export const retryDebugRecordingMerge = core.retryRecordingMerge;
+export const openDebugRecordingInFolder = core.openRecordingInFolder;
 
 // The debug page's own pending Demo. Kept outside the backend session snapshot
 // because it is a local workbench draft: choosing a Demo only changes what the
@@ -86,6 +98,9 @@ export function useDebugSession() {
     stopping: core.stopping as Readonly<Ref<boolean>>,
     sending: core.sending as Readonly<Ref<boolean>>,
     playing: core.playing as Readonly<Ref<boolean>>,
+    startingRecording: core.startingRecording as Readonly<Ref<boolean>>,
+    stoppingRecording: core.stoppingRecording as Readonly<Ref<boolean>>,
+    retryingRecording: core.retryingRecording as Readonly<Ref<string | null>>,
     lastCommandResult: core.lastCommandResult as Readonly<Ref<DebugCommandResponse | null>>,
     lastPlayResult: core.lastPlayResult as Readonly<Ref<DebugPlayDemoResponse | null>>,
     errorMessage: core.errorMessage as Readonly<Ref<string>>,
@@ -94,6 +109,10 @@ export function useDebugSession() {
     stopDebugGame,
     sendDebugConsoleCommand,
     playDebugDemo,
+    startDebugRecording,
+    stopDebugRecording,
+    retryDebugRecordingMerge,
+    openDebugRecordingInFolder,
   };
 }
 

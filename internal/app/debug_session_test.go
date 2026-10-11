@@ -425,3 +425,80 @@ func TestPrepareGameInfoForProduceKeepsPluginAndBrand(t *testing.T) {
 		}
 	}
 }
+
+// TestStoppingDebugSessionKeepsSnapshotVersionMonotonic covers the release of
+// the session runtime: the final idle snapshot must carry a version newer than
+// the last running/stopping snapshot. Without the floor stamp the idle snapshot
+// could only report the recording-list version, the frontend merge rules would
+// reject it, and the page would keep showing the closed session and its PID.
+func TestStoppingDebugSessionKeepsSnapshotVersionMonotonic(t *testing.T) {
+	app, _ := startDebugPluginSession(t, true)
+	running := app.GetDebugSessionState()
+	if running.Status != DebugStatusRunning || running.UpdatedAtMs <= 0 {
+		t.Fatalf("unexpected running snapshot: %+v", running)
+	}
+
+	stopped, err := app.StopDebugGame()
+	if err != nil {
+		t.Fatalf("StopDebugGame: %v", err)
+	}
+	if stopped.UpdatedAtMs <= running.UpdatedAtMs {
+		t.Fatalf("idle snapshot version did not advance: %d -> %d", running.UpdatedAtMs, stopped.UpdatedAtMs)
+	}
+	if stopped.Status != DebugStatusIdle || stopped.SessionID != "" || stopped.ProcessStarted || stopped.CS2PID != 0 {
+		t.Fatalf("idle snapshot still describes the closed session: %+v", stopped)
+	}
+
+	// The returned value and the next read agree, so the frontend can apply the
+	// final idle event and clear the stale session facts.
+	asserted := app.GetDebugSessionState()
+	if asserted.UpdatedAtMs != stopped.UpdatedAtMs {
+		t.Fatalf("idle snapshot version drifted: %d -> %d", stopped.UpdatedAtMs, asserted.UpdatedAtMs)
+	}
+	if asserted.Status != DebugStatusIdle || asserted.SessionID != "" || asserted.CS2PID != 0 {
+		t.Fatalf("read-back snapshot still describes the closed session: %+v", asserted)
+	}
+}
+
+func TestDelayedDebugSnapshotAfterStopUsesIdleState(t *testing.T) {
+	app, _ := startDebugPluginSession(t, true)
+	// A reader can be paused after capturing the runtime, before projecting it.
+	captured := app.debugRuntimeForAdmission()
+	stopped, err := app.StopDebugGame()
+	if err != nil {
+		t.Fatalf("StopDebugGame: %v", err)
+	}
+	delayed := app.debugSessionSnapshot(captured)
+	if delayed.SessionID != "" || delayed.Status != DebugStatusIdle || delayed.ProcessStarted || delayed.CS2PID != 0 {
+		t.Fatalf("delayed read restored the stopped session: %+v", delayed)
+	}
+	if delayed.UpdatedAtMs != stopped.UpdatedAtMs {
+		t.Fatalf("unchanged idle state has different versions: %d -> %d", stopped.UpdatedAtMs, delayed.UpdatedAtMs)
+	}
+}
+
+func TestDelayedDebugSnapshotAfterReplacementUsesCurrentSession(t *testing.T) {
+	app := newTestAppInTempDir(t)
+	old := &debugSessionRuntime{
+		sessionID: "old-session", status: DebugStatusRunning,
+		processStarted: true, cs2PID: 9002,
+	}
+	app.installDebugRuntime(old)
+	before := app.GetDebugSessionState()
+	captured := app.debugRuntimeForAdmission()
+	app.clearDebugRuntime(old)
+	replacement := &debugSessionRuntime{
+		sessionID: "new-session", status: DebugStatusStarting,
+	}
+	app.installDebugRuntime(replacement)
+
+	for _, delayedRuntime := range []*debugSessionRuntime{captured, nil} {
+		delayed := app.debugSessionSnapshot(delayedRuntime)
+		if delayed.SessionID != replacement.sessionID || delayed.Status != DebugStatusStarting || delayed.ProcessStarted || delayed.CS2PID != 0 {
+			t.Fatalf("delayed read described an earlier runtime: %+v", delayed)
+		}
+		if delayed.UpdatedAtMs <= before.UpdatedAtMs {
+			t.Fatalf("replacement did not advance the version: %d -> %d", before.UpdatedAtMs, delayed.UpdatedAtMs)
+		}
+	}
+}

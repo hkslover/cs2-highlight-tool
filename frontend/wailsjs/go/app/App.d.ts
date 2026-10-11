@@ -85,6 +85,8 @@ export function ListFiveERecentMatches(arg1:string,arg2:number):Promise<fivee.Fi
 
 export function ListWanmeiRecentMatches(arg1:number):Promise<wanmei.WanmeiMatchListResult>;
 
+export function OpenDebugRecordingInFolder(arg1:string):Promise<void>;
+
 export function OpenDemoDirectory():Promise<void>;
 
 export function OpenDemoInFolder(arg1:string):Promise<void>;
@@ -123,6 +125,8 @@ export function RequestClosePlatformClient(arg1:string):Promise<app.PlatformClie
 
 export function ResetWorkspace():Promise<void>;
 
+export function RetryDebugRecordingMerge(arg1:string):Promise<app.DebugSessionState>;
+
 export function RetryStartupComponent(arg1:string):Promise<envsetup.StartupState>;
 
 export function RunStartupChecks():Promise<envsetup.StartupState>;
@@ -135,6 +139,10 @@ export function SendDebugConsoleCommand(arg1:app.DebugCommandRequest):Promise<ap
 
 export function SetWorkspaceDir(arg1:string):Promise<void>;
 
+export function StartDebugRecording(arg1:app.DebugRecordingRequest):Promise<app.DebugSessionState>;
+
 export function StopDebugGame():Promise<app.DebugSessionState>;
+
+export function StopDebugRecording():Promise<app.DebugSessionState>;
 
 export function ValidateWorkspaceDir(arg1:string):Promise<app.WorkspaceValidateResult>;

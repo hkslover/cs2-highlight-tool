@@ -17,9 +17,22 @@ import (
 // receipt only proves the command was handed to the engine; the actual
 // playback state arrives later through `debug_demo_state`.
 func (a *App) PlayDebugDemo(req DebugPlayDemoRequest) (DebugPlayDemoResponse, error) {
-	rt, connID, err := a.debugReadyRuntime()
+	// Serialize the Demo switch with recording start/stop/retry. Without one
+	// critical section, a start could freeze the old Demo while this request
+	// switches it; the recording busy check alone cannot close that window
+	// because the play request is registered later.
+	a.debugWorkbenchOpMu.Lock()
+	defer a.debugWorkbenchOpMu.Unlock()
+
+	rt, connID, err := a.debugPublicRuntime()
 	if err != nil {
 		return DebugPlayDemoResponse{}, err
+	}
+	// A recording or its merge owns the current Demo output segment; switching
+	// Demo now would make the segment's Demo metadata lie. Ordinary console
+	// commands stay available while merging.
+	if err := a.debugRecordingBusyError(); err != nil {
+		return DebugPlayDemoResponse{}, fmt.Errorf("调试录制或合并进行中，暂时不能切换 Demo")
 	}
 	rt.mu.Lock()
 	demoRevision := rt.debugDemoRevision
@@ -72,7 +85,7 @@ func (a *App) startDebugPlaybackPendingLocked(rt *debugSessionRuntime, connID ui
 	rt.debugDemoPlayTimer = time.AfterFunc(debugPlayConfirmTimeout, func() {
 		a.onDebugPlaybackTimeout(rt, connID, requestID)
 	})
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 }
 
 func clearDebugPlaybackPendingLocked(rt *debugSessionRuntime) {
@@ -101,7 +114,7 @@ func (a *App) onDebugPlaybackTimeout(rt *debugSessionRuntime, connID uint64, req
 	if rt.lastError == "" {
 		rt.lastError = debugPlayConfirmationTimeoutMessage
 	}
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	a.emitDebugSessionStateAsync()
 }
@@ -112,7 +125,7 @@ func (a *App) finishFailedDebugPlayback(rt *debugSessionRuntime, requestID strin
 	changed := rt.debugDemoPlayPending && rt.debugDemoPlayRequestID == requestID
 	if changed {
 		clearDebugPlaybackPendingLocked(rt)
-		rt.updatedAtMs = nowMs()
+		rt.updatedAtMs = a.nextDebugStamp()
 	}
 	rt.mu.Unlock()
 	if changed && a.debugRuntimeForAdmission() == rt {
@@ -137,7 +150,7 @@ func (a *App) recordDebugDemoRequest(rt *debugSessionRuntime, connID, demoRevisi
 		return false
 	}
 	rt.debugDemoPath = demoPath
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	return true
 }
 
@@ -308,7 +321,7 @@ func (a *App) handleDebugDemoState(message producews.DebugIncomingMessage) {
 		rt.mu.Unlock()
 		return
 	}
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	a.emitDebugSessionStateAsync()
 }

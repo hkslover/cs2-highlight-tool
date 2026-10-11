@@ -4,6 +4,7 @@ import type {
   DebugLaunchRequest,
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
+  DebugRecordingRequest,
   DebugSessionState,
 } from "@/shared/types";
 
@@ -21,6 +22,10 @@ export interface DebugSessionBackend {
   stopGame: () => Promise<DebugSessionState>;
   sendCommand: (request: DebugCommandRequest) => Promise<DebugCommandResponse>;
   playDemo: (request: DebugPlayDemoRequest) => Promise<DebugPlayDemoResponse>;
+  startRecording: (request: DebugRecordingRequest) => Promise<DebugSessionState>;
+  stopRecording: () => Promise<DebugSessionState>;
+  retryRecordingMerge: (recordingID: string) => Promise<DebugSessionState>;
+  openRecordingInFolder: (recordingID: string) => Promise<void>;
 }
 
 export type DebugSessionSubscriber = (
@@ -55,6 +60,8 @@ export function emptyDebugSessionState(): DebugSessionState {
     demo_playing: false,
     demo_paused: false,
     demo_play_pending: false,
+    recording: null,
+    recordings: [],
     error: "",
     updated_at_ms: 0,
   };
@@ -108,6 +115,9 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
   const stopping = options.createCell(false);
   const sending = options.createCell(false);
   const playing = options.createCell(false);
+  const startingRecording = options.createCell(false);
+  const stoppingRecording = options.createCell(false);
+  const retryingRecording = options.createCell<string | null>(null);
   const lastCommandResult = options.createCell<DebugCommandResponse | null>(null);
   const lastPlayResult = options.createCell<DebugPlayDemoResponse | null>(null);
   const errorMessage = options.createCell("");
@@ -270,6 +280,70 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     }
   }
 
+  /**
+   * Start one manual recording segment. The returned snapshot describes the
+   * frozen segment; the real recording status only advances on the plugin's
+   * boundary observation carried by `sessionState.recording`.
+   */
+  async function startRecording(
+    request: DebugRecordingRequest,
+  ): Promise<DebugSessionState | null> {
+    const currentGeneration = generation;
+    startingRecording.value = true;
+    try {
+      const next = await options.backend.startRecording(request);
+      if (currentGeneration !== generation) return null;
+      apply(next, "snapshot");
+      return next;
+    } finally {
+      if (currentGeneration === generation) {
+        startingRecording.value = false;
+      }
+    }
+  }
+
+  /**
+   * Ask for the active segment to end. The merge runs asynchronously in the
+   * backend, so this resolves as soon as the stop boundary was answered.
+   */
+  async function stopRecording(): Promise<DebugSessionState | null> {
+    const currentGeneration = generation;
+    stoppingRecording.value = true;
+    try {
+      const next = await options.backend.stopRecording();
+      if (currentGeneration !== generation) return null;
+      apply(next, "snapshot");
+      return next;
+    } finally {
+      if (currentGeneration === generation) {
+        stoppingRecording.value = false;
+      }
+    }
+  }
+
+  /** Retry only the failed merge of one segment, reusing its raw files. */
+  async function retryRecordingMerge(
+    recordingID: string,
+  ): Promise<DebugSessionState | null> {
+    const currentGeneration = generation;
+    retryingRecording.value = recordingID;
+    try {
+      const next = await options.backend.retryRecordingMerge(recordingID);
+      if (currentGeneration !== generation) return null;
+      apply(next, "snapshot");
+      return next;
+    } finally {
+      if (currentGeneration === generation) {
+        retryingRecording.value = null;
+      }
+    }
+  }
+
+  /** Locate one segment result; a failure stays a local page error. */
+  async function openRecordingInFolder(recordingID: string): Promise<void> {
+    await options.backend.openRecordingInFolder(recordingID);
+  }
+
   /** Drop every local session fact and the event subscription. */
   function dispose(): void {
     generation++;
@@ -282,6 +356,9 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     stopping.value = false;
     sending.value = false;
     playing.value = false;
+    startingRecording.value = false;
+    stoppingRecording.value = false;
+    retryingRecording.value = null;
     lastCommandResult.value = null;
     lastPlayResult.value = null;
     errorMessage.value = "";
@@ -298,6 +375,9 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     stopping,
     sending,
     playing,
+    startingRecording,
+    stoppingRecording,
+    retryingRecording,
     lastCommandResult,
     lastPlayResult,
     errorMessage,
@@ -306,6 +386,10 @@ export function createDebugSessionCore(options: DebugSessionCoreOptions) {
     stop,
     sendCommand,
     playDemo,
+    startRecording,
+    stopRecording,
+    retryRecordingMerge,
+    openRecordingInFolder,
     dispose,
   };
 }

@@ -95,6 +95,54 @@ type DebugDemoState struct {
 	Paused    bool   `json:"paused"`
 }
 
+// Manual debug recording lifecycle statuses. They are separate from the
+// produce take status and never enter the production queue/history pipeline.
+const (
+	DebugRecordingStatusStarting  = "starting"
+	DebugRecordingStatusRecording = "recording"
+	DebugRecordingStatusStopping  = "stopping"
+	DebugRecordingStatusMerging   = "merging"
+	DebugRecordingStatusCompleted = "completed"
+	DebugRecordingStatusFailed    = "failed"
+)
+
+// DebugRecordingRequest starts one manual recording segment. The workbench
+// freezes these values for the segment; an empty quality/preset falls back to
+// the persisted clip settings, and `auto` is resolved to the actual probed
+// encoder before the commands are built. `keep_intermediate_files` reuses the
+// debug session option so a successful merge can drop only this segment's raw
+// video/audio.
+type DebugRecordingRequest struct {
+	RecordFPS             int    `json:"record_fps"`
+	RecordQuality         string `json:"record_quality"`
+	VideoPreset           string `json:"video_preset"`
+	KeepIntermediateFiles bool   `json:"keep_intermediate_files"`
+}
+
+// DebugRecordingStatus is one manual recording segment in the workbench
+// snapshot. It is deliberately not a ProduceTakePlan: it carries no kill,
+// view or take-plan metadata and is never registered in the produce history.
+// Directory/VideoPath/AudioPath are the known expected paths; FinalPath is
+// only set after a successful mux. A failed merge keeps both source paths so
+// RetryDebugRecordingMerge can re-run only this segment.
+type DebugRecordingStatus struct {
+	RecordingID string `json:"recording_id"`
+	DemoPath    string `json:"demo_path"`
+	TakeName    string `json:"take_name"`
+	Status      string `json:"status"`
+	Error       string `json:"error,omitempty"`
+
+	Directory string `json:"directory"`
+	VideoPath string `json:"video_path,omitempty"`
+	AudioPath string `json:"audio_path,omitempty"`
+	FinalPath string `json:"final_path,omitempty"`
+
+	StartTick   int   `json:"start_tick,omitempty"`
+	EndTick     int   `json:"end_tick,omitempty"`
+	StartedAtMs int64 `json:"started_at_ms"`
+	UpdatedAtMs int64 `json:"updated_at_ms"`
+}
+
 // DebugSessionState is the full public snapshot of the debug workbench. Process
 // start and plugin readiness are reported separately: a running CS2 PID does
 // not prove that the plugin transport is connected, and a connected transport
@@ -128,6 +176,15 @@ type DebugSessionState struct {
 	DemoPlaying     bool   `json:"demo_playing"`
 	DemoPaused      bool   `json:"demo_paused"`
 	DemoPlayPending bool   `json:"demo_play_pending"`
+
+	// Recording is the active manual recording segment (starting/recording/
+	// stopping/merging), or null when none is active. It is always present so
+	// the page never has to distinguish "missing" from "no active segment".
+	// Recordings is the result list of this workspace (active segment included),
+	// newest last. Both are populated even after the game is closed, so a failed
+	// merge stays visible and retryable.
+	Recording  *DebugRecordingStatus  `json:"recording"`
+	Recordings []DebugRecordingStatus `json:"recordings"`
 
 	Error       string `json:"error"`
 	UpdatedAtMs int64  `json:"updated_at_ms"`

@@ -158,6 +158,10 @@ export function ListWanmeiRecentMatches(arg1) {
   return window['go']['app']['App']['ListWanmeiRecentMatches'](arg1);
 }
 
+export function OpenDebugRecordingInFolder(arg1) {
+  return window['go']['app']['App']['OpenDebugRecordingInFolder'](arg1);
+}
+
 export function OpenDemoDirectory() {
   return window['go']['app']['App']['OpenDemoDirectory']();
 }
@@ -234,6 +238,10 @@ export function ResetWorkspace() {
   return window['go']['app']['App']['ResetWorkspace']();
 }
 
+export function RetryDebugRecordingMerge(arg1) {
+  return window['go']['app']['App']['RetryDebugRecordingMerge'](arg1);
+}
+
 export function RetryStartupComponent(arg1) {
   return window['go']['app']['App']['RetryStartupComponent'](arg1);
 }
@@ -258,8 +266,16 @@ export function SetWorkspaceDir(arg1) {
   return window['go']['app']['App']['SetWorkspaceDir'](arg1);
 }
 
+export function StartDebugRecording(arg1) {
+  return window['go']['app']['App']['StartDebugRecording'](arg1);
+}
+
 export function StopDebugGame() {
   return window['go']['app']['App']['StopDebugGame']();
+}
+
+export function StopDebugRecording() {
+  return window['go']['app']['App']['StopDebugRecording']();
 }
 
 export function ValidateWorkspaceDir(arg1) {

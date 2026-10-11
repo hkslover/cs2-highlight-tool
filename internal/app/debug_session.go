@@ -147,9 +147,66 @@ func (a *App) debugRetainedForActivity() bool {
 }
 
 func (a *App) installDebugRuntime(rt *debugSessionRuntime) {
+	if rt != nil {
+		rt.mu.Lock()
+		defer rt.mu.Unlock()
+	}
 	a.debugStateMu.Lock()
+	if rt != nil {
+		rt.updatedAtMs = a.nextDebugStamp()
+	}
 	a.debugRuntime = rt
 	a.debugStateMu.Unlock()
+}
+
+// clearDebugRuntime drops the session runtime and stamps the snapshot floor.
+// The idle snapshot only carries the recording list and the floor, so without
+// the floor stamp it could return a version older than the last session
+// snapshot; the frontend would then reject the final idle event and keep
+// showing the closed session, process state and PID.
+func (a *App) clearDebugRuntime(rt *debugSessionRuntime) {
+	a.debugStateMu.Lock()
+	defer a.debugStateMu.Unlock()
+	if a.debugRuntime == rt {
+		a.debugRuntime = nil
+		a.bumpDebugSnapshotFloor()
+	}
+}
+
+// nextDebugStamp returns the next strictly increasing stamp for one debug
+// workbench mutation. Wall-clock milliseconds alone are not enough: a recording
+// boundary followed by its receipt can land in the same millisecond, and the
+// frontend merge rules would then drop the second snapshot as "not newer".
+func (a *App) nextDebugStamp() int64 {
+	a.debugClockMu.Lock()
+	defer a.debugClockMu.Unlock()
+	next := nowMs()
+	if next <= a.debugClockMs {
+		next = a.debugClockMs + 1
+	}
+	a.debugClockMs = next
+	return next
+}
+
+// debugSnapshotFloor returns the stamp of the last collection-only change.
+func (a *App) debugSnapshotFloor() int64 {
+	a.debugClockMu.Lock()
+	defer a.debugClockMu.Unlock()
+	return a.debugSnapshotFloorMs
+}
+
+// bumpDebugSnapshotFloor records a change of the recording collection itself
+// (for example the list was cleared) so the snapshot version keeps increasing
+// even when no task is left to carry the stamp.
+func (a *App) bumpDebugSnapshotFloor() {
+	a.debugClockMu.Lock()
+	defer a.debugClockMu.Unlock()
+	next := nowMs()
+	if next <= a.debugClockMs {
+		next = a.debugClockMs + 1
+	}
+	a.debugClockMs = next
+	a.debugSnapshotFloorMs = next
 }
 
 func (a *App) emitDebugSessionState() {
@@ -176,6 +233,7 @@ func (a *App) refreshDebugPluginState() {
 		return
 	}
 	connected := a.produceW != nil && a.produceW.GetWSState().Connected
+	connectionLost := false
 	switch {
 	case !connected:
 		wasReady := rt.debugReady
@@ -189,19 +247,28 @@ func (a *App) refreshDebugPluginState() {
 		rt.debugDemoPaused = false
 		rt.debugDemoPlayPending = false
 		rt.debugDemoPlayPendingPath = ""
+		connectionLost = true
 	case rt.debugReady && a.produceW != nil && a.produceW.GameConnID() != rt.debugReadyConnID:
 		a.failDebugCommandChannelLocked(rt, "插件连接已重建，等待调试协议就绪")
 		rt.debugDemoPlaying = false
 		rt.debugDemoPaused = false
 		rt.debugDemoPlayPending = false
 		rt.debugDemoPlayPendingPath = ""
+		connectionLost = true
 	case connected && rt.debugProtocolError == debugPluginDisconnectedMessage:
 		// The transport is back; the next state is a fresh waiting-for-handshake
 		// state instead of a stale disconnect error.
 		rt.debugProtocolError = ""
 	}
-	rt.updatedAtMs = nowMs()
+	sessionID := rt.sessionID
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
+	if connectionLost {
+		// A recording cannot be confirmed without the plugin that ran its
+		// boundary. Mark it failed with the known files kept; a reconnect never
+		// resends start/stop.
+		a.failActiveDebugRecordings(sessionID, "插件连接已断开，录制未正常结束")
+	}
 	a.emitDebugSessionState()
 }
 
@@ -215,14 +282,52 @@ func (a *App) GetDebugSessionState() DebugSessionState {
 }
 
 func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
+	for {
+		a.debugClockMu.Lock()
+		stamp := a.debugClockMs
+		a.debugClockMu.Unlock()
+		// The caller may have captured its runtime before a stop or relaunch.
+		rt = a.debugRuntimeForAdmission()
+		state := a.buildDebugSessionSnapshot(rt)
+
+		// All fields must describe one stable version. A clear/replacement or a
+		// recording/session mutation during the read requires a fresh snapshot,
+		// rather than stamping earlier data with the newer collection floor.
+		a.debugStateMu.Lock()
+		a.debugClockMu.Lock()
+		unchanged := a.debugRuntime == rt && a.debugClockMs == stamp
+		a.debugClockMu.Unlock()
+		a.debugStateMu.Unlock()
+		if unchanged {
+			return state
+		}
+	}
+}
+
+func (a *App) buildDebugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
+	recording, recordings, recordingsLatest := a.debugRecordingsSnapshot()
+	floor := a.debugSnapshotFloor()
 	if rt == nil {
+		version := recordingsLatest
+		if floor > version {
+			version = floor
+		}
 		return DebugSessionState{
 			Status:        DebugStatusIdle,
 			PluginMessage: "未启动调试会话",
-			UpdatedAtMs:   nowMs(),
+			Recording:     recording,
+			Recordings:    recordings,
+			UpdatedAtMs:   version,
 		}
 	}
 	rt.mu.Lock()
+	version := rt.updatedAtMs
+	if recordingsLatest > version {
+		version = recordingsLatest
+	}
+	if floor > version {
+		version = floor
+	}
 	state := DebugSessionState{
 		SessionID:        rt.sessionID,
 		Status:           rt.status,
@@ -237,8 +342,10 @@ func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
 		DemoPlaying:      rt.debugDemoPlaying,
 		DemoPaused:       rt.debugDemoPaused,
 		DemoPlayPending:  rt.debugDemoPlayPending,
+		Recording:        recording,
+		Recordings:       recordings,
 		Error:            rt.lastError,
-		UpdatedAtMs:      rt.updatedAtMs,
+		UpdatedAtMs:      version,
 	}
 	rt.mu.Unlock()
 	a.fillDebugPluginState(rt, &state)
@@ -394,7 +501,7 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 			a.onDebugReadyTimeout(rt)
 		})
 	}
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 
 	go a.runDebugSessionWatcher(ctx, rt)
@@ -416,10 +523,15 @@ func (a *App) StopDebugGame() (DebugSessionState, error) {
 	rt.mu.Lock()
 	if rt.status == DebugStatusRunning || rt.status == DebugStatusStarting {
 		rt.status = DebugStatusStopping
-		rt.updatedAtMs = nowMs()
+		rt.updatedAtMs = a.nextDebugStamp()
 	}
 	rt.mu.Unlock()
 	a.emitDebugSessionState()
+
+	// End the active segment and wait for its bounded merge before tearing down
+	// the game environment, so a still-recording segment is stopped instead of
+	// being silently abandoned.
+	a.finalizeDebugRecordingsForSession(rt)
 
 	if err := a.stopDebugSessionWorker(); err != nil {
 		return a.GetDebugSessionState(), err
@@ -436,6 +548,20 @@ func (a *App) stopDebugSessionWorker() error {
 	if rt == nil {
 		return nil
 	}
+	// Close public operation admission before cancelling. StopDebugGame already
+	// sets the stopping status, but the shutdown and failed-teardown retry paths
+	// reach this function directly; without the gate a concurrent start could
+	// slip in after the recording list drained and send a start to a game that is
+	// about to be torn down. The internal stop path does not require the running
+	// status, so it can still end an active segment.
+	rt.mu.Lock()
+	if rt.status == DebugStatusRunning || rt.status == DebugStatusStarting {
+		rt.status = DebugStatusStopping
+	}
+	rt.updatedAtMs = a.nextDebugStamp()
+	rt.mu.Unlock()
+	a.emitDebugSessionState()
+
 	if rt.cancel != nil {
 		rt.cancel()
 	}
@@ -444,6 +570,9 @@ func (a *App) stopDebugSessionWorker() error {
 	a.failDebugCommandChannelLocked(rt, "调试会话已结束")
 	a.stopDebugReadyTimerLocked(rt)
 	rt.mu.Unlock()
+	// A segment that never reached its end boundary cannot be confirmed any more;
+	// keep its known files and mark it failed instead of resending start/stop.
+	a.abortDebugRecordingsForSession(rt)
 	select {
 	case <-rt.done:
 	case <-time.After(debugSessionStopWait):
@@ -455,7 +584,7 @@ func (a *App) stopDebugSessionWorker() error {
 		rt.teardownErr = err
 		rt.status = DebugStatusFailed
 		rt.lastError = err.Error()
-		rt.updatedAtMs = nowMs()
+		rt.updatedAtMs = a.nextDebugStamp()
 		rt.mu.Unlock()
 		a.emitDebugSessionState()
 		return err
@@ -463,14 +592,10 @@ func (a *App) stopDebugSessionWorker() error {
 
 	rt.mu.Lock()
 	rt.teardownErr = nil
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	a.releaseDebugWorkspace(rt)
-	a.debugStateMu.Lock()
-	if a.debugRuntime == rt {
-		a.debugRuntime = nil
-	}
-	a.debugStateMu.Unlock()
+	a.clearDebugRuntime(rt)
 	a.emitDebugSessionState()
 	return nil
 }
@@ -488,7 +613,7 @@ func (a *App) failDebugLaunch(rt *debugSessionRuntime, launchErr error) (DebugSe
 	rt.pendingLaunch = pending
 	rt.status = DebugStatusFailed
 	rt.lastError = launchErr.Error()
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 
 	teardownErr := a.debugTeardown(rt)
@@ -497,7 +622,7 @@ func (a *App) failDebugLaunch(rt *debugSessionRuntime, launchErr error) (DebugSe
 	if teardownErr != nil {
 		rt.lastError = fmt.Sprintf("%s; 恢复调试环境失败: %v", launchErr.Error(), teardownErr)
 	}
-	rt.updatedAtMs = nowMs()
+	rt.updatedAtMs = a.nextDebugStamp()
 	rt.mu.Unlock()
 	if rt.cancel != nil {
 		rt.cancel()
@@ -528,8 +653,11 @@ func (a *App) runDebugSessionWatcher(ctx context.Context, rt *debugSessionRuntim
 			rt.status = DebugStatusIdle
 			rt.lastError = ""
 		}
-		rt.updatedAtMs = nowMs()
+		rt.updatedAtMs = a.nextDebugStamp()
 		rt.mu.Unlock()
+		// A user-driven game exit (or a custom `quit`) is not a recording stop:
+		// the active segment is marked failed with its known files kept.
+		a.abortDebugRecordingsForSession(rt)
 		if teardownErr == nil {
 			a.releaseDebugWorkspace(rt)
 		}
