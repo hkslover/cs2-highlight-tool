@@ -24,12 +24,27 @@ type DebugLaunchRequest struct {
 
 // Debug protocol readiness and result statuses. `executed` means the plugin
 // handed the commands to the game thread; it is not a guarantee that a
-// particular console command had an observable effect.
+// particular console command had an observable effect. Version 2 replaced the
+// playback observation's current tick with engine pause reporting, so an older
+// DLL is rejected with an update prompt instead of showing a pause button whose
+// state can never be confirmed.
 const (
-	DebugProtocolVersion = 1
+	DebugProtocolVersion = 2
 
 	DebugCommandStatusExecuted = "executed"
 	DebugCommandStatusFailed   = "failed"
+)
+
+// Plugin transport/readiness classification of the debug snapshot. It is
+// derived from the host's own connection and handshake facts so the page never
+// has to guess a state from the localized PluginMessage text. It is not a
+// session lifecycle status and never claims readiness from a connection alone.
+const (
+	DebugPluginStateDisabled          = "disabled"
+	DebugPluginStateWaitingConnection = "waiting_connection"
+	DebugPluginStateWaitingReady      = "waiting_ready"
+	DebugPluginStateReady             = "ready"
+	DebugPluginStateError             = "error"
 )
 
 // DebugCommandRequest is the public request of SendDebugConsoleCommand. Each
@@ -69,13 +84,15 @@ type DebugPlayDemoResponse struct {
 }
 
 // DebugDemoState is the plugin-observed playback state. It is only emitted on a
-// playback start/stop transition, so the desktop never mistakes a queued
-// `playdemo` for proof that the engine is actually playing the Demo.
+// playback start/stop/pause transition (or an observed path change), so the
+// desktop never mistakes a queued `playdemo` for proof that the engine is
+// actually playing the Demo. Paused is an engine fact of the loaded Demo; it is
+// never inferred from tick growth.
 type DebugDemoState struct {
 	SessionID string `json:"session_id"`
 	DemoPath  string `json:"demo_path"`
 	Playing   bool   `json:"playing"`
-	Tick      int    `json:"tick"`
+	Paused    bool   `json:"paused"`
 }
 
 // DebugSessionState is the full public snapshot of the debug workbench. Process
@@ -98,13 +115,19 @@ type DebugSessionState struct {
 	PluginConnected bool   `json:"plugin_connected"`
 	PluginReady     bool   `json:"plugin_ready"`
 	PluginMessage   string `json:"plugin_message"`
+	// PluginState is one of disabled|waiting_connection|waiting_ready|ready|error.
+	PluginState string `json:"plugin_state"`
 
-	// DemoPath is the last Demo a play request targeted; DemoPlaying is the
-	// plugin-observed engine playback state, never inferred from a successful
-	// play receipt.
-	DemoPath    string `json:"demo_path"`
-	DemoPlaying bool   `json:"demo_playing"`
-	DemoTick    int    `json:"demo_tick"`
+	// DemoPath is the last Demo a play request targeted; DemoPlaying and
+	// DemoPaused are the plugin-observed engine playback facts, never inferred
+	// from a successful play receipt. DemoPlayPending is true while a sent play
+	// request has not yet been confirmed by an engine observation of the
+	// requested Demo: pause/resume must stay disabled in that window because the
+	// last observation may still describe the previous Demo.
+	DemoPath        string `json:"demo_path"`
+	DemoPlaying     bool   `json:"demo_playing"`
+	DemoPaused      bool   `json:"demo_paused"`
+	DemoPlayPending bool   `json:"demo_play_pending"`
 
 	Error       string `json:"error"`
 	UpdatedAtMs int64  `json:"updated_at_ms"`

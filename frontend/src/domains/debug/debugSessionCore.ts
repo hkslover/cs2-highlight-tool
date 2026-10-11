@@ -50,9 +50,11 @@ export function emptyDebugSessionState(): DebugSessionState {
     plugin_connected: false,
     plugin_ready: false,
     plugin_message: "",
+    plugin_state: "",
     demo_path: "",
     demo_playing: false,
-    demo_tick: 0,
+    demo_paused: false,
+    demo_play_pending: false,
     error: "",
     updated_at_ms: 0,
   };

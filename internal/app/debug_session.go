@@ -22,6 +22,21 @@ import (
 var debugSessionStopWait = 10 * time.Second
 var debugProcessPollInterval = time.Second
 
+// debugPlayConfirmTimeout bounds how long a sent play request keeps the
+// pause/resume command disabled. The plugin confirms the requested Demo only
+// from an engine observation, so a receipt alone must not re-enable a command
+// that would otherwise be evaluated against the previous Demo's state.
+var debugPlayConfirmTimeout = 20 * time.Second
+
+var debugSessionEventsEmit = wailsruntime.EventsEmit
+
+// debugPluginDisconnectedMessage marks a transport that dropped after the
+// debug protocol had been ready. It is a protocol error for the snapshot
+// (PluginState=error) until the plugin reconnects and re-handshakes, and is
+// cleared on the next connection so a plain reconnect wait is not shown as a
+// failure.
+const debugPluginDisconnectedMessage = "插件连接已断开，等待重新连接"
+
 // debugSessionRuntime is the private identity of one interactive debug session.
 // It owns the environment epoch, the launched CS2 PID (or the unconfirmed HLAE
 // launcher handle), the workspace file reservation and the lifecycle context.
@@ -60,8 +75,18 @@ type debugSessionRuntime struct {
 	// transition (or cleared when the transport that observed it is gone).
 	debugDemoPath     string
 	debugDemoPlaying  bool
-	debugDemoTick     int
+	debugDemoPaused   bool
 	debugDemoRevision uint64
+
+	// A sent play request stays pending until an engine observation proves the
+	// requested Demo is the one playing. The last observation may still describe
+	// the previous Demo, so pause/resume must not act on it in that window.
+	debugDemoPlayPending         bool
+	debugDemoPlayPendingPath     string
+	debugDemoPlayPendingDeadline time.Time
+	debugDemoPlayRequestID       string
+	debugDemoPlayConnID          uint64
+	debugDemoPlayTimer           *time.Timer
 }
 
 func newDebugSessionID() string {
@@ -131,13 +156,15 @@ func (a *App) emitDebugSessionState() {
 	if a == nil || a.ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.ctx, "debug_session_state_changed", a.GetDebugSessionState())
+	debugSessionEventsEmit(a.ctx, "debug_session_state_changed", a.GetDebugSessionState())
 }
 
 // refreshDebugPluginState re-emits the debug snapshot after a transport change
 // and invalidates debug-protocol readiness that the new transport no longer
 // proves. A reconnect must not leave the page accepting commands on a
-// connection that has already been replaced.
+// connection that has already been replaced. A transport that drops after the
+// debug protocol was ready is reported as an abnormal disconnect; one that has
+// simply not connected yet stays a waiting state.
 func (a *App) refreshDebugPluginState() {
 	rt := a.debugRuntimeForAdmission()
 	if rt == nil || debugRuntimeDone(rt) {
@@ -151,13 +178,27 @@ func (a *App) refreshDebugPluginState() {
 	connected := a.produceW != nil && a.produceW.GetWSState().Connected
 	switch {
 	case !connected:
+		wasReady := rt.debugReady
 		a.failDebugCommandChannelLocked(rt, "插件连接已断开，命令未执行")
+		if wasReady {
+			rt.debugProtocolError = debugPluginDisconnectedMessage
+		}
 		// Playback state cannot be confirmed without the plugin that observed
 		// it. Clear it instead of leaving a stale "playing" on the page.
 		rt.debugDemoPlaying = false
+		rt.debugDemoPaused = false
+		rt.debugDemoPlayPending = false
+		rt.debugDemoPlayPendingPath = ""
 	case rt.debugReady && a.produceW != nil && a.produceW.GameConnID() != rt.debugReadyConnID:
 		a.failDebugCommandChannelLocked(rt, "插件连接已重建，等待调试协议就绪")
 		rt.debugDemoPlaying = false
+		rt.debugDemoPaused = false
+		rt.debugDemoPlayPending = false
+		rt.debugDemoPlayPendingPath = ""
+	case connected && rt.debugProtocolError == debugPluginDisconnectedMessage:
+		// The transport is back; the next state is a fresh waiting-for-handshake
+		// state instead of a stale disconnect error.
+		rt.debugProtocolError = ""
 	}
 	rt.updatedAtMs = nowMs()
 	rt.mu.Unlock()
@@ -194,7 +235,8 @@ func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
 		CS2PID:           rt.cs2PID,
 		DemoPath:         rt.debugDemoPath,
 		DemoPlaying:      rt.debugDemoPlaying,
-		DemoTick:         rt.debugDemoTick,
+		DemoPaused:       rt.debugDemoPaused,
+		DemoPlayPending:  rt.debugDemoPlayPending,
 		Error:            rt.lastError,
 		UpdatedAtMs:      rt.updatedAtMs,
 	}
@@ -208,12 +250,14 @@ func (a *App) debugSessionSnapshot(rt *debugSessionRuntime) DebugSessionState {
 // for this session over the live connection; a reconnect invalidates it until
 // the plugin resends the handshake. The first-ready deadline is reported even
 // when the transport never connected, so an old DLL or a missing handshake is
-// visible instead of an indefinite "waiting" message.
+// visible instead of an indefinite "waiting" message. PluginState is the
+// structured form of the same facts for the page's status tag.
 func (a *App) fillDebugPluginState(rt *debugSessionRuntime, state *DebugSessionState) {
 	state.PluginEnabled = state.InjectPlugin
 	if !state.InjectPlugin {
 		state.PluginConnected = false
 		state.PluginReady = false
+		state.PluginState = DebugPluginStateDisabled
 		state.PluginMessage = "未启用插件"
 		return
 	}
@@ -221,6 +265,7 @@ func (a *App) fillDebugPluginState(rt *debugSessionRuntime, state *DebugSessionS
 	state.PluginConnected = connected
 	state.PluginReady = false
 	if rt == nil {
+		state.PluginState = DebugPluginStateWaitingConnection
 		state.PluginMessage = "等待插件连接"
 		return
 	}
@@ -233,22 +278,27 @@ func (a *App) fillDebugPluginState(rt *debugSessionRuntime, state *DebugSessionS
 	rt.mu.Unlock()
 
 	if protocolError != "" {
+		state.PluginState = DebugPluginStateError
 		state.PluginMessage = protocolError
 		return
 	}
 	if ready && connected && a.produceW != nil && a.produceW.GameConnID() == readyConnID {
 		state.PluginReady = true
+		state.PluginState = DebugPluginStateReady
 		state.PluginMessage = "插件调试协议已就绪"
 		return
 	}
 	if !readyDeadline.IsZero() && time.Now().After(readyDeadline) {
+		state.PluginState = DebugPluginStateError
 		state.PluginMessage = "插件未连接或不支持调试协议"
 		return
 	}
 	if !connected {
+		state.PluginState = DebugPluginStateWaitingConnection
 		state.PluginMessage = "等待插件连接"
 		return
 	}
+	state.PluginState = DebugPluginStateWaitingReady
 	state.PluginMessage = "插件已连接，等待调试协议就绪"
 }
 
@@ -469,6 +519,7 @@ func (a *App) runDebugSessionWatcher(ctx context.Context, rt *debugSessionRuntim
 		teardownErr := a.debugTeardown(rt)
 		rt.mu.Lock()
 		a.stopDebugReadyTimerLocked(rt)
+		clearDebugPlaybackPendingLocked(rt)
 		rt.teardownErr = teardownErr
 		if teardownErr != nil {
 			rt.status = DebugStatusFailed

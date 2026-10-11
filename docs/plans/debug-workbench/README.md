@@ -4,17 +4,19 @@
 
 ## 目标与执行方式
 
-保留品牌点击 10 次开启 debug 的入口。在导入、片段、制作、剪辑四个步骤后追加第五个「调试」步骤，提供 HLAE 启动、可选插件加载、启动前资源选择、插件连接状态、快捷设置与自定义控制台命令、当前导入 Demo 播放、手动开始/停止录制及音视频合并。
+保留品牌点击 10 次开启 debug 的入口。在导入、片段、制作、剪辑四个步骤后追加第五个「调试」步骤，提供 HLAE 启动、启动插件开关、启动前资源选择、插件连接状态、控制台命令（快捷指令 + 自定义输入）、已导入 Demo 下拉播放、手动开始/停止录制及音视频合并。
 
 后续模型按下面顺序执行，一次只做被指定的步骤。每步完成后报告改动文件、自动验证、Windows 实测及未完成项。不要一次性重写制作系统，也不要为了调试功能建立通用插件框架。
+
+已实施：[ui-refinement-plan.md](ui-refinement-plan.md) 在“Demo 必须由导入页当前选择决定”“暂停/继续两个按钮”“快捷设置与自定义命令分卡”“展示当前 tick”“启动后显示重启提示”等交互上取代本文件及 04/05 的对应要求，其余会话、协议、制作隔离与环境恢复约束继续有效。
 
 | 步骤 | 文件 | 可验收结果 |
 | --- | --- | --- |
 | 01 | [01-navigation.md](01-navigation.md) | debug 开启后出现第五步和独立页面 |
 | 02 | [02-launch-session.md](02-launch-session.md) | 两种 HLAE 启动、资源选择、关闭与恢复 |
 | 03 | [03-plugin-command-channel.md](03-plugin-command-channel.md) | 插件接收自定义命令，游戏线程执行，桌面端收到回执 |
-| 04 | [04-demo-playback.md](04-demo-playback.md) | 播放导入页当前 Demo，不执行旧制作 JSON |
-| 05 | [05-live-settings.md](05-live-settings.md) | 设置快捷命令、调试草稿和重启项语义完整 |
+| 04 | [04-demo-playback.md](04-demo-playback.md) | 播放调试页所选 Demo，不执行旧制作 JSON |
+| 05 | [05-live-settings.md](05-live-settings.md) | 设置快捷命令、调试草稿和启动项锁定语义完整 |
 | 06 | [06-manual-recording.md](06-manual-recording.md) | 任意时刻录制、停止、合并、连续录多段 |
 | 07 | [07-integration-acceptance.md](07-integration-acceptance.md) | 两仓库联调、回归与 Windows 验收 |
 
@@ -24,14 +26,14 @@
 
 1. 调试页面是主界面的一个路由，保持启动 `mode=main`，不新增 startup mode/phase。切换页面不关闭调试游戏。
 2. 两种模式都由 HLAE 加载 `AfxHookSource2.dll`；「无插件」仅指不加载本项目的 `server.dll`。不能把它实现成直接运行 `cs2.exe`。
-3. 插件模式提供页面内远程命令、播放和录制控制。无插件模式先用于 HLAE/资源对比，相关远程按钮禁用并说明需要插件；可在游戏原生控制台操作。首版不另建 RCON、键盘模拟或第二套 HLAE 控制通道。
-4. 启动前可选择 POV HUD、品牌 VPK、分辨率、插件加载。品牌默认开启但可在调试中关闭；正常制作仍始终加载品牌。这些选择只对本调试会话生效。
+3. 启用插件时提供页面内远程命令、播放和录制控制。关闭插件（无插件模式）先用于 HLAE/资源对比，相关远程按钮禁用并说明需要插件；可在游戏原生控制台操作。首版不另建 RCON、键盘模拟或第二套 HLAE 控制通道。
+4. 启动前可选择 POV HUD、标识水印（brand VPK）、分辨率、是否启用插件。标识水印默认开启但可在调试中关闭；正常制作仍始终加载品牌。这些选择只对本调试会话生效。
 5. POV 雷达依赖插件，和 POV HUD/VPK 独立。启动前可勾选；实际由插件游戏线程就绪后、播放 Demo 前启用。无插件模式禁用此选项。运行中允许开启/关闭。
 6. 调试草稿从已有设置初始化，操作不调用 `SaveClipSettings`，不自动改变正式制作配置。设置页原有 debug DLL override 与保留中间文件选项继续复用。
 7. 录制不选择击杀、不生成 take 计划、不自动跳 tick、不自动退出游戏。停止一段录制立即进入文件等待与合并，完成后继续留在游戏中，可开始下一段。
 8. 首版一次只录制/合并一段；合并完成后开始下一段，避免新增并发合并调度。
 9. 录制结果先放调试页独立列表和 `<dataDir>/outputs/debug/...`，提供定位文件与重试合并。首版不写正式制作 history，不伪造 killer/victim/kill ID，也不扩展 history_type；正式制作历史与去重保持原语义。
-10. 自定义命令允许普通控制台命令与分号组合，快捷设置只是便捷入口。首版不做任意 cvar 查询、控制台全文流或确认所有命令实际生效的系统。
+10. 自定义命令允许普通控制台命令与分号组合；快捷指令选择后只填入同一个可编辑输入框，由同一次发送执行，不选择一次发送一次。首版不做任意 cvar 查询、控制台全文流或确认所有命令实际生效的系统。
 
 第 3 条是首版范围决定：如果后续要求无插件模式也能从页面远程控制，应单独补充传输方案，不能假装不存在的插件连接可以执行命令。
 
@@ -47,7 +49,7 @@
 | --- | --- | --- |
 | 隐藏 debug 入口 | `frontend/src/shared/state/useDebugSettings.ts` | 直接复用 `debugEnabled`、点击计数、`keepProduceIntermediates` |
 | 工作流导航 | `frontend/src/app/components/MainApp.vue`、`frontend/src/app/router.ts` | 当前四步；追加 `/debug`，仅 debug 可见 |
-| 当前 Demo | `frontend/src/domains/demo/demo-state.ts` | 复用 `selectedEntry`/`selectedDemo`；播放以 entry 的受管控 `file_path` 为准，不要求有击杀 |
+| 当前 Demo | `frontend/src/domains/demo/demo-state.ts` | 复用 `demoList` 作为选项源；调试页自持待播放 key（首次默认可取导入页选择），播放以 entry 的受管控 `file_path` 为准，不要求有击杀 |
 | 设置 | `internal/app/clip_settings.go`、`frontend/src/domains/settings/` | 读取正式设置为调试初值；独立临时草稿，避免共享保存防抖把调试操作落盘 |
 | HLAE | `internal/app/hlae_launch.go` | 路径解析、分辨率、启动参数、PID 检测可复用；当前强依赖 produce WS，需支持显式启动选项 |
 | 环境 | `internal/app/produce_gameconfig.go`、`produce_brand.go`、`internal/producegame/` | gameinfo、DLL、POV/品牌投放、epoch 恢复可复用；目前 plugin/brand 强制挂载，需参数化 |
@@ -77,6 +79,7 @@
 | `StopDebugGame()` | 若录制中先结束并处理文件，再退出游戏、恢复环境；失败时可重试 |
 | `SendDebugConsoleCommand(request)` | 发送自定义或快捷命令，返回带 request_id 的执行回执 |
 | `PlayDebugDemo(request)` | 调试播放受管控 Demo，不加载制作序列 |
+| `OpenDemoInFolder(demoPath)` | 打开受管控 `.dem` 的父目录，复用同一路径校验（已实现） |
 | `StartDebugRecording(request)` | 冻结本段编码/FPS，分配唯一目录，配置并开始 |
 | `StopDebugRecording()` | 停止后启动异步合并，返回状态，不等完整合并才响应 |
 | `RetryDebugRecordingMerge(recordingID)` | 重用失败段已知路径重试合并，不重录 |

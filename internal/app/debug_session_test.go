@@ -124,6 +124,9 @@ func TestLaunchDebugGameNoPluginMode(t *testing.T) {
 	if state.PluginMessage != "未启用插件" {
 		t.Fatalf("plugin message = %q", state.PluginMessage)
 	}
+	if state.PluginState != DebugPluginStateDisabled {
+		t.Fatalf("plugin state = %q, want disabled for a no-plugin session", state.PluginState)
+	}
 	if captured == nil {
 		t.Fatal("HLAE launcher was not invoked")
 	}

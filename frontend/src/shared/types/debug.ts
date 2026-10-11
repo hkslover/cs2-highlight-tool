@@ -8,6 +8,20 @@ export type DebugSessionStatus =
   | "stopping"
   | "failed";
 
+/**
+ * Structured plugin transport/readiness classification of the session
+ * snapshot. The empty value describes an idle snapshot before any session
+ * exists; everything else is derived by the backend from its own connection
+ * and handshake facts.
+ */
+export type DebugPluginState =
+  | ""
+  | "disabled"
+  | "waiting_connection"
+  | "waiting_ready"
+  | "ready"
+  | "error";
+
 export type DebugLaunchResolution = ClipSettings["launch_resolution"];
 
 /** Session-scoped launch options; never written back to the persisted config. */
@@ -79,11 +93,14 @@ export interface DebugSessionState {
   plugin_connected: boolean;
   plugin_ready: boolean;
   plugin_message: string;
+  plugin_state: DebugPluginState;
 
-  /** Last Demo a play request targeted, and the plugin-observed playback state. */
+  /** Last Demo a play request targeted, and the plugin-observed engine facts. */
   demo_path: string;
   demo_playing: boolean;
-  demo_tick: number;
+  demo_paused: boolean;
+  /** A sent play request has not yet been confirmed by an engine observation. */
+  demo_play_pending: boolean;
 
   error: string;
   updated_at_ms: number;

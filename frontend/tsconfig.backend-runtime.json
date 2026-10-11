@@ -27,6 +27,9 @@
     "src/domains/edit/editDomain.ts",
     "src/domains/edit/history.ts",
     "src/domains/debug/debugSessionCore.ts",
+    "src/domains/debug/debugDemoSelection.ts",
+    "src/domains/debug/debugPlaybackPolicy.ts",
+    "src/domains/debug/debugSessionStore.ts",
     "src/features/ads/composables/useAdsPreload.ts"
   ]
 }

@@ -469,17 +469,25 @@ func startCommandTestTransport(t *testing.T, app *App) {
 
 func connectCommandTestTransport(t *testing.T, app *App) uint64 {
 	t.Helper()
+	_, connID := connectCommandTestTransportConn(t, app)
+	return connID
+}
+
+// connectCommandTestTransportConn returns the client side as well, so a test
+// can simulate a plugin-side disconnect without a test-only service method.
+func connectCommandTestTransportConn(t *testing.T, app *App) (*websocket.Conn, uint64) {
+	t.Helper()
 	previous := app.produceW.GameConnID()
-	dialDebugPlugin(t, app.produceW.Address())
+	conn := dialDebugPlugin(t, app.produceW.Address())
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if id := app.produceW.GameConnID(); id != 0 && id != previous {
-			return id
+			return conn, id
 		}
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("new plugin connection was not admitted")
-	return 0
+	return nil, 0
 }
 
 func TestDebugDelayedOldMessagesCannotReplaceNewConnection(t *testing.T) {
@@ -557,5 +565,82 @@ func TestDebugReadyTimeoutActivelyPublishes(t *testing.T) {
 	}
 	if state.PluginMessage != "插件未连接或不支持调试协议" {
 		t.Fatalf("plugin message = %q, want the first-ready timeout", state.PluginMessage)
+	}
+	if state.PluginState != DebugPluginStateError {
+		t.Fatalf("plugin state = %q, want error after the first-ready timeout", state.PluginState)
+	}
+}
+
+// The page tag is driven by the structured PluginState, so it must track the
+// transport/readiness facts exactly and never report a connection as ready.
+func TestDebugPluginStateTracksConnectionReadinessAndDisconnect(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	startCommandTestTransport(t, app)
+	rt := installCommandTestRuntime(t, app, "dbg-plugin-state")
+
+	if got := app.GetDebugSessionState().PluginState; got != DebugPluginStateWaitingConnection {
+		t.Fatalf("plugin state = %q, want waiting_connection without a transport", got)
+	}
+
+	conn, connID := connectCommandTestTransportConn(t, app)
+	app.refreshDebugPluginState()
+	state := app.GetDebugSessionState()
+	if state.PluginState != DebugPluginStateWaitingReady || state.PluginReady {
+		t.Fatalf("connected but unhandshaken state = %+v", state)
+	}
+
+	// An unsupported protocol version is an explicit readiness failure, not a
+	// silently disabled pause button.
+	app.handleDebugSessionReady(producews.DebugIncomingMessage{
+		ConnID: connID, Payload: debugReadyPayloadJSON(t, rt.sessionID, DebugProtocolVersion+1),
+	})
+	if state = app.GetDebugSessionState(); state.PluginState != DebugPluginStateError {
+		t.Fatalf("plugin state = %q, want error for an unsupported protocol version", state.PluginState)
+	}
+
+	app.handleDebugSessionReady(producews.DebugIncomingMessage{
+		ConnID: connID, Payload: debugReadyPayloadJSON(t, rt.sessionID, DebugProtocolVersion),
+	})
+	if state = app.GetDebugSessionState(); state.PluginState != DebugPluginStateReady || !state.PluginReady {
+		t.Fatalf("plugin state = %+v, want ready", state)
+	}
+
+	rt.mu.Lock()
+	rt.debugDemoPlaying = true
+	rt.debugDemoPaused = true
+	rt.mu.Unlock()
+
+	// A transport that drops after readiness is an abnormal disconnect until
+	// the plugin reconnects, and its playback observation can no longer be
+	// confirmed.
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close fake plugin connection: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && app.produceW.GetWSState().Connected {
+		time.Sleep(time.Millisecond)
+	}
+	if app.produceW.GetWSState().Connected {
+		t.Fatal("transport did not report the fake plugin disconnect")
+	}
+	app.refreshDebugPluginState()
+	state = app.GetDebugSessionState()
+	if state.PluginState != DebugPluginStateError {
+		t.Fatalf("plugin state = %q, want error after an abnormal disconnect", state.PluginState)
+	}
+	if state.PluginReady || state.PluginMessage != debugPluginDisconnectedMessage {
+		t.Fatalf("abnormal disconnect state = %+v", state)
+	}
+	if state.DemoPlaying || state.DemoPaused {
+		t.Fatalf("playback facts survived the disconnect: %+v", state)
+	}
+
+	// A new transport is a plain waiting-for-handshake state again; the
+	// disconnect error must not stick to a live connection.
+	connectCommandTestTransport(t, app)
+	app.refreshDebugPluginState()
+	state = app.GetDebugSessionState()
+	if state.PluginState != DebugPluginStateWaitingReady {
+		t.Fatalf("plugin state = %q, want waiting_ready after reconnect", state.PluginState)
 	}
 }

@@ -123,6 +123,7 @@ func (a *App) handleDebugSessionReady(message producews.DebugIncomingMessage) {
 		return
 	}
 	if payload.ProtocolVersion != DebugProtocolVersion {
+		clearDebugPlaybackPendingLocked(rt)
 		rt.debugReady = false
 		rt.debugReadyConnID = 0
 		rt.debugReadySessionID = ""
@@ -202,6 +203,7 @@ func (a *App) failDebugCommandChannelLocked(rt *debugSessionRuntime, reason stri
 	rt.debugReady = false
 	rt.debugReadyConnID = 0
 	rt.debugReadySessionID = ""
+	clearDebugPlaybackPendingLocked(rt)
 	a.failDebugPendingForConnLocked(rt, 0, reason)
 }
 
@@ -211,6 +213,9 @@ func (a *App) failDebugCommandChannelLocked(rt *debugSessionRuntime, reason stri
 func (a *App) failDebugPendingForConnLocked(rt *debugSessionRuntime, keepConnID uint64, reason string) {
 	if rt == nil {
 		return
+	}
+	if rt.debugDemoPlayPending && rt.debugDemoPlayConnID != keepConnID {
+		clearDebugPlaybackPendingLocked(rt)
 	}
 	for requestID, pending := range rt.debugPending {
 		if pending == nil || pending.connID == keepConnID {
@@ -304,6 +309,7 @@ func (a *App) sendDebugRequestOnRuntime(rt *debugSessionRuntime, readyConnID uin
 	}
 
 	requestID := newDebugRequestID()
+	payload := buildPayload(requestID)
 	waiter := make(chan DebugCommandResponse, 1)
 	rt.mu.Lock()
 	if debugRuntimeDone(rt) || !rt.debugReady || rt.debugReadyConnID != readyConnID || a.produceW.GameConnID() != readyConnID {
@@ -313,10 +319,27 @@ func (a *App) sendDebugRequestOnRuntime(rt *debugSessionRuntime, readyConnID uin
 	if rt.debugPending == nil {
 		rt.debugPending = make(map[string]*debugPendingCommand)
 	}
+	if name == "debug_play_demo" {
+		play, ok := payload.(debugPlayDemoPayload)
+		if !ok || rt.debugDemoPlayPending {
+			rt.mu.Unlock()
+			return DebugCommandResponse{}, fmt.Errorf("正在等待 Demo 播放确认，请稍后重试")
+		}
+		a.startDebugPlaybackPendingLocked(rt, readyConnID, requestID, play.DemoPath)
+	}
 	rt.debugPending[requestID] = &debugPendingCommand{connID: readyConnID, waiter: waiter}
 	rt.mu.Unlock()
+	if name == "debug_play_demo" {
+		a.emitDebugSessionStateAsync()
+	}
+	playSucceeded := false
+	defer func() {
+		if name == "debug_play_demo" && !playSucceeded {
+			a.finishFailedDebugPlayback(rt, requestID)
+		}
+	}()
 
-	if err := a.produceW.SendCommandToConn(readyConnID, name, buildPayload(requestID)); err != nil {
+	if err := a.produceW.SendCommandToConn(readyConnID, name, payload); err != nil {
 		rt.mu.Lock()
 		delete(rt.debugPending, requestID)
 		rt.mu.Unlock()
@@ -327,6 +350,7 @@ func (a *App) sendDebugRequestOnRuntime(rt *debugSessionRuntime, readyConnID uin
 	defer timer.Stop()
 	select {
 	case result := <-waiter:
+		playSucceeded = result.Status == DebugCommandStatusExecuted
 		result.RequestID = requestID
 		return result, nil
 	case <-timer.C:

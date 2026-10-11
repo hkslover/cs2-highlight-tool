@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func writeManagedDebugDemo(t *testing.T, root string, rel string) string {
 	return path
 }
 
-func writeDebugDemoState(t *testing.T, conn *websocket.Conn, sessionID, demoPath string, playing bool, tick int) {
+func writeDebugDemoState(t *testing.T, conn *websocket.Conn, sessionID, demoPath string, playing, paused bool) {
 	t.Helper()
 	if err := conn.WriteJSON(map[string]any{
 		"name": "debug_demo_state",
@@ -42,20 +43,20 @@ func writeDebugDemoState(t *testing.T, conn *websocket.Conn, sessionID, demoPath
 			"session_id": sessionID,
 			"demo_path":  demoPath,
 			"playing":    playing,
-			"tick":       tick,
+			"paused":     paused,
 		},
 	}); err != nil {
 		t.Fatalf("write debug_demo_state: %v", err)
 	}
 }
 
-func debugDemoStatePayloadJSON(t *testing.T, sessionID, demoPath string, playing bool, tick int) []byte {
+func debugDemoStatePayloadJSON(t *testing.T, sessionID, demoPath string, playing, paused bool) []byte {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
 		"session_id": sessionID,
 		"demo_path":  demoPath,
 		"playing":    playing,
-		"tick":       tick,
+		"paused":     paused,
 	})
 	if err != nil {
 		t.Fatalf("marshal demo state payload: %v", err)
@@ -73,6 +74,63 @@ func waitForDebugDemoPlaying(t *testing.T, app *App, want bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("demo_playing never became %v: %+v", want, app.GetDebugSessionState())
+}
+
+func waitForDebugDemoPaused(t *testing.T, app *App, want bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if app.GetDebugSessionState().DemoPaused == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("demo_paused never became %v: %+v", want, app.GetDebugSessionState())
+}
+
+// playDebugDemoAndAck performs one real PlayDebugDemo over the fake plugin
+// transport and answers its receipt, so callers can assert the pending playback
+// window that follows a receipt.
+func playDebugDemoAndAck(t *testing.T, app *App, conn *websocket.Conn, demoPath string) DebugPlayDemoResponse {
+	t.Helper()
+	type callResult struct {
+		response DebugPlayDemoResponse
+		err      error
+	}
+	resultCh := make(chan callResult, 1)
+	go func() {
+		response, err := app.PlayDebugDemo(DebugPlayDemoRequest{DemoPath: demoPath})
+		resultCh <- callResult{response: response, err: err}
+	}()
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var wire debugPlayDemoWire
+	if err := conn.ReadJSON(&wire); err != nil {
+		t.Fatalf("read debug_play_demo: %v", err)
+	}
+	if wire.Payload.DemoPath != demoPath {
+		t.Fatalf("wire demo_path = %q, want %q", wire.Payload.DemoPath, demoPath)
+	}
+	if err := conn.WriteJSON(map[string]any{
+		"name": "debug_command_result",
+		"payload": map[string]any{
+			"request_id": wire.Payload.RequestID,
+			"status":     "executed",
+		},
+	}); err != nil {
+		t.Fatalf("write debug_command_result: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("PlayDebugDemo: %v", result.err)
+		}
+		return result.response
+	case <-time.After(3 * time.Second):
+		t.Fatal("PlayDebugDemo did not return")
+		return DebugPlayDemoResponse{}
+	}
 }
 
 func TestPlayDebugDemoSendsManagedPathAndReceipt(t *testing.T) {
@@ -303,7 +361,7 @@ func TestDebugPlayReceiptCannotRelabelOrOverwriteObservedPlayback(t *testing.T) 
 	rt.debugReadyConnID = connID
 	app.handleDebugDemoState(producews.DebugIncomingMessage{
 		ConnID:  connID,
-		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/playing.dem", true, 42),
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/playing.dem", true, false),
 	})
 	if app.recordDebugDemoRequest(rt, connID, rt.debugDemoRevision, "/requested.dem") {
 		t.Fatal("receipt relabeled the previous Demo as the requested one")
@@ -314,7 +372,7 @@ func TestDebugPlayReceiptCannotRelabelOrOverwriteObservedPlayback(t *testing.T) 
 	revision := rt.debugDemoRevision
 	app.handleDebugDemoState(producews.DebugIncomingMessage{
 		ConnID:  connID,
-		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/finished.dem", false, 100),
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/finished.dem", false, false),
 	})
 	if app.recordDebugDemoRequest(rt, connID, revision, "/late.dem") {
 		t.Fatal("late receipt overwrote a newer stop observation")
@@ -331,16 +389,80 @@ func TestDebugDemoStateUpdatesPlayingState(t *testing.T) {
 	waitForPluginReady(t, app)
 
 	demoPath := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "a.dem"))
-	writeDebugDemoState(t, conn, sessionID, demoPath, true, 42)
+	writeDebugDemoState(t, conn, sessionID, demoPath, true, false)
 	waitForDebugDemoPlaying(t, app, true)
 
 	state := app.GetDebugSessionState()
-	if state.DemoTick != 42 || state.DemoPath != demoPath {
+	if state.DemoPath != demoPath || state.DemoPaused {
 		t.Fatalf("playback state was not applied: %+v", state)
 	}
 
-	writeDebugDemoState(t, conn, sessionID, demoPath, false, 500)
+	// Pause is an engine fact reported by the plugin; the host stores it
+	// without flipping any local button state.
+	writeDebugDemoState(t, conn, sessionID, demoPath, true, true)
+	waitForDebugDemoPaused(t, app, true)
+	if !app.GetDebugSessionState().DemoPlaying {
+		t.Fatal("a paused Demo must still count as loaded and playing")
+	}
+
+	writeDebugDemoState(t, conn, sessionID, demoPath, true, false)
+	waitForDebugDemoPaused(t, app, false)
+
+	writeDebugDemoState(t, conn, sessionID, demoPath, false, false)
 	waitForDebugDemoPlaying(t, app, false)
+}
+
+// The host must tolerate an observation from an older DLL that still carries
+// the removed tick field and has no paused field: playback is applied and the
+// pause stays false instead of being inferred.
+func TestDebugDemoStateIgnoresLegacyTickField(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	startCommandTestTransport(t, app)
+	connID := connectCommandTestTransport(t, app)
+	rt := installCommandTestRuntime(t, app, "dbg-legacy-tick")
+	rt.debugReady = true
+	rt.debugReadyConnID = connID
+
+	app.handleDebugDemoState(producews.DebugIncomingMessage{
+		ConnID: connID,
+		Payload: []byte(`{"session_id":"` + rt.sessionID +
+			`","demo_path":"/legacy.dem","playing":true,"tick":1234}`),
+	})
+	state := app.GetDebugSessionState()
+	if !state.DemoPlaying || state.DemoPath != "/legacy.dem" {
+		t.Fatalf("a legacy observation was dropped: %+v", state)
+	}
+	if state.DemoPaused {
+		t.Fatalf("a missing pause field was treated as a verified pause: %+v", state)
+	}
+}
+
+// A stopped playback can never keep a stale paused flag, even when a message
+// still carries paused=true.
+func TestDebugDemoStateClearsPausedWhenPlaybackStops(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	startCommandTestTransport(t, app)
+	connID := connectCommandTestTransport(t, app)
+	rt := installCommandTestRuntime(t, app, "dbg-paused-stop")
+	rt.debugReady = true
+	rt.debugReadyConnID = connID
+
+	app.handleDebugDemoState(producews.DebugIncomingMessage{
+		ConnID:  connID,
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/paused.dem", true, true),
+	})
+	if !rt.debugDemoPaused {
+		t.Fatal("engine pause was not recorded")
+	}
+
+	app.handleDebugDemoState(producews.DebugIncomingMessage{
+		ConnID:  connID,
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/paused.dem", false, true),
+	})
+	state := app.GetDebugSessionState()
+	if state.DemoPlaying || state.DemoPaused {
+		t.Fatalf("a stopped Demo kept a playback flag: %+v", state)
+	}
 }
 
 func TestDebugDemoStateIgnoresForeignSession(t *testing.T) {
@@ -349,10 +471,10 @@ func TestDebugDemoStateIgnoresForeignSession(t *testing.T) {
 	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
 	waitForPluginReady(t, app)
 
-	writeDebugDemoState(t, conn, "dbg-some-other-session", "/foreign.dem", true, 10)
+	writeDebugDemoState(t, conn, "dbg-some-other-session", "/foreign.dem", true, true)
 	time.Sleep(150 * time.Millisecond)
 	state := app.GetDebugSessionState()
-	if state.DemoPlaying || state.DemoTick == 10 {
+	if state.DemoPlaying || state.DemoPaused || state.DemoPath != "" {
 		t.Fatalf("a foreign session changed this session's playback state: %+v", state)
 	}
 }
@@ -363,13 +485,15 @@ func TestDebugDemoStateClearedWhenTransportDisconnects(t *testing.T) {
 	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
 	waitForPluginReady(t, app)
 
-	writeDebugDemoState(t, conn, sessionID, "/a.dem", true, 5)
+	writeDebugDemoState(t, conn, sessionID, "/a.dem", true, true)
 	waitForDebugDemoPlaying(t, app, true)
+	waitForDebugDemoPaused(t, app, true)
 
 	_ = conn.Close()
 	// The plugin that observed playback is gone, so the page must not keep
-	// showing a stale "playing".
+	// showing a stale "playing" or a stale pause.
 	waitForDebugDemoPlaying(t, app, false)
+	waitForDebugDemoPaused(t, app, false)
 }
 
 func TestDebugDemoStateRequiresCurrentConnection(t *testing.T) {
@@ -385,19 +509,19 @@ func TestDebugDemoStateRequiresCurrentConnection(t *testing.T) {
 	// A state decoded on the replaced connection must not change the session.
 	app.handleDebugDemoState(producews.DebugIncomingMessage{
 		ConnID:  oldConnID,
-		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/old.dem", true, 99),
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/old.dem", true, true),
 	})
 	state := app.GetDebugSessionState()
-	if state.DemoPlaying || state.DemoTick == 99 {
+	if state.DemoPlaying || state.DemoPaused || state.DemoPath != "" {
 		t.Fatalf("an old connection changed the playback state: %+v", state)
 	}
 
 	app.handleDebugDemoState(producews.DebugIncomingMessage{
 		ConnID:  newConnID,
-		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/new.dem", true, 7),
+		Payload: debugDemoStatePayloadJSON(t, rt.sessionID, "/new.dem", true, true),
 	})
 	state = app.GetDebugSessionState()
-	if !state.DemoPlaying || state.DemoTick != 7 || state.DemoPath != "/new.dem" {
+	if !state.DemoPlaying || !state.DemoPaused || state.DemoPath != "/new.dem" {
 		t.Fatalf("current connection state was not applied: %+v", state)
 	}
 }
@@ -418,5 +542,229 @@ func TestResolveManagedDebugDemoPathRejectsDirectory(t *testing.T) {
 	}
 	if _, err := app.resolveManagedDebugDemoPath(dir); err == nil {
 		t.Fatal("a directory was accepted as a demo file")
+	}
+}
+
+// captureDirectoryOpen replaces the file-manager launch with a recorder so the
+// test asserts the exact directory OpenDemoInFolder would open.
+func captureDirectoryOpen(t *testing.T, opened *[]string) {
+	t.Helper()
+	previous := startDirectoryOpenFn
+	startDirectoryOpenFn = func(cmd *exec.Cmd) error {
+		*opened = append(*opened, cmd.Args[len(cmd.Args)-1])
+		return nil
+	}
+	t.Cleanup(func() { startDirectoryOpenFn = previous })
+}
+
+func TestOpenDemoInFolderOpensParentDirectory(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	path := writeManagedDebugDemo(t, app.exeDir, filepath.Join("wanmei", "中文 空格 比赛", "match.dem"))
+
+	var opened []string
+	captureDirectoryOpen(t, &opened)
+	if err := app.OpenDemoInFolder(path); err != nil {
+		t.Fatalf("OpenDemoInFolder: %v", err)
+	}
+	if len(opened) != 1 || opened[0] != filepath.Dir(path) {
+		t.Fatalf("unexpected opened directories: %#v (want %q)", opened, filepath.Dir(path))
+	}
+
+	// A stale or hand-crafted path outside the managed Demo directory, a
+	// missing file, a non-.dem file and an empty selection must all be refused
+	// without opening anything.
+	outside := writeManagedDebugDemo(t, t.TempDir(), filepath.Join("raw", "outside.dem"))
+	missing := filepath.Join(app.exeDir, "demo", "raw", "missing.dem")
+	notDemo := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "notes.txt"))
+	for _, target := range []string{outside, missing, notDemo, "   "} {
+		if err := app.OpenDemoInFolder(target); err == nil {
+			t.Fatalf("OpenDemoInFolder accepted %q", target)
+		}
+	}
+	if len(opened) != 1 {
+		t.Fatalf("a rejected path opened a directory: %#v", opened)
+	}
+}
+
+// A Demo entry inside the managed tree may itself be a link that leaves the
+// workspace; both the folder action and playback validation must reject the
+// resolved escape while keeping links that stay inside usable.
+func TestManagedDemoPathsRejectLinkedEscapes(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+
+	outsideDir := filepath.Join(t.TempDir(), "outside 目录")
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside dir: %v", err)
+	}
+	outsideDemo := filepath.Join(outsideDir, "match.dem")
+	if err := os.WriteFile(outsideDemo, []byte("demo"), 0o644); err != nil {
+		t.Fatalf("write outside demo: %v", err)
+	}
+
+	demoRoot := filepath.Join(app.exeDir, "demo")
+	insideDir := filepath.Join(demoRoot, "raw", "inside")
+	if err := os.MkdirAll(insideDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed demo dir: %v", err)
+	}
+	insideDemo := filepath.Join(insideDir, "inside.dem")
+	if err := os.WriteFile(insideDemo, []byte("demo"), 0o644); err != nil {
+		t.Fatalf("write managed demo: %v", err)
+	}
+
+	fileLink := filepath.Join(demoRoot, "linked.dem")
+	if err := os.Symlink(outsideDemo, fileLink); err != nil {
+		t.Skipf("symlinks are unavailable on this platform: %v", err)
+	}
+	dirLink := filepath.Join(demoRoot, "linked-dir")
+	if err := os.Symlink(outsideDir, dirLink); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+	insideLink := filepath.Join(demoRoot, "inside-link.dem")
+	if err := os.Symlink(insideDemo, insideLink); err != nil {
+		t.Fatalf("create managed file symlink: %v", err)
+	}
+
+	var opened []string
+	captureDirectoryOpen(t, &opened)
+	for _, target := range []string{fileLink, filepath.Join(dirLink, "match.dem")} {
+		if err := app.OpenDemoInFolder(target); err == nil {
+			t.Fatalf("OpenDemoInFolder accepted a linked path outside the workspace: %s", target)
+		}
+		if _, err := app.resolveManagedDebugDemoPath(target); err == nil {
+			t.Fatalf("playback validation accepted a linked path outside the workspace: %s", target)
+		}
+	}
+	if len(opened) != 0 {
+		t.Fatalf("a rejected linked path opened a directory: %#v", opened)
+	}
+
+	// A link that resolves inside the managed Demo root is still usable.
+	if err := app.OpenDemoInFolder(insideLink); err != nil {
+		t.Fatalf("OpenDemoInFolder rejected an inside link: %v", err)
+	}
+	if len(opened) != 1 || opened[0] != demoRoot {
+		t.Fatalf("unexpected opened directories: %#v (want %q)", opened, demoRoot)
+	}
+}
+
+// A play receipt only proves the plugin queued `playdemo`. Until an engine
+// observation of the requested Demo arrives, the pause/resume command must stay
+// disabled because the last observation may still describe the previous Demo.
+func TestDebugPlayReceiptStaysPendingUntilEngineConfirmsTarget(t *testing.T) {
+	app, _, conn := launchDebugPluginSessionForCommandTest(t)
+	sessionID := app.GetDebugSessionState().SessionID
+	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
+	waitForPluginReady(t, app)
+	connID := app.produceW.GameConnID()
+
+	previousPath := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "previous.dem"))
+	targetPath := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "target.dem"))
+
+	writeDebugDemoState(t, conn, sessionID, previousPath, true, false)
+	waitForDebugDemoPlaying(t, app, true)
+
+	playDebugDemoAndAck(t, app, conn, targetPath)
+	if !app.GetDebugSessionState().DemoPlayPending {
+		t.Fatalf("a play receipt did not mark the request pending: %+v", app.GetDebugSessionState())
+	}
+
+	// An observation of the previous Demo (here its pause state changed) must
+	// not clear the pending request.
+	app.handleDebugDemoState(producews.DebugIncomingMessage{
+		ConnID:  connID,
+		Payload: debugDemoStatePayloadJSON(t, sessionID, previousPath, true, true),
+	})
+	if !app.GetDebugSessionState().DemoPlayPending {
+		t.Fatal("an observation of the previous Demo cleared the pending play request")
+	}
+
+	// Only an observation of the requested Demo playing clears it.
+	app.handleDebugDemoState(producews.DebugIncomingMessage{
+		ConnID:  connID,
+		Payload: debugDemoStatePayloadJSON(t, sessionID, targetPath, true, false),
+	})
+	state := app.GetDebugSessionState()
+	if state.DemoPlayPending {
+		t.Fatalf("engine confirmation did not clear the pending play request: %+v", state)
+	}
+	if !state.DemoPlaying || state.DemoPath != targetPath {
+		t.Fatalf("engine confirmation was not applied: %+v", state)
+	}
+}
+
+// The pending window is bounded: a play request that never gets confirmed must
+// not disable pause/resume forever.
+func TestDebugPlayPendingExpiresWithoutConfirmation(t *testing.T) {
+	previousTimeout := debugPlayConfirmTimeout
+	debugPlayConfirmTimeout = 60 * time.Millisecond
+	t.Cleanup(func() { debugPlayConfirmTimeout = previousTimeout })
+
+	app, _, conn := launchDebugPluginSessionForCommandTest(t)
+	sessionID := app.GetDebugSessionState().SessionID
+	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
+	waitForPluginReady(t, app)
+
+	demoPath := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "expire.dem"))
+	playDebugDemoAndAck(t, app, conn, demoPath)
+	if !app.GetDebugSessionState().DemoPlayPending {
+		t.Fatal("play receipt did not mark the request pending")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && app.GetDebugSessionState().DemoPlayPending {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if app.GetDebugSessionState().DemoPlayPending {
+		t.Fatal("the pending play request never expired")
+	}
+}
+
+func TestDebugPlayPendingClearedWhenTransportDrops(t *testing.T) {
+	app, _, conn := launchDebugPluginSessionForCommandTest(t)
+	sessionID := app.GetDebugSessionState().SessionID
+	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
+	waitForPluginReady(t, app)
+
+	demoPath := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", "pending.dem"))
+	playDebugDemoAndAck(t, app, conn, demoPath)
+	if !app.GetDebugSessionState().DemoPlayPending {
+		t.Fatal("play receipt did not mark the request pending")
+	}
+
+	_ = conn.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !app.GetDebugSessionState().DemoPlayPending {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the pending play request survived the transport disconnect")
+}
+
+// Only the connection that sent the request may mark it pending; a stale
+// receipt (or a runtime that is no longer current) must not disable the button
+// for the live session.
+func TestDebugPlayPendingOnlyTracksSendingConnection(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	startCommandTestTransport(t, app)
+	connID := connectCommandTestTransport(t, app)
+	rt := installCommandTestRuntime(t, app, "dbg-pending-conn")
+	rt.debugReady = true
+	rt.debugReadyConnID = connID
+
+	if app.markDebugPlaybackPending(rt, connID+1, "/stale.dem") {
+		t.Fatal("a receipt from another connection marked the request pending")
+	}
+	if app.GetDebugSessionState().DemoPlayPending {
+		t.Fatal("a stale receipt changed the pending state")
+	}
+
+	if !app.markDebugPlaybackPending(rt, connID, "/live.dem") {
+		t.Fatal("the sending connection did not mark the request pending")
+	}
+	state := app.GetDebugSessionState()
+	if !state.DemoPlayPending {
+		t.Fatalf("pending play request was not reported: %+v", state)
 	}
 }

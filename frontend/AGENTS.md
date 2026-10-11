@@ -54,10 +54,11 @@
 
 - `/debug` 是调试会话页面，只在品牌点击 10 次激活 debug 后可用；进入/离开不改变正式设置，也不关闭调试游戏。
 - 会话状态由 `src/domains/debug/` 持有：先订阅 `debug_session_state_changed` 再读 `GetDebugSessionState`，按 `updated_at_ms` 与事件/快照优先级合并，事件不得被延迟快照回滚；工作目录切换调用 `resetDebugSessionForWorkspace` 清空本地草稿与旧结果。`launch`/`stop` 以 generation 守卫状态、错误与 loading 写入，迟到的成功或失败响应返回 `null` 且不得回写新工作目录；插件连接变化由后端重发 `debug_session_state_changed`，前端不另订阅 `produce_ws_state_changed`。
-- 启动选项草稿从已确认设置初始化，操作只调用 `LaunchDebugGame`/`StopDebugGame`，不调用 `SaveClipSettings`。`status` 为 `idle|starting|running|stopping|failed`，进程启动、插件连接与 `plugin_ready` 分开展示；`plugin_ready` 只来自后端握手结果，不得把已连接当作就绪。
-- 启动后 `inject_plugin`、POV HUD、品牌 VPK、分辨率锁定并标记重启后生效；雷达随插件模式禁用/启用，与 POV HUD 独立。无插件模式显示“未启用插件”，不是连接失败。
-- 启动/停止按钮、忙碌态和错误来自会话 domain；未接入的录制按钮保持禁用并标注待接入。播放按钮调用 `playDebugDemo`（`PlayDebugDemo`），只在 `status=running && plugin_ready` 且导入页有选中 `selectedEntry.file_path` 时可用；无插件、未 ready 或未选 Demo 时禁用并给出原因。页面分别展示播放回执（`lastPlayResult`，文案“播放命令已执行”）与后端观测的实际播放状态（`sessionState.demo_playing`/`demo_tick`），不得用回执冒充播放中。暂停/继续复用 `sendDebugConsoleCommand` 发送 `demo_pause`/`demo_resume`，不另建请求 DTO；回到导入页改选不会自动发送播放命令。
-- 快捷设置与自定义命令共用 `sendDebugConsoleCommand`（`SendDebugConsoleCommand`），只在 `status=running && plugin_ready` 时可用；自定义输入整体作为一个命令元素发送，保留分号与引号，不由前端做白名单。`sending`、请求错误与最近一次 `lastCommandResult` 由会话 domain 持有，`failed` 回执是结果不是抛错；工作目录切换清空最近结果。
+- 启动选项草稿从已确认设置初始化，操作只调用 `LaunchDebugGame`/`StopDebugGame`，不调用 `SaveClipSettings`。“启动插件”是布尔开关，直接映射 `inject_plugin`；`status` 为 `idle|starting|running|stopping|failed`，进程启动、插件连接与 `plugin_ready` 分开展示；`plugin_ready` 只来自后端握手结果，不得把已连接当作就绪。插件标签按后端 `plugin_state`（`disabled|waiting_connection|waiting_ready|ready|error`）映射文字与颜色，不按 `plugin_message` 文案猜状态，`plugin_message` 仅作排障详情。
+- 启动后 `inject_plugin`、POV HUD、标识水印（`brand_enabled`）、分辨率只锁定不可编辑，不显示“重启后生效”标签；雷达随插件开关禁用/启用，与 POV HUD 独立。未启用插件显示“未启用插件”，不是连接失败。
+- 启动/停止按钮、忙碌态和错误来自会话 domain；未接入的录制按钮保持禁用并标注待接入。Demo 播放目标由调试页自持的 `debugDemoKey` 决定（选项用 Demo 稳定 `key`、同名文件用父目录区分），与导入页/片段页选择互不影响，随工作目录重置清空；空列表或无选择时禁用播放。播放按钮调用 `playDebugDemo`（`PlayDebugDemo`），只在 `status=running && plugin_ready` 时可用，点击才冻结路径与草稿命令；切换下拉不发送命令，也不得把旧 Demo 的播放观测伪装成新选择已播放。页面分别展示播放回执（`lastPlayResult`，文案“播放命令已执行”）与后端观测的实际播放状态（`sessionState.demo_path/demo_playing/demo_paused`），不得用回执冒充播放中。文件路径旁的按钮调用 `OpenDemoInFolder`，只在真实路径仍位于受管控 `demo` 根内的 `.dem` 上打开其父目录（链接越界、缺失文件均拒绝并显示可见错误）。
+- 暂停/继续合并为一个按钮：`demo_paused` 为假时显示“暂停”（warning），为真时显示“继续”（success）；启用条件由 `canToggleDemoPause` 统一判定：运行、`plugin_ready`、`commandInFlight`/`playRequestInFlight`/`demo_play_pending` 均为假、且实际 `demo_playing`；处理函数还要在点击时再检查一次准入。`demo_play_pending` 从播放发送前登记直到引擎确认目标 Demo，此窗口内播放及暂停/继续均禁用并可用 hint 说明；成功回执不重新置位，确认超时由后端主动推送解除等待及可见错误，不依赖页面轮询，不把“命令已执行”当成目标加载完成。发送期间禁用防连点，命令由 `debugPauseCommand(demo_paused)` 选出并复用 `sendDebugConsoleCommand` 发送 `demo_pause`/`demo_resume`，不另建请求 DTO；回执只表示命令已执行，不直接翻转暂停事实，失败/超时保留原观测状态并显示错误。
+- 快捷指令与自定义命令合并在“控制台命令”卡片：选择预设只把命令填入共用可编辑输入框（不发送、不写正式设置），发送按钮统一调用 `sendDebugConsoleCommand`（`SendDebugConsoleCommand`），只在 `status=running && plugin_ready` 时可用；自定义输入整体作为一个命令元素发送，保留分号与引号，不由前端做白名单。`sending`、请求错误与最近一次 `lastCommandResult` 由会话 domain 持有，`failed` 回执是结果不是抛错；工作目录切换清空最近结果。
 
 ## 验证与维护
 

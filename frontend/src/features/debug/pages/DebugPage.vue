@@ -9,17 +9,9 @@
 
           <n-space vertical :size="12">
             <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.plugin_mode") }}</span>
+              <span class="setting-label">{{ t("main.debug.inject_plugin") }}</span>
               <div class="setting-control">
-                <n-select
-                  v-model:value="launch.pluginMode"
-                  :options="pluginModeOptions"
-                  :disabled="launchLocked"
-                  class="control-select"
-                />
-                <n-tag v-if="launchLocked" size="small" :bordered="false" type="warning">
-                  {{ t("main.debug.restart_required") }}
-                </n-tag>
+                <n-switch v-model:value="launch.injectPlugin" :disabled="launchLocked" />
               </div>
             </div>
 
@@ -27,19 +19,13 @@
               <span class="setting-label">{{ t("main.debug.pov_hud") }}</span>
               <div class="setting-control">
                 <n-switch v-model:value="launch.povHud" :disabled="launchLocked" />
-                <n-tag v-if="launchLocked" size="small" :bordered="false" type="warning">
-                  {{ t("main.debug.restart_required") }}
-                </n-tag>
               </div>
             </div>
 
             <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.brand_vpk") }}</span>
+              <span class="setting-label">{{ t("main.debug.brand_watermark") }}</span>
               <div class="setting-control">
                 <n-switch v-model:value="launch.brandVpk" :disabled="launchLocked" />
-                <n-tag v-if="launchLocked" size="small" :bordered="false" type="warning">
-                  {{ t("main.debug.restart_required") }}
-                </n-tag>
               </div>
             </div>
 
@@ -62,9 +48,6 @@
                   :disabled="launchLocked"
                   class="control-select"
                 />
-                <n-tag v-if="launchLocked" size="small" :bordered="false" type="warning">
-                  {{ t("main.debug.restart_required") }}
-                </n-tag>
               </div>
             </div>
 
@@ -113,8 +96,11 @@
             </div>
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.plugin_state") }}</span>
-              <span class="setting-value setting-value--wrap">{{ sessionState.plugin_message || t("main.debug.value_none") }}</span>
+              <n-tag size="small" :bordered="false" :type="pluginTagType">
+                {{ pluginTagLabel }}
+              </n-tag>
             </div>
+            <span v-if="pluginDetail" class="setting-hint">{{ pluginDetail }}</span>
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.session_id") }}</span>
               <span class="setting-value setting-value--path">{{ sessionState.session_id || t("main.debug.value_none") }}</span>
@@ -131,19 +117,42 @@
             <span class="card-title">{{ t("main.debug.demo_title") }}</span>
           </template>
 
-          <div v-if="selectedEntry" class="demo-info">
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.demo_name") }}</span>
-              <span class="setting-value">{{ selectedEntry.file_name }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.demo_path") }}</span>
-              <span class="setting-value setting-value--path">{{ selectedEntry.file_path }}</span>
-            </div>
-          </div>
-          <n-empty v-else size="small" :description="t('main.debug.demo_empty')" />
-
           <n-space vertical :size="10">
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.demo_select") }}</span>
+              <n-select
+                :value="debugDemoKey"
+                :options="demoOptions"
+                :disabled="demoOptions.length === 0"
+                :placeholder="t('main.debug.demo_empty')"
+                class="control-select control-select--wide"
+                @update:value="selectDebugDemo"
+              />
+            </div>
+
+            <div v-if="selectedDebugDemo" class="demo-info">
+              <div class="setting-row">
+                <span class="setting-label">{{ t("main.debug.demo_name") }}</span>
+                <span class="setting-value">{{ selectedDebugDemo.file_name }}</span>
+              </div>
+              <div class="setting-row">
+                <span class="setting-label">{{ t("main.debug.demo_path") }}</span>
+                <span class="setting-value setting-value--path" :title="selectedDebugDemo.file_path">
+                  {{ selectedDebugDemo.file_path }}
+                </span>
+                <n-button
+                  size="tiny"
+                  secondary
+                  :title="t('main.debug.btn_open_folder')"
+                  :disabled="!selectedDebugDemo.file_path"
+                  @click="handleOpenDemoFolder"
+                >
+                  {{ t("main.debug.btn_open_folder") }}
+                </n-button>
+              </div>
+            </div>
+            <n-empty v-else size="small" :description="t('main.debug.demo_empty')" />
+
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.demo_playback_state") }}</span>
               <n-tag size="small" :bordered="false" :type="playbackTagType">
@@ -151,8 +160,10 @@
               </n-tag>
             </div>
             <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.demo_tick") }}</span>
-              <span class="setting-value">{{ sessionState.demo_tick }}</span>
+              <span class="setting-label">{{ t("main.debug.demo_playing_path") }}</span>
+              <span class="setting-value setting-value--path" :title="sessionState.demo_path">
+                {{ sessionState.demo_path || t("main.debug.value_none") }}
+              </span>
             </div>
 
             <div class="action-row">
@@ -168,16 +179,26 @@
               >
                 {{ t("main.debug.btn_play_demo") }}
               </n-button>
-              <n-button size="small" secondary :disabled="!canSend" @click="handlePauseDemo">
-                {{ t("main.debug.btn_pause_demo") }}
-              </n-button>
-              <n-button size="small" secondary :disabled="!canSend" @click="handleResumeDemo">
-                {{ t("main.debug.btn_resume_demo") }}
+              <n-button
+                size="small"
+                :type="pauseButtonType"
+                :loading="pauseRequesting"
+                :disabled="!canTogglePause"
+                @click="handleTogglePause"
+              >
+                {{ pauseButtonLabel }}
               </n-button>
             </div>
             <span v-if="!canPlay && playDisabledHint" class="setting-hint">{{ playDisabledHint }}</span>
+            <span v-if="!canTogglePause && pauseDisabledHint" class="setting-hint">{{ pauseDisabledHint }}</span>
             <n-alert v-if="playError" type="error" :bordered="false" size="small">
               {{ playError }}
+            </n-alert>
+            <n-alert v-if="folderError" type="error" :bordered="false" size="small">
+              {{ folderError }}
+            </n-alert>
+            <n-alert v-if="pauseError" type="error" :bordered="false" size="small">
+              {{ pauseError }}
             </n-alert>
             <div v-if="lastPlayResult" class="command-result">
               <n-tag
@@ -194,35 +215,22 @@
           </n-space>
         </n-card>
 
-        <n-card size="small" :bordered="true" class="debug-card">
-          <template #header>
-            <span class="card-title">{{ t("main.debug.quick_title") }}</span>
-          </template>
-
-          <n-space vertical :size="10">
-            <span class="setting-hint">{{ t("main.debug.quick_hint") }}</span>
-            <div class="quick-grid">
-              <n-button
-                v-for="item in quickCommands"
-                :key="item.key"
-                size="small"
-                secondary
-                :disabled="!canSend"
-                @click="handleQuickCommand(item)"
-              >
-                {{ t(item.labelKey) }}
-              </n-button>
-            </div>
-            <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
-          </n-space>
-        </n-card>
-
         <n-card size="small" :bordered="true" class="debug-card debug-card--wide">
           <template #header>
             <span class="card-title">{{ t("main.debug.cmd_title") }}</span>
           </template>
 
           <n-space vertical :size="10">
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.quick_title") }}</span>
+              <n-select
+                :value="presetKey"
+                :options="presetOptions"
+                :placeholder="t('main.debug.quick_placeholder')"
+                class="control-select control-select--wide"
+                @update:value="applyPreset"
+              />
+            </div>
             <n-input
               v-model:value="commandText"
               type="textarea"
@@ -292,18 +300,25 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "@/shared/i18n";
+import { backend } from "@/shared/backend";
 import { useSettingsStore } from "@/domains/settings/settings-state";
-import { useDebugSession } from "@/domains/debug";
-import { selectedEntry } from "@/domains/demo/demo-state";
+import {
+  buildDebugDemoOptions,
+  canToggleDemoPause,
+  debugPauseCommand,
+  useDebugDemoSelection,
+  useDebugSession,
+} from "@/domains/debug";
+import { demoList, selectedEntry } from "@/domains/demo/demo-state";
 import type {
   DebugCommandResponse,
   DebugLaunchRequest,
   DebugLaunchResolution,
   DebugPlayDemoResponse,
+  DebugPluginState,
   DebugSessionState,
 } from "@/shared/types";
 
-type DebugPluginMode = "plugin" | "none";
 type LaunchResolution = DebugLaunchResolution;
 
 interface DebugRecordingResult {
@@ -330,9 +345,11 @@ const {
   sendDebugConsoleCommand,
   playDebugDemo,
 } = useDebugSession();
+const { debugDemoKey, ensureDebugDemoSelection, selectDebugDemo } =
+  useDebugDemoSelection();
 
 const launch = reactive({
-  pluginMode: "plugin" as DebugPluginMode,
+  injectPlugin: true,
   povHud: true,
   brandVpk: true,
   povRadar: false,
@@ -340,9 +357,16 @@ const launch = reactive({
 });
 
 const commandText = ref("");
+const presetKey = ref<string | null>(null);
 const commandError = ref("");
 const playError = ref("");
+const folderError = ref("");
+const pauseError = ref("");
+const pauseRequesting = ref(false);
 const recordingResults = ref<DebugRecordingResult[]>([]);
+// The Demo-list watcher must not preempt the import-page default before the
+// first mount-time selection ran.
+let demoSelectionInitialized = false;
 
 // Settings load asynchronously and the launch controls stay editable meanwhile.
 // Each field records whether the user touched it during that window, so the
@@ -380,7 +404,7 @@ const launchLocked = computed(
 );
 const canLaunch = computed(() => !launchLocked.value && !launching.value);
 const canStop = computed(() => sessionStatus.value !== "idle" && !stopping.value);
-const radarDisabled = computed(() => launch.pluginMode === "none");
+const radarDisabled = computed(() => !launch.injectPlugin);
 const sessionError = computed(() => errorMessage.value || sessionState.value.error);
 
 const statusLabelKey = computed(() => `main.debug.status_${sessionStatus.value}`);
@@ -398,10 +422,34 @@ const statusTagType = computed(() => {
   }
 });
 
-const pluginModeOptions = computed(() => [
-  { label: t("main.debug.plugin_mode_plugin"), value: "plugin" },
-  { label: t("main.debug.plugin_mode_none"), value: "none" },
-]);
+/**
+ * Plugin tag derived from the backend's structured transport/readiness state.
+ * A connected transport is never shown as ready, and an idle snapshot without a
+ * session is shown as "not connected" rather than an error.
+ */
+const pluginTag = computed<{ label: string; type: "default" | "warning" | "success" | "error" }>(
+  () => {
+    const state: DebugPluginState = sessionState.value.plugin_state;
+    switch (state) {
+      case "ready":
+        return { label: t("main.debug.plugin_tag_ready"), type: "success" };
+      case "waiting_ready":
+        return { label: t("main.debug.plugin_tag_waiting_ready"), type: "warning" };
+      case "waiting_connection":
+        return { label: t("main.debug.plugin_tag_waiting_connection"), type: "warning" };
+      case "disabled":
+        return { label: t("main.debug.plugin_tag_disabled"), type: "default" };
+      case "error":
+        return { label: t("main.debug.plugin_tag_error"), type: "error" };
+      default:
+        return { label: t("main.debug.plugin_tag_disconnected"), type: "default" };
+    }
+  },
+);
+const pluginTagLabel = computed(() => pluginTag.value.label);
+const pluginTagType = computed(() => pluginTag.value.type);
+// The backend message keeps the troubleshooting detail behind the tag.
+const pluginDetail = computed(() => sessionState.value.plugin_message);
 
 const resolutionOptions = computed(() => [
   { label: t("main.settings.resolution_16_9"), value: "16:9" },
@@ -409,12 +457,39 @@ const resolutionOptions = computed(() => [
   { label: t("main.settings.resolution_4_3_1280x960"), value: "4:3_1280x960" },
 ]);
 
-const quickCommands = [
-  { key: "sky-off", labelKey: "main.debug.quick_sky_off", commands: ["r_drawskybox 0"] },
-  { key: "sky-on", labelKey: "main.debug.quick_sky_on", commands: ["r_drawskybox 1"] },
-  { key: "ui-hide", labelKey: "main.debug.quick_ui_hide", commands: ["cl_draw_only_deathnotices 1"] },
-  { key: "ui-show", labelKey: "main.debug.quick_ui_show", commands: ["cl_draw_only_deathnotices 0"] },
+/** Quick presets only prepare the shared input; sending stays explicit. */
+const commandPresets = [
+  { key: "sky-off", labelKey: "main.debug.quick_sky_off", command: "r_drawskybox 0" },
+  { key: "sky-on", labelKey: "main.debug.quick_sky_on", command: "r_drawskybox 1" },
+  { key: "ui-hide", labelKey: "main.debug.quick_ui_hide", command: "cl_draw_only_deathnotices 1" },
+  { key: "ui-show", labelKey: "main.debug.quick_ui_show", command: "cl_draw_only_deathnotices 0" },
 ];
+const presetOptions = computed(() =>
+  commandPresets.map((preset) => ({ label: t(preset.labelKey), value: preset.key })),
+);
+
+function applyPreset(key: string | null) {
+  const preset = commandPresets.find((item) => item.key === key);
+  if (!preset) {
+    presetKey.value = null;
+    return;
+  }
+  commandText.value = preset.command;
+  presetKey.value = preset.key;
+}
+
+// A manual edit no longer matches the preset it started from, so the dropdown
+// clears. Selecting the same preset again then restores its command instead of
+// being swallowed as "no change".
+watch(commandText, (text) => {
+  const preset = commandPresets.find((item) => item.key === presetKey.value);
+  if (preset && text !== preset.command) presetKey.value = null;
+});
+
+const demoOptions = computed(() => buildDebugDemoOptions(demoList.value));
+const selectedDebugDemo = computed(
+  () => demoList.value.find((entry) => entry.key === debugDemoKey.value) ?? null,
+);
 
 const canSend = computed(
   () => sessionStatus.value === "running" && sessionState.value.plugin_ready && !sending.value,
@@ -432,11 +507,13 @@ const canPlay = computed(
   () =>
     canSend.value &&
     !playingRequest.value &&
-    !!selectedEntry.value &&
-    !!selectedEntry.value.file_path,
+    !sessionState.value.demo_play_pending &&
+    !!selectedDebugDemo.value &&
+    !!selectedDebugDemo.value.file_path,
 );
 const playDisabledHint = computed(() => {
-  if (!selectedEntry.value) return t("main.debug.demo_empty");
+  if (!selectedDebugDemo.value) return t("main.debug.demo_empty");
+  if (sessionState.value.demo_play_pending) return t("main.debug.pause_pending_hint");
   return commandDisabledHint.value;
 });
 const playbackLabel = computed(() =>
@@ -444,8 +521,37 @@ const playbackLabel = computed(() =>
 );
 const playbackTagType = computed(() => (sessionState.value.demo_playing ? "success" : "default"));
 
+// The single pause/resume button follows the engine observation only, and it
+// stays disabled while a play request is in flight or still waiting for the
+// engine to confirm the requested Demo: pressing it then would evaluate the
+// command direction against the previous Demo's pause state.
+const canTogglePause = computed(() =>
+  canToggleDemoPause({
+    sessionRunning: sessionStatus.value === "running",
+    pluginReady: sessionState.value.plugin_ready,
+    commandInFlight: sending.value,
+    playRequestInFlight: playingRequest.value || pauseRequesting.value,
+    demoPlaying: sessionState.value.demo_playing,
+    demoPlayPending: sessionState.value.demo_play_pending,
+  }),
+);
+const pauseDisabledHint = computed(() =>
+  sessionState.value.demo_play_pending ? t("main.debug.pause_pending_hint") : "",
+);
+const pauseButtonLabel = computed(() =>
+  sessionState.value.demo_paused ? t("main.debug.btn_resume_demo") : t("main.debug.btn_pause_demo"),
+);
+const pauseButtonType = computed(() =>
+  sessionState.value.demo_paused ? "success" : "warning",
+);
+
 onMounted(async () => {
   await Promise.allSettled([initDebugSession(), settingsStore.init()]);
+  // The debug page keeps its own pending Demo. The import selection is only a
+  // first-time default; later import-page changes never override a choice made
+  // here.
+  ensureDebugDemoSelection(demoList.value, selectedEntry.value?.key ?? null);
+  demoSelectionInitialized = true;
   // A session that is already running owns the frozen launch options; otherwise
   // the draft starts from the confirmed settings without ever writing back.
   if (sessionStatus.value !== "idle") {
@@ -454,6 +560,13 @@ onMounted(async () => {
     return;
   }
   applySettingsDefaults();
+});
+
+// Keep the debug selection valid when the shared list changes: an entry removed
+// on the import page falls back to the first import (or clears the selection).
+watch(demoList, (entries) => {
+  if (!demoSelectionInitialized) return;
+  ensureDebugDemoSelection(entries);
 });
 
 function applySettingsDefaults() {
@@ -466,7 +579,7 @@ function applySettingsDefaults() {
 }
 
 function applySessionToDraft(state: DebugSessionState) {
-  launch.pluginMode = state.inject_plugin ? "plugin" : "none";
+  launch.injectPlugin = state.inject_plugin;
   launch.povHud = state.pov_hud_enabled;
   launch.brandVpk = state.brand_enabled;
   launch.povRadar = state.pov_radar_enabled;
@@ -475,7 +588,7 @@ function applySessionToDraft(state: DebugSessionState) {
 
 function buildLaunchRequest(): DebugLaunchRequest {
   return {
-    inject_plugin: launch.pluginMode === "plugin",
+    inject_plugin: launch.injectPlugin,
     pov_hud_enabled: launch.povHud,
     brand_enabled: launch.brandVpk,
     pov_radar_enabled: launch.povRadar,
@@ -506,20 +619,17 @@ function describeCommandError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function sendCommands(commands: string[]) {
-  commandError.value = "";
+/** Send one console request and report the receipt into the owning card. */
+async function sendCommands(commands: string[], errorSink: { value: string }) {
+  errorSink.value = "";
   try {
     const result: DebugCommandResponse | null = await sendDebugConsoleCommand(commands);
     if (result && result.status !== "executed") {
-      commandError.value = result.error || t("main.debug.cmd_failed");
+      errorSink.value = result.error || t("main.debug.cmd_failed");
     }
   } catch (error: unknown) {
-    commandError.value = describeCommandError(error);
+    errorSink.value = describeCommandError(error);
   }
-}
-
-async function handleQuickCommand(item: { commands: string[] }) {
-  await sendCommands([...item.commands]);
 }
 
 /**
@@ -534,7 +644,7 @@ function buildPlaybackCommands(): string[] {
 }
 
 async function handlePlayDemo() {
-  const entry = selectedEntry.value;
+  const entry = selectedDebugDemo.value;
   if (!entry || !entry.file_path) {
     playError.value = t("main.debug.demo_empty");
     return;
@@ -553,12 +663,31 @@ async function handlePlayDemo() {
   }
 }
 
-async function handlePauseDemo() {
-  await sendCommands(["demo_pause"]);
+async function handleTogglePause() {
+  // Re-check admission at call time: the button state is computed, but a click
+  // may race a play request that just started waiting for engine confirmation.
+  if (!canTogglePause.value) return;
+  // A paused Demo is still loaded, so the command is chosen from the engine
+  // observation. The receipt never flips the button: only the plugin's next
+  // playback observation may change `demo_paused`.
+  const command = debugPauseCommand(sessionState.value.demo_paused);
+  pauseRequesting.value = true;
+  try {
+    await sendCommands([command], pauseError);
+  } finally {
+    pauseRequesting.value = false;
+  }
 }
 
-async function handleResumeDemo() {
-  await sendCommands(["demo_resume"]);
+async function handleOpenDemoFolder() {
+  const entry = selectedDebugDemo.value;
+  if (!entry || !entry.file_path) return;
+  folderError.value = "";
+  try {
+    await backend.OpenDemoInFolder(entry.file_path);
+  } catch (error: unknown) {
+    folderError.value = describeCommandError(error);
+  }
 }
 
 async function handleSendCommand() {
@@ -569,7 +698,7 @@ async function handleSendCommand() {
     commandError.value = t("main.debug.cmd_empty");
     return;
   }
-  await sendCommands([raw]);
+  await sendCommands([raw], commandError);
 }
 
 function goToImport() {
@@ -658,6 +787,11 @@ function goToImport() {
   width: 180px;
 }
 
+.control-select--wide {
+  width: 100%;
+  max-width: 360px;
+}
+
 .action-row {
   align-items: center;
   display: flex;
@@ -669,13 +803,7 @@ function goToImport() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 12px;
-}
-
-.quick-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 2px;
 }
 
 .result-head {

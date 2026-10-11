@@ -120,6 +120,7 @@ export const backend: TypedBackendApi = {
   ListFiveERecentMatches: bindBackendMethod("ListFiveERecentMatches"),
   ListWanmeiRecentMatches: bindBackendMethod("ListWanmeiRecentMatches"),
   OpenDemoDirectory: bindBackendMethod("OpenDemoDirectory"),
+  OpenDemoInFolder: bindBackendMethod("OpenDemoInFolder"),
   OpenExternalURL: bindBackendMethod("OpenExternalURL"),
   OpenManualDownload: bindBackendMethod("OpenManualDownload"),
   OpenOutputsDirectory: bindBackendMethod("OpenOutputsDirectory"),

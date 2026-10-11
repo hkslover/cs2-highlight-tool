@@ -13,11 +13,23 @@ export type {
   DebugSessionSubscriber,
 } from "./debugSessionCore";
 export {
+  buildDebugDemoOptions,
+  resolveDebugDemoKey,
+} from "./debugDemoSelection";
+export {
+  canToggleDemoPause,
+  debugPauseCommand,
+} from "./debugPlaybackPolicy";
+export type { DebugPauseFacts } from "./debugPlaybackPolicy";
+export {
+  ensureDebugDemoSelection,
   initDebugSession,
   launchDebugGame,
   playDebugDemo,
   resetDebugSessionForWorkspace,
+  selectDebugDemo,
   sendDebugConsoleCommand,
   stopDebugGame,
+  useDebugDemoSelection,
   useDebugSession,
 } from "./debugSessionStore";

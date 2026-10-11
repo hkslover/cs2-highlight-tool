@@ -136,6 +136,11 @@ func clearManagedDirectory(dir string, label string) error {
 	return nil
 }
 
+// startDirectoryOpenFn launches the platform file-manager command. It is a
+// package-level seam so tests can assert which directory would be opened
+// without starting a real file manager.
+var startDirectoryOpenFn = func(cmd *exec.Cmd) error { return cmd.Start() }
+
 func openManagedDirectory(dir string, label string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("创建%s失败: %w", label, err)
@@ -150,7 +155,7 @@ func openManagedDirectory(dir string, label string) error {
 	default:
 		cmd = exec.Command("xdg-open", dir)
 	}
-	if err := cmd.Start(); err != nil {
+	if err := startDirectoryOpenFn(cmd); err != nil {
 		return fmt.Errorf("打开%s失败: %w", label, err)
 	}
 	return nil

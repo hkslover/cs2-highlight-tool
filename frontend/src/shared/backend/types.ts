@@ -130,6 +130,7 @@ export interface BackendApi {
   ) => Promise<FiveEMatchListResult>;
   ListWanmeiRecentMatches: (page: number) => Promise<WanmeiMatchListResult>;
   OpenDemoDirectory: () => Promise<void>;
+  OpenDemoInFolder: (demoPath: string) => Promise<void>;
   OpenExternalURL: (rawURL: string) => Promise<void>;
   OpenManualDownload: (componentID: string) => Promise<void>;
   OpenOutputsDirectory: () => Promise<void>;

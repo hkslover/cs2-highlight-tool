@@ -18,6 +18,7 @@ export type {
 
 export type {
   DebugSessionStatus,
+  DebugPluginState,
   DebugLaunchResolution,
   DebugLaunchRequest,
   DebugSessionState,

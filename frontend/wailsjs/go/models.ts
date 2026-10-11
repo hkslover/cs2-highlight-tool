@@ -214,9 +214,11 @@ export namespace app {
 	    plugin_connected: boolean;
 	    plugin_ready: boolean;
 	    plugin_message: string;
+	    plugin_state: string;
 	    demo_path: string;
 	    demo_playing: boolean;
-	    demo_tick: number;
+	    demo_paused: boolean;
+	    demo_play_pending: boolean;
 	    error: string;
 	    updated_at_ms: number;
 	
@@ -239,9 +241,11 @@ export namespace app {
 	        this.plugin_connected = source["plugin_connected"];
 	        this.plugin_ready = source["plugin_ready"];
 	        this.plugin_message = source["plugin_message"];
+	        this.plugin_state = source["plugin_state"];
 	        this.demo_path = source["demo_path"];
 	        this.demo_playing = source["demo_playing"];
-	        this.demo_tick = source["demo_tick"];
+	        this.demo_paused = source["demo_paused"];
+	        this.demo_play_pending = source["demo_play_pending"];
 	        this.error = source["error"];
 	        this.updated_at_ms = source["updated_at_ms"];
 	    }

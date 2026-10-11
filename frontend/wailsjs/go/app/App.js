@@ -158,6 +158,10 @@ export function OpenDemoDirectory() {
   return window['go']['app']['App']['OpenDemoDirectory']();
 }
 
+export function OpenDemoInFolder(arg1) {
+  return window['go']['app']['App']['OpenDemoInFolder'](arg1);
+}
+
 export function OpenExternalURL(arg1) {
   return window['go']['app']['App']['OpenExternalURL'](arg1);
 }

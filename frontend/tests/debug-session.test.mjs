@@ -370,3 +370,58 @@ test("a transport failure rejects and clears the previous result on dispose", as
   assert.equal(core.lastCommandResult.value, null);
   assert.equal(core.errorMessage.value, "");
 });
+
+test("the snapshot carries structured plugin state and pause facts without a tick", () => {
+  const idle = emptyDebugSessionState();
+  assert.equal(idle.plugin_state, "");
+  assert.equal(idle.demo_paused, false);
+  assert.equal(idle.demo_play_pending, false);
+  assert.ok(!("demo_tick" in idle), "the removed current-tick field must not come back");
+
+  const merged = mergeDebugSessionState(
+    { value: idle, latestUpdatedAt: 0 },
+    session({
+      plugin_state: "ready",
+      plugin_ready: true,
+      demo_path: "/data/demo/raw/a.dem",
+      demo_playing: true,
+      demo_paused: true,
+      updated_at_ms: 5,
+    }),
+    "event",
+  );
+  assert.equal(merged.value.plugin_state, "ready");
+  assert.equal(merged.value.demo_playing, true);
+  assert.equal(merged.value.demo_paused, true);
+
+  // A receipt keeps the request pending until the engine confirms the target.
+  const pending = mergeDebugSessionState(
+    merged,
+    session({
+      plugin_state: "ready",
+      demo_path: "/data/demo/raw/a.dem",
+      demo_playing: true,
+      demo_paused: false,
+      demo_play_pending: true,
+      updated_at_ms: 6,
+    }),
+    "event",
+  );
+  assert.equal(pending.value.demo_play_pending, true);
+
+  const stopped = mergeDebugSessionState(
+    merged,
+    session({
+      plugin_state: "waiting_connection",
+      plugin_connected: false,
+      demo_path: "/data/demo/raw/a.dem",
+      demo_playing: false,
+      demo_paused: false,
+      updated_at_ms: 6,
+    }),
+    "event",
+  );
+  assert.equal(stopped.value.plugin_state, "waiting_connection");
+  assert.equal(stopped.value.demo_playing, false);
+  assert.equal(stopped.value.demo_paused, false);
+});

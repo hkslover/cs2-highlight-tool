@@ -85,6 +85,8 @@ export function ListWanmeiRecentMatches(arg1:number):Promise<wanmei.WanmeiMatchL
 
 export function OpenDemoDirectory():Promise<void>;
 
+export function OpenDemoInFolder(arg1:string):Promise<void>;
+
 export function OpenExternalURL(arg1:string):Promise<void>;
 
 export function OpenManualDownload(arg1:string):Promise<void>;

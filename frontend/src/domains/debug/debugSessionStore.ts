@@ -1,10 +1,12 @@
 import { ref, type Ref } from "vue";
-import { EventsOn } from "../../../wailsjs/runtime/runtime";
-import { backend } from "@/shared/backend";
+import { EventsOn } from "../../../wailsjs/runtime/runtime.js";
+import { backend } from "../../shared/backend/adapter.js";
 import {
   createDebugSessionCore,
   type DebugSessionCell,
-} from "./debugSessionCore";
+} from "./debugSessionCore.js";
+import { resolveDebugDemoKey } from "./debugDemoSelection.js";
+import type { DemoListEntry } from "../../shared/types/index.js";
 import type {
   DebugCommandRequest,
   DebugCommandResponse,
@@ -12,7 +14,7 @@ import type {
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
   DebugSessionState,
-} from "@/shared/types";
+} from "../../shared/types/index.js";
 
 const core = createDebugSessionCore({
   createCell<T>(initial: T): DebugSessionCell<T> {
@@ -40,12 +42,39 @@ export const stopDebugGame = core.stop;
 export const sendDebugConsoleCommand = core.sendCommand;
 export const playDebugDemo = core.playDemo;
 
+// The debug page's own pending Demo. Kept outside the backend session snapshot
+// because it is a local workbench draft: choosing a Demo only changes what the
+// next `play` request targets and never claims that the engine already plays
+// it.
+const debugDemoKeyState = ref<string | null>(null);
+
+/**
+ * Keep the debug selection valid. The current key wins while it still exists;
+ * otherwise the import-page selection is adopted once, and finally the first
+ * imported Demo (or an empty selection) is used. Called on page mount and
+ * whenever the shared Demo list changes.
+ */
+export function ensureDebugDemoSelection(
+  entries: DemoListEntry[],
+  preferredKey: string | null = null,
+): string | null {
+  const resolved = resolveDebugDemoKey(entries, debugDemoKeyState.value, preferredKey);
+  debugDemoKeyState.value = resolved;
+  return resolved;
+}
+
+export function selectDebugDemo(key: string | null): void {
+  debugDemoKeyState.value = key;
+}
+
 /**
  * Clear local debug session facts when the workspace changes. The next debug
- * page mount re-subscribes and reads the new workspace's snapshot.
+ * page mount re-subscribes, reads the new workspace's snapshot and picks a
+ * Demo from the new list.
  */
 export function resetDebugSessionForWorkspace(): void {
   core.dispose();
+  debugDemoKeyState.value = null;
 }
 
 export function useDebugSession() {
@@ -65,5 +94,14 @@ export function useDebugSession() {
     stopDebugGame,
     sendDebugConsoleCommand,
     playDebugDemo,
+  };
+}
+
+/** The debug page's own pending Demo draft. */
+export function useDebugDemoSelection() {
+  return {
+    debugDemoKey: debugDemoKeyState as Readonly<Ref<string | null>>,
+    ensureDebugDemoSelection,
+    selectDebugDemo,
   };
 }
