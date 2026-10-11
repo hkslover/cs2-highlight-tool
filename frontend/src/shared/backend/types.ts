@@ -2,11 +2,13 @@ import type {
   ClipSettings,
   DebugCommandRequest,
   DebugCommandResponse,
+  DebugConsolePlan,
   DebugLaunchRequest,
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
   DebugPluginDLLOverrideState,
   DebugSessionState,
+  DebugSettingsDraft,
   DemoStorageStats,
   FullRoundPOVPlan,
   GeneratePluginJSONBatchRequest,
@@ -105,6 +107,7 @@ export interface BackendApi {
   ) => Promise<GeneratePluginJSONBatchResult>;
   GetClipActionSettings: () => Promise<ClipActionSettings>;
   GetClipSettings: () => Promise<ClipSettings>;
+  GetDebugConsolePlan: (draft: DebugSettingsDraft) => Promise<DebugConsolePlan>;
   GetDebugPluginDLLOverride: () => Promise<DebugPluginDLLOverrideState>;
   GetDebugSessionState: () => Promise<DebugSessionState>;
   GetDemoStorageStats: () => Promise<DemoStorageStats>;

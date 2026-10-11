@@ -70,6 +70,10 @@ export function GetClipSettings() {
   return window['go']['app']['App']['GetClipSettings']();
 }
 
+export function GetDebugConsolePlan(arg1) {
+  return window['go']['app']['App']['GetDebugConsolePlan'](arg1);
+}
+
 export function GetDebugPluginDLLOverride() {
   return window['go']['app']['App']['GetDebugPluginDLLOverride']();
 }

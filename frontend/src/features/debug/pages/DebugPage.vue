@@ -32,8 +32,12 @@
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.pov_radar") }}</span>
               <div class="setting-control">
-                <n-switch v-model:value="launch.povRadar" :disabled="radarDisabled" />
-                <span v-if="radarDisabled" class="setting-hint">
+                <n-switch
+                  :value="settingsDraft.pov_radar_enabled"
+                  :disabled="radarDisabled"
+                  @update:value="handleLaunchRadarChange"
+                />
+                <span v-if="radarRequiresPlugin" class="setting-hint">
                   {{ t("main.debug.pov_radar_requires_plugin") }}
                 </span>
               </div>
@@ -217,6 +221,227 @@
 
         <n-card size="small" :bordered="true" class="debug-card debug-card--wide">
           <template #header>
+            <span class="card-title">{{ t("main.debug.live_settings_title") }}</span>
+          </template>
+          <template #header-extra>
+            <n-space :size="8" align="center">
+              <n-button
+                size="tiny"
+                secondary
+                :loading="settingsLoading"
+                :disabled="settingsLoading || applyingSettings"
+                @click="handleReloadSettings"
+              >
+                {{ t("main.debug.live_settings_reload") }}
+              </n-button>
+              <n-button
+                size="tiny"
+                type="primary"
+                :loading="applyingAll"
+                :disabled="!canApplyAll"
+                @click="handleApplyAll"
+              >
+                {{ t("main.debug.live_settings_apply_all") }}
+              </n-button>
+            </n-space>
+          </template>
+
+          <n-space vertical :size="10">
+            <span class="setting-hint">{{ t("main.debug.live_settings_hint") }}</span>
+
+            <n-alert v-if="settingsReadError" type="error" :bordered="false" size="small">
+              {{ settingsReadError }}
+            </n-alert>
+            <n-alert v-if="settingsPlanError" type="warning" :bordered="false" size="small">
+              {{ settingsPlanError }}
+            </n-alert>
+            <n-alert v-if="applyError" type="error" :bordered="false" size="small">
+              {{ applyError }}
+            </n-alert>
+
+            <div class="setting-list">
+              <div v-for="row in liveSettingRows" :key="row.key" class="setting-field">
+                <div class="setting-row">
+                  <span class="setting-label">{{ t(row.labelKey) }}</span>
+                  <div class="setting-control">
+                    <n-switch
+                      :value="settingsDraft[row.key]"
+                      :disabled="!canToggleSetting"
+                      @update:value="(value: boolean) => handleSettingToggle(row.key, value)"
+                    />
+                  </div>
+                </div>
+                <span v-if="row.hintKey" class="setting-hint">{{ t(row.hintKey) }}</span>
+                <span v-if="row.key === 'pov_radar_enabled' && sessionRunningWithoutPlugin" class="setting-hint">
+                  {{ t("main.debug.pov_radar_requires_plugin") }}
+                </span>
+                <span
+                  class="setting-command"
+                  :class="{ 'setting-command--empty': !rowPreview(row.key) }"
+                >
+                  {{ rowPreview(row.key) || t("main.debug.value_none") }}
+                </span>
+              </div>
+
+              <div class="setting-field">
+                <div class="setting-row">
+                  <span class="setting-label">{{ t("main.settings.kill_feed_lifetime") }}</span>
+                  <div class="setting-control">
+                    <n-input-number
+                      :value="settingsDraft.kill_feed_lifetime"
+                      :min="1"
+                      :max="10"
+                      :step="1"
+                      :precision="0"
+                      :disabled="!settingsLoaded"
+                      class="control-number"
+                      @update:value="handleLifetimeChange"
+                    />
+                    <n-button
+                      size="tiny"
+                      secondary
+                      :disabled="!canToggleSetting"
+                      @click="handleApplyLifetime"
+                    >
+                      {{ t("main.debug.apply") }}
+                    </n-button>
+                  </div>
+                </div>
+                <span class="setting-command">
+                  {{ rowPreview("kill_feed_lifetime") || t("main.debug.value_none") }}
+                </span>
+              </div>
+            </div>
+
+            <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
+          </n-space>
+        </n-card>
+
+        <n-card size="small" :bordered="true" class="debug-card">
+          <template #header>
+            <span class="card-title">{{ t("main.debug.recording_settings_title") }}</span>
+          </template>
+
+          <n-space vertical :size="10">
+            <span class="setting-hint">{{ t("main.debug.recording_settings_hint") }}</span>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.record_fps") }}</span>
+              <div class="setting-control">
+                <n-input-number
+                  :value="settingsDraft.record_fps"
+                  :min="1"
+                  :max="240"
+                  :step="1"
+                  :precision="0"
+                  :disabled="!settingsLoaded"
+                  class="control-number"
+                  @update:value="handleRecordFPSChange"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.record_quality") }}</span>
+              <div class="setting-control">
+                <n-select
+                  :value="settingsDraft.record_quality"
+                  :options="recordQualityOptions"
+                  :disabled="!settingsLoaded"
+                  class="control-select"
+                  @update:value="handleRecordQualityChange"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.video_preset") }}</span>
+              <div class="setting-control">
+                <n-select
+                  :value="settingsDraft.video_preset"
+                  :options="videoPresetOptions"
+                  :disabled="!settingsLoaded"
+                  class="control-select"
+                  @update:value="handleVideoPresetChange"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.effective_preset") }}</span>
+              <span class="setting-value">{{ effectivePresetLabel }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.recording_output_dir") }}</span>
+              <span class="setting-value setting-value--path" :title="settingsPlan?.record_output_dir">
+                {{ settingsPlan?.record_output_dir || t("main.debug.value_none") }}
+              </span>
+            </div>
+            <div class="action-row">
+              <n-button
+                size="small"
+                type="primary"
+                :loading="applyingRecording"
+                :disabled="!canApplyRecording"
+                @click="handleApplyRecording"
+              >
+                {{ t("main.debug.recording_apply") }}
+              </n-button>
+              <span v-if="!canApplyRecording" class="setting-hint">{{ commandDisabledHint }}</span>
+            </div>
+            <n-alert v-if="recordingApplyError" type="error" :bordered="false" size="small">
+              {{ recordingApplyError }}
+            </n-alert>
+            <div v-if="settingsPlan && settingsPlan.recording.length > 0" class="command-preview">
+              <span class="setting-label">{{ t("main.debug.command_preview") }}</span>
+              <div class="command-preview__list">
+                <span v-for="command in settingsPlan.recording" :key="command" class="setting-command">
+                  {{ command }}
+                </span>
+              </div>
+            </div>
+          </n-space>
+        </n-card>
+
+        <n-card size="small" :bordered="true" class="debug-card">
+          <template #header>
+            <span class="card-title">{{ t("main.debug.formal_title") }}</span>
+          </template>
+
+          <n-space vertical :size="10">
+            <span class="setting-hint">{{ t("main.debug.formal_hint") }}</span>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.edit_fps") }}</span>
+              <span class="setting-value">{{ formalSettings?.edit_fps ?? t("main.debug.value_none") }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.edit_quality") }}</span>
+              <span class="setting-value">{{ qualityLabel(formalSettings?.edit_quality) }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
+              <span class="setting-value">{{ formalSettings?.killer_pre_seconds ?? t("main.debug.value_none") }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
+              <span class="setting-value">{{ formalSettings?.killer_post_seconds ?? t("main.debug.value_none") }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
+              <span class="setting-value">{{ formalSettings?.victim_pre_seconds ?? t("main.debug.value_none") }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.victim_post_seconds") }}</span>
+              <span class="setting-value">{{ formalSettings?.victim_post_seconds ?? t("main.debug.value_none") }}</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.auto_add_victim") }}</span>
+              <span class="setting-value">
+                {{ formalSettings?.auto_add_victim_view ? t("main.debug.value_enabled") : t("main.debug.value_disabled") }}
+              </span>
+            </div>
+            <span class="setting-hint">{{ t("main.debug.formal_clip_hint") }}</span>
+          </n-space>
+        </n-card>
+
+        <n-card size="small" :bordered="true" class="debug-card debug-card--wide">
+          <template #header>
             <span class="card-title">{{ t("main.debug.cmd_title") }}</span>
           </template>
 
@@ -301,16 +526,18 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
-import { useSettingsStore } from "@/domains/settings/settings-state";
 import {
   buildDebugDemoOptions,
   canToggleDemoPause,
   debugPauseCommand,
+  debugSettingPreview,
   useDebugDemoSelection,
   useDebugSession,
-} from "@/domains/debug";
-import { demoList, selectedEntry } from "@/domains/demo/demo-state";
+  useDebugSettingsDraft,
+  type DebugSwitchKey,
+} from "@/domains/debug";import { demoList, selectedEntry } from "@/domains/demo/demo-state";
 import type {
+  ClipSettings,
   DebugCommandResponse,
   DebugLaunchRequest,
   DebugLaunchResolution,
@@ -327,8 +554,13 @@ interface DebugRecordingResult {
   status: string;
 }
 
+interface LiveSettingRow {
+  key: DebugSwitchKey;
+  labelKey: string;
+  hintKey?: string;
+}
+
 const router = useRouter();
-const settingsStore = useSettingsStore();
 const {
   sessionState,
   initialized,
@@ -347,12 +579,27 @@ const {
 } = useDebugSession();
 const { debugDemoKey, ensureDebugDemoSelection, selectDebugDemo } =
   useDebugDemoSelection();
+const {
+  draft: settingsDraft,
+  sourceSettings,
+  plan: settingsPlan,
+  loaded: settingsLoaded,
+  loading: settingsLoading,
+  errorMessage: settingsReadError,
+  planErrorMessage: settingsPlanError,
+  loadDebugSettings,
+  reloadDebugSettings,
+  applyDebugPlan,
+  patchDraft,
+  planItem,
+  toggleCommands,
+  setDebugSwitch,
+} = useDebugSettingsDraft();
 
 const launch = reactive({
   injectPlugin: true,
   povHud: true,
   brandVpk: true,
-  povRadar: false,
   resolution: "4:3" as LaunchResolution,
 });
 
@@ -363,6 +610,11 @@ const playError = ref("");
 const folderError = ref("");
 const pauseError = ref("");
 const pauseRequesting = ref(false);
+const applyError = ref("");
+const recordingApplyError = ref("");
+const applyingAll = ref(false);
+const applyingRecording = ref(false);
+const applyingLifetime = ref(false);
 const recordingResults = ref<DebugRecordingResult[]>([]);
 // The Demo-list watcher must not preempt the import-page default before the
 // first mount-time selection ran.
@@ -370,20 +622,15 @@ let demoSelectionInitialized = false;
 
 // Settings load asynchronously and the launch controls stay editable meanwhile.
 // Each field records whether the user touched it during that window, so the
-// late settings response cannot overwrite a choice the user just made.
+// late settings response cannot overwrite a choice the user just made. The
+// radar has no separate launch field: its only state is the debug draft.
 const loadingDefaults = ref(true);
-const launchTouched = { povHud: false, povRadar: false, resolution: false };
+const launchTouched = { povHud: false, resolution: false };
+const pendingRadarChoice = ref<boolean | null>(null);
 watch(
   () => launch.povHud,
   () => {
     if (loadingDefaults.value) launchTouched.povHud = true;
-  },
-  { flush: "sync" },
-);
-watch(
-  () => launch.povRadar,
-  () => {
-    if (loadingDefaults.value) launchTouched.povRadar = true;
   },
   { flush: "sync" },
 );
@@ -395,6 +642,17 @@ watch(
   { flush: "sync" },
 );
 
+// The console plan must be built from the resolution the session actually
+// uses, not only from the settings snapshot the draft started with.
+watch(
+  () => launch.resolution,
+  (value) => {
+    if (settingsDraft.value.launch_resolution !== value) {
+      patchDraft({ launch_resolution: value });
+    }
+  },
+);
+
 const sessionStatus = computed(() => sessionState.value.status);
 const launchLocked = computed(
   () =>
@@ -404,8 +662,15 @@ const launchLocked = computed(
 );
 const canLaunch = computed(() => !launchLocked.value && !launching.value);
 const canStop = computed(() => sessionStatus.value !== "idle" && !stopping.value);
-const radarDisabled = computed(() => !launch.injectPlugin);
+// Radar is a hot-updatable setting, but its hot-update home is the runtime
+// row: while a session is starting/running/stopping the launch card only
+// mirrors the draft, so every editable radar control sends a real command.
+const radarDisabled = computed(() => !launch.injectPlugin || launchLocked.value);
+const radarRequiresPlugin = computed(() => !launch.injectPlugin);
 const sessionError = computed(() => errorMessage.value || sessionState.value.error);
+const sessionRunningWithoutPlugin = computed(
+  () => sessionStatus.value === "running" && !sessionState.value.plugin_enabled,
+);
 
 const statusLabelKey = computed(() => `main.debug.status_${sessionStatus.value}`);
 const statusTagType = computed(() => {
@@ -456,6 +721,11 @@ const resolutionOptions = computed(() => [
   { label: t("main.settings.resolution_4_3"), value: "4:3" },
   { label: t("main.settings.resolution_4_3_1280x960"), value: "4:3_1280x960" },
 ]);
+const recordQualityOptions = computed(() => [
+  { label: t("main.settings.edit_quality_standard"), value: "standard" },
+  { label: t("main.settings.edit_quality_high"), value: "high" },
+  { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
+]);
 
 /** Quick presets only prepare the shared input; sending stays explicit. */
 const commandPresets = [
@@ -486,6 +756,56 @@ watch(commandText, (text) => {
   if (preset && text !== preset.command) presetKey.value = null;
 });
 
+/** Rows in the runtime group. Commands stay backend-built; this is only layout. */
+const liveSettingRows: LiveSettingRow[] = [
+  { key: "sky_blackout", labelKey: "main.settings.sky_blackout" },
+  { key: "disable_clouds", labelKey: "main.settings.disable_clouds" },
+  { key: "hide_all_ui", labelKey: "main.settings.hide_all_ui" },
+  { key: "hide_player_avatars", labelKey: "main.settings.hide_player_avatars" },
+  {
+    key: "hide_chat_messages",
+    labelKey: "main.settings.hide_chat_messages",
+    hintKey: "main.debug.hint_hide_chat_restore",
+  },
+  { key: "enable_spec_show_xray_zero", labelKey: "main.settings.enable_spec_show_xray_zero" },
+  { key: "enable_voice", labelKey: "main.settings.enable_voice" },
+  {
+    key: "use_shoulder_camera",
+    labelKey: "main.settings.use_shoulder_camera",
+    hintKey: "main.debug.hint_shoulder_restore",
+  },
+  { key: "pov_radar_enabled", labelKey: "main.debug.pov_radar" },
+  {
+    key: "block_kill_feed",
+    labelKey: "main.settings.block_kill_feed",
+    hintKey: "main.debug.hint_kill_feed_clear",
+  },
+];
+
+function rowPreview(key: string): string {
+  return debugSettingPreview(planItem(key));
+}
+
+const effectivePresetLabel = computed(() => {
+  const plan = settingsPlan.value;
+  if (!plan || plan.effective_video_status !== "ready") {
+    return t("main.settings.video_preset_auto");
+  }
+  const preset = (plan.effective_video_preset || "").trim().replace(/_h264$/i, "");
+  const encoder = (plan.effective_video_encoder || "").trim();
+  if (preset && encoder) {
+    return `${preset} (${encoder})`;
+  }
+  return encoder || preset || t("main.settings.video_preset_auto");
+});
+const videoPresetOptions = computed(() => [
+  { label: effectivePresetLabel.value, value: "auto" },
+  { label: t("main.settings.video_preset_c1"), value: "c1" },
+  { label: t("main.settings.video_preset_n1"), value: "n1" },
+  { label: t("main.settings.video_preset_a1"), value: "a1" },
+  { label: t("main.settings.video_preset_i1"), value: "i1" },
+]);
+
 const demoOptions = computed(() => buildDebugDemoOptions(demoList.value));
 const selectedDebugDemo = computed(
   () => demoList.value.find((entry) => entry.key === debugDemoKey.value) ?? null,
@@ -502,6 +822,43 @@ const commandDisabledHint = computed(() => {
   }
   return "";
 });
+
+const canToggleSetting = computed(
+  () =>
+    canSend.value &&
+    settingsLoaded.value &&
+    !settingsLoading.value &&
+    settingsPlan.value !== null &&
+    !applyingAll.value &&
+    !applyingRecording.value &&
+    !applyingLifetime.value,
+);
+const canApplyAll = computed(
+  () =>
+    canSend.value &&
+    settingsLoaded.value &&
+    !settingsLoading.value &&
+    settingsPlan.value !== null &&
+    !applyingAll.value &&
+    !applyingRecording.value &&
+    !applyingLifetime.value,
+);
+const canApplyRecording = computed(
+  () =>
+    canSend.value &&
+    settingsLoaded.value &&
+    !settingsLoading.value &&
+    settingsPlan.value !== null &&
+    !applyingAll.value &&
+    !applyingRecording.value &&
+    !applyingLifetime.value,
+);
+
+// Apply and reload share admission: a reload must not steal the plan request
+// an apply is waiting for (and vice versa).
+const applyingSettings = computed(
+  () => applyingAll.value || applyingRecording.value || applyingLifetime.value,
+);
 
 const canPlay = computed(
   () =>
@@ -545,8 +902,23 @@ const pauseButtonType = computed(() =>
   sessionState.value.demo_paused ? "success" : "warning",
 );
 
+const formalSettings = computed<ClipSettings | null>(() => sourceSettings.value);
+
+function qualityLabel(value: ClipSettings["edit_quality"] | undefined): string {
+  switch (value) {
+    case "standard":
+      return t("main.settings.edit_quality_standard");
+    case "ultra":
+      return t("main.settings.edit_quality_ultra");
+    case "high":
+      return t("main.settings.edit_quality_high");
+    default:
+      return t("main.debug.value_none");
+  }
+}
+
 onMounted(async () => {
-  await Promise.allSettled([initDebugSession(), settingsStore.init()]);
+  await Promise.allSettled([initDebugSession(), loadDebugSettings()]);
   // The debug page keeps its own pending Demo. The import selection is only a
   // first-time default; later import-page changes never override a choice made
   // here.
@@ -569,20 +941,49 @@ watch(demoList, (entries) => {
   ensureDebugDemoSelection(entries);
 });
 
-function applySettingsDefaults() {
-  const settings = settingsStore.draftSettings;
+function applySettingsDefaults(force = false) {
+  const settings = sourceSettings.value;
   // Stop tracking before applying defaults: these assignments are not user edits.
   loadingDefaults.value = false;
+  if (!settings) return;
+  if (force) {
+    // An explicit "reload from formal settings" also drops the pre-launch
+    // choices so the launch options follow the reloaded draft again.
+    launchTouched.povHud = false;
+    launchTouched.resolution = false;
+    pendingRadarChoice.value = null;
+  }
   if (!launchTouched.povHud) launch.povHud = settings.pov_hud_enabled;
-  if (!launchTouched.povRadar) launch.povRadar = settings.pov_radar_enabled;
-  if (!launchTouched.resolution) launch.resolution = settings.launch_resolution;
+  // Resolution lives in the session debug draft, so a route switch keeps the
+  // user's pre-launch choice instead of resetting it from persisted settings.
+  // The draft was initialized from the same settings.
+  if (!launchTouched.resolution) launch.resolution = settingsDraft.value.launch_resolution;
+  // Radar belongs to the draft alone; only a choice made while the initial
+  // read was in flight needs to be pushed back after the late assignment.
+  if (pendingRadarChoice.value !== null) {
+    patchDraft({ pov_radar_enabled: pendingRadarChoice.value });
+    pendingRadarChoice.value = null;
+  }
+}
+
+/**
+ * The launch-card radar and the runtime row are one debug-draft field; the
+ * play-time command is always rebuilt from that draft. Before the settings
+ * read completes the draft is still the placeholder, so remember the choice
+ * and re-apply it after the late assignment.
+ */
+function handleLaunchRadarChange(value: boolean) {
+  if (radarDisabled.value) return;
+  if (loadingDefaults.value) pendingRadarChoice.value = value;
+  patchDraft({ pov_radar_enabled: value });
 }
 
 function applySessionToDraft(state: DebugSessionState) {
   launch.injectPlugin = state.inject_plugin;
   launch.povHud = state.pov_hud_enabled;
   launch.brandVpk = state.brand_enabled;
-  launch.povRadar = state.pov_radar_enabled;
+  // Radar is deliberately not taken from the frozen launch request: the draft
+  // owns the latest runtime state and the locked launch switch displays it.
   launch.resolution = state.launch_resolution;
 }
 
@@ -591,7 +992,7 @@ function buildLaunchRequest(): DebugLaunchRequest {
     inject_plugin: launch.injectPlugin,
     pov_hud_enabled: launch.povHud,
     brand_enabled: launch.brandVpk,
-    pov_radar_enabled: launch.povRadar,
+    pov_radar_enabled: settingsDraft.value.pov_radar_enabled,
     launch_resolution: launch.resolution,
   };
 }
@@ -615,6 +1016,15 @@ async function handleStop() {
   }
 }
 
+/** Reload the debug draft from the persisted settings, not from the page. */
+async function handleReloadSettings() {
+  if (settingsLoading.value || applyingSettings.value) return;
+  const ok = await reloadDebugSettings();
+  if (ok && sessionStatus.value === "idle") {
+    applySettingsDefaults(true);
+  }
+}
+
 function describeCommandError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -632,15 +1042,97 @@ async function sendCommands(commands: string[], errorSink: { value: string }) {
   }
 }
 
+/** A switch click sends exactly one variant from the backend-built plan. */
+async function handleSettingToggle(key: DebugSwitchKey, value: boolean) {
+  setDebugSwitch(key, value);
+  if (!canToggleSetting.value) return;
+  const commands = toggleCommands(key, value);
+  if (commands.length === 0) {
+    applyError.value = t("main.debug.plan_required");
+    return;
+  }
+  await sendCommands(commands, applyError);
+}
+
+function handleLifetimeChange(value: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return;
+  const clamped = Math.min(10, Math.max(1, Math.round(value)));
+  patchDraft({ kill_feed_lifetime: clamped });
+}
+
+async function handleApplyLifetime() {
+  if (!canToggleSetting.value || applyingLifetime.value) return;
+  applyingLifetime.value = true;
+  try {
+    const plan = await applyDebugPlan();
+    const item = plan?.settings.find((entry) => entry.key === "kill_feed_lifetime");
+    if (!item || item.commands.length === 0) {
+      applyError.value = t("main.debug.plan_required");
+      return;
+    }
+    await sendCommands([...item.commands], applyError);
+  } finally {
+    applyingLifetime.value = false;
+  }
+}
+
+/** Apply-all always rebuilds the plan so the sent order matches the draft. */
+async function handleApplyAll() {
+  if (!canApplyAll.value || applyingAll.value) return;
+  applyingAll.value = true;
+  try {
+    const plan = await applyDebugPlan();
+    const commands = plan?.apply_all ?? [];
+    if (commands.length === 0) {
+      applyError.value = t("main.debug.plan_required");
+      return;
+    }
+    await sendCommands([...commands], applyError);
+  } finally {
+    applyingAll.value = false;
+  }
+}
+
+async function handleApplyRecording() {
+  if (!canApplyRecording.value || applyingRecording.value) return;
+  applyingRecording.value = true;
+  try {
+    const plan = await applyDebugPlan();
+    const commands = plan?.recording ?? [];
+    if (commands.length === 0) {
+      recordingApplyError.value = t("main.debug.plan_required");
+      return;
+    }
+    await sendCommands([...commands], recordingApplyError);
+  } finally {
+    applyingRecording.value = false;
+  }
+}
+
+function handleRecordFPSChange(value: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return;
+  patchDraft({ record_fps: Math.min(240, Math.max(1, Math.round(value))) });
+}
+
+function handleRecordQualityChange(value: string | number | null) {
+  if (value !== "standard" && value !== "high" && value !== "ultra") return;
+  patchDraft({ record_quality: value });
+}
+
+function handleVideoPresetChange(value: string | number | null) {
+  if (value !== "auto" && value !== "c1" && value !== "n1" && value !== "a1" && value !== "i1") {
+    return;
+  }
+  patchDraft({ video_preset: value });
+}
+
 /**
- * Debug-draft game commands applied when the Demo can accept them. The launch
- * card currently only owns the POV radar toggle; 05 expands this from the
- * dedicated debug settings draft.
+ * Playback applies the session debug draft's radar state through the
+ * backend-built plan (both on and off), so a runtime toggle is never
+ * overridden by a separate launch-card copy and no command is assembled here.
  */
 function buildPlaybackCommands(): string[] {
-  const commands: string[] = [];
-  if (launch.povRadar) commands.push("csdm_radar_pov 1");
-  return commands;
+  return toggleCommands("pov_radar_enabled", settingsDraft.value.pov_radar_enabled);
 }
 
 async function handlePlayDemo() {
@@ -744,6 +1236,18 @@ function goToImport() {
   justify-content: space-between;
 }
 
+.setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .setting-label {
   color: #c6d1c8;
   font-size: 13px;
@@ -783,6 +1287,33 @@ function goToImport() {
   line-height: 1.5;
 }
 
+.setting-command {
+  color: #b9c6bd;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+}
+
+.setting-command--empty {
+  color: #5f6a63;
+}
+
+.command-preview {
+  border-top: 1px solid #252c27;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.command-preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .control-select {
   width: 180px;
 }
@@ -790,6 +1321,10 @@ function goToImport() {
 .control-select--wide {
   width: 100%;
   max-width: 360px;
+}
+
+.control-number {
+  width: 120px;
 }
 
 .action-row {

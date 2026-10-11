@@ -63,7 +63,7 @@
       "debug": "调试"
     },
     "debug": {
-      "launch_title": "启动",
+      "launch_title": "启动资源",
       "inject_plugin": "启动插件",
       "pov_hud": "POV HUD",
       "brand_watermark": "标识水印",
@@ -131,7 +131,27 @@
       "btn_start_record": "开始录制",
       "btn_stop_record": "停止录制",
       "result_title": "录制结果",
-      "record_empty": "本次会话还没有录制结果。"
+      "record_empty": "本次会话还没有录制结果。",
+      "live_settings_title": "运行时画面/声音",
+      "live_settings_reload": "从正式设置重新加载",
+      "live_settings_apply_all": "应用当前游戏设置",
+      "live_settings_hint": "开关切换会立即发送对应命令；“应用当前游戏设置”按固定顺序发送全部运行时命令。调试草稿只读自正式设置，不会写回。",
+      "apply": "应用",
+      "plan_required": "命令预览尚未就绪，请稍后重试。",
+      "command_preview": "命令预览",
+      "hint_hide_chat_restore": "关闭会发送 hidehud 0，可能清除其他 hidehud 位；首版不做 cvar 快照恢复。",
+      "hint_shoulder_restore": "关闭会发送 c_thirdpersonshoulder 0;cam_command 2，恢复第一人称。",
+      "hint_kill_feed_clear": "关闭会发送 mirv_deathmsg filter clear，会清空当前全部击杀信息过滤器。",
+      "recording_settings_title": "下一段录制",
+      "recording_settings_hint": "录制开始时应用并冻结；录制中不修改。auto 使用后端探测到的实际编码。",
+      "recording_apply": "应用录制设置",
+      "recording_output_dir": "调试输出目录",
+      "effective_preset": "实际编码",
+      "formal_title": "正式工作流专用项",
+      "formal_hint": "以下设置不在调试会话中生效：调试只发送控制台命令，不重编码、不规划击杀窗口。",
+      "formal_clip_hint": "片段规划专用，手动录制不使用。",
+      "value_enabled": "开启",
+      "value_disabled": "关闭"
     },
     "ads": {
       "sponsored_label": "广告/赞助"

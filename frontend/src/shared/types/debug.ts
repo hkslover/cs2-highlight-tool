@@ -74,6 +74,57 @@ export interface DebugPlayDemoResponse {
 }
 
 /**
+ * Session-scoped debug workbench draft of the hot-updatable clip settings.
+ * It is initialized from `GetClipSettings`, never saved back, and is only used
+ * to request the backend-built console command plan.
+ */
+export interface DebugSettingsDraft {
+  pov_radar_enabled: boolean;
+  sky_blackout: boolean;
+  disable_clouds: boolean;
+  hide_all_ui: boolean;
+  hide_player_avatars: boolean;
+  hide_chat_messages: boolean;
+  enable_spec_show_xray_zero: boolean;
+  enable_voice: boolean;
+  use_shoulder_camera: boolean;
+  kill_feed_lifetime: number;
+  block_kill_feed: boolean;
+  record_fps: number;
+  record_quality: ClipSettings["record_quality"];
+  video_preset: ClipSettings["video_preset"];
+  launch_resolution: DebugLaunchResolution;
+}
+
+/**
+ * One row of the backend-built console commands. `commands` describes the
+ * draft's current value; switches also carry their on/off variants so a toggle
+ * click can send the exact command without rebuilding the plan.
+ */
+export interface DebugSettingPlan {
+  key: string;
+  commands: string[];
+  on?: string[];
+  off?: string[];
+}
+
+/**
+ * The debug workbench's built command plan. `apply_all` is the deterministic
+ * order behind "apply current game settings"; `recording` is the
+ * next-recording initialization. The effective video fields are read-only
+ * probe results for `video_preset=auto`.
+ */
+export interface DebugConsolePlan {
+  settings: DebugSettingPlan[];
+  apply_all: string[];
+  recording: string[];
+  effective_video_preset: string;
+  effective_video_encoder: string;
+  effective_video_status: string;
+  record_output_dir: string;
+}
+
+/**
  * Full debug workbench snapshot. Process start, transport connection and
  * debug-protocol readiness are reported separately and must not be conflated.
  */

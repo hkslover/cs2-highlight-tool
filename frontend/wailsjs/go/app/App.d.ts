@@ -41,6 +41,8 @@ export function GetClipActionSettings():Promise<app.ClipActionSettings>;
 
 export function GetClipSettings():Promise<app.ClipSettings>;
 
+export function GetDebugConsolePlan(arg1:app.DebugSettingsDraft):Promise<app.DebugConsolePlan>;
+
 export function GetDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
 
 export function GetDebugSessionState():Promise<app.DebugSessionState>;

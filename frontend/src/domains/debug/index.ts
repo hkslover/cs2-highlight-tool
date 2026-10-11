@@ -22,6 +22,26 @@ export {
 } from "./debugPlaybackPolicy";
 export type { DebugPauseFacts } from "./debugPlaybackPolicy";
 export {
+  DEBUG_SWITCH_KEYS,
+  createDebugSettingsCore,
+  debugSettingCommandsFor,
+  debugSettingPreview,
+  debugSettingsDraftFromClipSettings,
+  emptyDebugSettingsDraft,
+  isDebugSwitchKey,
+} from "./debugSettingsCore";
+export type {
+  DebugSettingsBackend,
+  DebugSettingsCell,
+  DebugSettingsCore,
+  DebugSettingsCoreOptions,
+  DebugSwitchKey,
+} from "./debugSettingsCore";
+export {
+  resetDebugSettingsForWorkspace,
+  useDebugSettingsDraft,
+} from "./debugSettingsStore";
+export {
   ensureDebugDemoSelection,
   initDebugSession,
   launchDebugGame,

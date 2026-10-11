@@ -27,6 +27,9 @@ export type {
   DebugCommandResponse,
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
+  DebugSettingsDraft,
+  DebugSettingPlan,
+  DebugConsolePlan,
 } from "./debug";
 
 export type {

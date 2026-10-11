@@ -134,6 +134,66 @@ export namespace app {
 	        this.commands = source["commands"];
 	    }
 	}
+	export class DebugSettingPlan {
+	    key: string;
+	    commands: string[];
+	    on?: string[];
+	    off?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSettingPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.commands = source["commands"];
+	        this.on = source["on"];
+	        this.off = source["off"];
+	    }
+	}
+	export class DebugConsolePlan {
+	    settings: DebugSettingPlan[];
+	    apply_all: string[];
+	    recording: string[];
+	    effective_video_preset: string;
+	    effective_video_encoder: string;
+	    effective_video_status: string;
+	    record_output_dir: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugConsolePlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.settings = this.convertValues(source["settings"], DebugSettingPlan);
+	        this.apply_all = source["apply_all"];
+	        this.recording = source["recording"];
+	        this.effective_video_preset = source["effective_video_preset"];
+	        this.effective_video_encoder = source["effective_video_encoder"];
+	        this.effective_video_status = source["effective_video_status"];
+	        this.record_output_dir = source["record_output_dir"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DebugLaunchRequest {
 	    inject_plugin: boolean;
 	    pov_hud_enabled: boolean;
@@ -248,6 +308,47 @@ export namespace app {
 	        this.demo_play_pending = source["demo_play_pending"];
 	        this.error = source["error"];
 	        this.updated_at_ms = source["updated_at_ms"];
+	    }
+	}
+	
+	export class DebugSettingsDraft {
+	    pov_radar_enabled: boolean;
+	    sky_blackout: boolean;
+	    disable_clouds: boolean;
+	    hide_all_ui: boolean;
+	    hide_player_avatars: boolean;
+	    hide_chat_messages: boolean;
+	    enable_spec_show_xray_zero: boolean;
+	    enable_voice: boolean;
+	    use_shoulder_camera: boolean;
+	    kill_feed_lifetime: number;
+	    block_kill_feed: boolean;
+	    record_fps: number;
+	    record_quality: string;
+	    video_preset: string;
+	    launch_resolution: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSettingsDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.sky_blackout = source["sky_blackout"];
+	        this.disable_clouds = source["disable_clouds"];
+	        this.hide_all_ui = source["hide_all_ui"];
+	        this.hide_player_avatars = source["hide_player_avatars"];
+	        this.hide_chat_messages = source["hide_chat_messages"];
+	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
+	        this.enable_voice = source["enable_voice"];
+	        this.use_shoulder_camera = source["use_shoulder_camera"];
+	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
+	        this.block_kill_feed = source["block_kill_feed"];
+	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
+	        this.video_preset = source["video_preset"];
+	        this.launch_resolution = source["launch_resolution"];
 	    }
 	}
 	export class DemoStorageStats {

@@ -98,6 +98,7 @@ export const backend: TypedBackendApi = {
   ),
   GetClipActionSettings: bindBackendMethod("GetClipActionSettings"),
   GetClipSettings: bindBackendMethod("GetClipSettings"),
+  GetDebugConsolePlan: bindBackendMethod("GetDebugConsolePlan"),
   GetDebugPluginDLLOverride: bindBackendMethod("GetDebugPluginDLLOverride"),
   GetDebugSessionState: bindBackendMethod("GetDebugSessionState"),
   GetDemoStorageStats: bindBackendMethod("GetDemoStorageStats"),
