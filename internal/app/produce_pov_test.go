@@ -72,7 +72,7 @@ func TestPrepareGameInfoForProduce_InjectsPluginAndPovWhenEnabled(t *testing.T) 
 }
 
 // TestPrepareGameInfoForProduce_DoesNotInjectPovWhenDisabled is a regression
-// guard: PovHudEnabled=false must produce exactly the legacy plugin-only output.
+// guard: PovHudEnabled=false must omit POV while still mounting plugin and brand.
 func TestPrepareGameInfoForProduce_DoesNotInjectPovWhenDisabled(t *testing.T) {
 	env := setupProducePluginTestEnvironment(t)
 	setPovHudEnabled(t, env.exeDir, false)

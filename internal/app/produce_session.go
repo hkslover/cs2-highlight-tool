@@ -79,6 +79,7 @@ type produceSessionState struct {
 	gameInfo        gameInfoSessionState
 	pluginDLL       pluginDLLSessionState
 	pov             povSessionState
+	brand           brandSessionState
 	takeFiles       map[string]ProduceTakeFile
 	takeFileOrder   []string
 	historyItems    map[string]ProduceHistoryItem

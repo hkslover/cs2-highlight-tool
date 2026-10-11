@@ -18,7 +18,7 @@ const (
 // gameinfo.gi. The health check reports needs_repair when any is present as a
 // standalone entry, and RepairGameInfo removes all of them for crash-recovery.
 func knownInjectedSearchPaths() []string {
-	return []string{producegame.SearchPathPlugin, producegame.SearchPathPOV}
+	return []string{producegame.SearchPathPlugin, producegame.SearchPathPOV, producegame.SearchPathBrand}
 }
 
 type GameInfoHealth struct {
@@ -54,7 +54,7 @@ func (a *App) RepairGameInfo() (*GameInfoHealth, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取 gameinfo.gi 失败: %w", err)
 	}
-	// Remove every known injected search path (plugin + POV) so crash-recovery
+	// Remove every known injected search path (plugin + POV + brand) so crash-recovery
 	// repairs residual entries left by either flow.
 	repaired := string(contentBytes)
 	changed := false

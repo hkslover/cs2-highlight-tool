@@ -65,11 +65,10 @@ func (a *App) prepareGameInfoForProduce() error {
 	}
 	content := string(contentBytes)
 
-	// Build the set of search paths to inject in this session. Plugin is always
-	// required; POV is added only when PovHudEnabled. The same path set drives
-	// both the early-return check and the injection loop so the two sides cannot
-	// diverge.
-	targetPaths := []string{producegame.SearchPathPlugin}
+	// Plugin and branding are always required; POV is added only when
+	// PovHudEnabled. Inject branding before POV so its HUD style takes priority.
+	// Use the same path set for the early-return check and the injection loop.
+	targetPaths := []string{producegame.SearchPathPlugin, producegame.SearchPathBrand}
 	if cfg.PovHudEnabled {
 		targetPaths = append(targetPaths, producegame.SearchPathPOV)
 	}
@@ -610,6 +609,9 @@ func (a *App) forceRestoreProduceEnvironmentForEpoch(epoch uint64) error {
 	}
 	if err := a.forceRestorePovForEpoch(epoch); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 POV vpk 失败: %w", err))
+	}
+	if err := a.forceRestoreBrandForEpoch(epoch); err != nil {
+		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复品牌 vpk 失败: %w", err))
 	}
 	if err := a.forceRestoreGameInfoForEpoch(epoch); err != nil {
 		restoreErr = errors.Join(restoreErr, fmt.Errorf("恢复 gameinfo 失败: %w", err))
