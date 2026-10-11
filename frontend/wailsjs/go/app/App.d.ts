@@ -43,6 +43,8 @@ export function GetClipSettings():Promise<app.ClipSettings>;
 
 export function GetDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
 
+export function GetDebugSessionState():Promise<app.DebugSessionState>;
+
 export function GetDemoStorageStats():Promise<app.DemoStorageStats>;
 
 export function GetFiveEPlayerName():Promise<string>;
@@ -74,6 +76,8 @@ export function ImportFiveEMatch(arg1:string):Promise<Array<string>>;
 export function ImportManualDownload(arg1:string):Promise<envsetup.StartupState>;
 
 export function ImportWanmeiMatch(arg1:string):Promise<Array<string>>;
+
+export function LaunchDebugGame(arg1:app.DebugLaunchRequest):Promise<app.DebugSessionState>;
 
 export function ListFiveERecentMatches(arg1:string,arg2:number):Promise<fivee.FiveEMatchListResult>;
 
@@ -122,5 +126,7 @@ export function SaveClipActionSettings(arg1:app.ClipActionSettings):Promise<app.
 export function SaveClipSettings(arg1:app.ClipSettings):Promise<app.ClipSettings>;
 
 export function SetWorkspaceDir(arg1:string):Promise<void>;
+
+export function StopDebugGame():Promise<app.DebugSessionState>;
 
 export function ValidateWorkspaceDir(arg1:string):Promise<app.WorkspaceValidateResult>;

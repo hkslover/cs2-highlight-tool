@@ -78,6 +78,12 @@ type App struct {
 
 	debugPluginDLLMu       sync.Mutex
 	debugPluginDLLOverride string
+
+	// debugStateMu guards the debug workbench runtime pointer. The runtime owns
+	// its own mutex; debugStateMu is only ever held for field reads/writes and
+	// never while waiting on the game process or file I/O.
+	debugStateMu sync.Mutex
+	debugRuntime *debugSessionRuntime
 }
 
 func New(wailsConfigData []byte) *App {
@@ -256,6 +262,13 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	// Never restore game files while an owned CS2 process may still be alive.
 	// A failed stop retains the runtime and its backups for next-start recovery.
+	// The debug session is stopped first: it owns a workspace file reservation
+	// that the session close below would otherwise wait on.
+	if err := a.stopDebugSessionWorker(); err != nil {
+		if ctx != nil {
+			wruntime.LogError(ctx, fmt.Sprintf("stop debug session on shutdown failed: %v", err))
+		}
+	}
 	if err := a.stopProduceSessionWorker(); err != nil {
 		if ctx != nil {
 			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", err))

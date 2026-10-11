@@ -32,6 +32,7 @@
 - 避免锁内执行阻塞 I/O、网络或 runtime 事件发射，不引入锁顺序反转。启动状态更新后通过 `emitState()` 通知前端；制作事件复用现有队列。
 - `GetWorkActivity` 的前端禁用策略不代替后端互斥；文件读写/导出/清理复用现有文件使用权机制。多个调用者共享的长任务（如平台导入）必须用 `beginManagedWorkspaceTaskUse` 的工作目录 context 运行并持有所属准入直到真实任务退出；等待者取消不得取消共享任务，进度与提交等副作用只由真实任务执行。
 - 制作生命周期遵循根文件“制作、剪辑与清理”：活跃会话禁止重复生成，失败收尾保留重试所需状态；未确认进程退出、环境恢复前不得提前释放备份和占用。
+- 调试会话（`app/debug_session.go`、`app/debug_types.go`）是独立 runtime：持有工作目录 context 与文件使用权、环境 epoch、CS2 PID/待确认 HLAE 句柄和 `idle|starting|running|stopping|failed` 状态，复用 `produceLaunchMu` 准入并把占用接入 `produceBusyError`/`GetWorkActivity`，不得只依赖前端禁用按钮。环境准备按显式选项参数化（`gameInfoPrepOptions`、`preparePovForProduceWithOptions`、`prepareBrandForProduceWithOptions`），正式制作保持 plugin+brand+可选 POV 的旧默认；无插件模式必须在会话备份内临时移除残留 `csgo/plugin`，不得删除用户既有 VPK/DLL。未知 PID 保留启动器句柄与备份，确认退出后才恢复环境；失败收尾保留 runtime 供 `StopDebugGame` 重试。`App.Shutdown` 与工作目录关闭先停止调试会话并等待，再停 WS/关闭 Store；切换路由不得触发停止。
 - 剪辑合成一次只允许一个任务：`app/edit_task.go` 的准入拒绝第二个活跃请求而不排队；任务持有工作目录文件使用权、任务专属临时目录和 `O_EXCL` 预留的唯一输出名，只有验证临时视频、确认任务未取消且预留路径仍保有本次文件身份后才 rename 提交并登记 history。失败、超时或取消只清理本任务登记的路径，不得删除已成功提交、被替换对象或其他任务的视频；工作目录取消不得被包装成编码器不可用，也不得触发编码器回退重试，提交成功后不再删除已发布文件。
 - HLAE 启动成功但 CS2 PID 未知时，保留启动器句柄并核对进程枚举；不能因 PID 为空直接恢复环境，也不能关闭归属不明的游戏进程。
 - 涉及会话退出、取消和 FFmpeg 合并时，检查等待、探测及子进程是否遵循现有取消/超时机制，避免收尾后旧任务继续写文件。

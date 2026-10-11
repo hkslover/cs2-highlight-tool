@@ -50,6 +50,14 @@
 - 剪辑通过 `ProbeClipDuration` / `ConcatEditClips` 和 `compose_progress` 协作；不得继续使用源码已移除的工程保存、素材自动匹配等接口。
 - 前端本地事件复用 `src/shared/events.ts` 常量；不要与后端 Wails 事件混淆。订阅与组件/composable 生命周期配对清理。
 
+## 调试工作台
+
+- `/debug` 是调试会话页面，只在品牌点击 10 次激活 debug 后可用；进入/离开不改变正式设置，也不关闭调试游戏。
+- 会话状态由 `src/domains/debug/` 持有：先订阅 `debug_session_state_changed` 再读 `GetDebugSessionState`，按 `updated_at_ms` 与事件/快照优先级合并，事件不得被延迟快照回滚；工作目录切换调用 `resetDebugSessionForWorkspace` 清空本地草稿与旧结果。
+- 启动选项草稿从已确认设置初始化，操作只调用 `LaunchDebugGame`/`StopDebugGame`，不调用 `SaveClipSettings`。`status` 为 `idle|starting|running|stopping|failed`，进程启动、插件连接与 `plugin_ready` 分开展示；后续步骤完成前不得把插件连接当作就绪。
+- 启动后 `inject_plugin`、POV HUD、品牌 VPK、分辨率锁定并标记重启后生效；雷达随插件模式禁用/启用，与 POV HUD 独立。无插件模式显示“未启用插件”，不是连接失败。
+- 启动/停止按钮、忙碌态和错误来自会话 domain；未接入的命令、播放、录制按钮保持禁用并标注待接入。
+
 ## 验证与维护
 
 - 前端代码改动执行 `cd frontend && npm run build`；领域状态或后端适配层改动同时执行 `cd frontend && npm test`；前后端契约变更还须执行 `go test ./...`。

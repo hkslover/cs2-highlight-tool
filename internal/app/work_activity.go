@@ -26,12 +26,16 @@ func (a *App) GetWorkActivity() WorkActivity {
 	// teardownErr is only read after done closes. A failed teardown retains
 	// ownership of files, but a new launch may retry that completed teardown.
 	retained := runtime != nil && (!produceRuntimeDone(runtime) || runtime.teardownErr != nil)
+	debugRetained := a.debugRetainedForActivity()
 	a.managedFilesMu.Lock()
 	storageBusy := a.managedFileUsers > 0 || a.managedFilesClearing
 	a.managedFilesMu.Unlock()
 	session := a.workspaceSnapshot().session
 	closing := session != nil && session.isClosed()
-	return WorkActivity{ProduceBusy: busy, StorageBusy: busy || retained || storageBusy || closing}
+	return WorkActivity{
+		ProduceBusy: busy || debugRetained,
+		StorageBusy: busy || debugRetained || retained || storageBusy || closing,
+	}
 }
 
 // Caller holds produceLaunchMu. Never cancel an active runtime to make room
@@ -45,6 +49,12 @@ func (a *App) produceBusyError() error {
 	a.produceStateMu.Unlock()
 	if !produceRuntimeDone(runtime) {
 		return fmt.Errorf("当前制作会话仍在合成或收尾，请完成后再试")
+	}
+	// A live debug session owns the game environment just like a produce
+	// session; both the produce launch pipeline and directory clearing must be
+	// rejected until it is stopped.
+	if err := a.debugBusyError(); err != nil {
+		return err
 	}
 	return nil
 }

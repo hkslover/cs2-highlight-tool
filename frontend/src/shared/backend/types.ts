@@ -1,6 +1,8 @@
 import type {
   ClipSettings,
+  DebugLaunchRequest,
   DebugPluginDLLOverrideState,
+  DebugSessionState,
   DemoStorageStats,
   FullRoundPOVPlan,
   GeneratePluginJSONBatchRequest,
@@ -100,6 +102,7 @@ export interface BackendApi {
   GetClipActionSettings: () => Promise<ClipActionSettings>;
   GetClipSettings: () => Promise<ClipSettings>;
   GetDebugPluginDLLOverride: () => Promise<DebugPluginDLLOverrideState>;
+  GetDebugSessionState: () => Promise<DebugSessionState>;
   GetDemoStorageStats: () => Promise<DemoStorageStats>;
   GetFiveEPlayerName: () => Promise<string>;
   GetGameInfoHealth: () => Promise<GameInfoHealth>;
@@ -116,6 +119,7 @@ export interface BackendApi {
   ImportFiveEMatch: (matchID: string) => Promise<string[]>;
   ImportManualDownload: (componentID: string) => Promise<StartupState>;
   ImportWanmeiMatch: (matchID: string) => Promise<string[]>;
+  LaunchDebugGame: (request: DebugLaunchRequest) => Promise<DebugSessionState>;
   ListFiveERecentMatches: (
     playerName: string,
     page: number,
@@ -150,6 +154,7 @@ export interface BackendApi {
   ) => Promise<ClipActionSettings>;
   SaveClipSettings: (settings: ClipSettings) => Promise<ClipSettings>;
   SetWorkspaceDir: (path: string) => Promise<void>;
+  StopDebugGame: () => Promise<DebugSessionState>;
   ValidateWorkspaceDir: (path: string) => Promise<WorkspaceValidateResult>;
 }
 

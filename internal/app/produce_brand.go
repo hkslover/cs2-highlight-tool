@@ -18,6 +18,16 @@ type brandSessionState struct {
 
 // prepareBrandForProduce is unconditional: no recording setting controls branding.
 func (a *App) prepareBrandForProduce() error {
+	return a.prepareBrandForProduceWithOptions(true)
+}
+
+// prepareBrandForProduceWithOptions skips installation when branding is
+// disabled for the current (debug) session. A pre-existing brand.vpk is never
+// deleted; the disabled search path is handled by gameinfo preparation.
+func (a *App) prepareBrandForProduceWithOptions(brandEnabled bool) error {
+	if !brandEnabled {
+		return nil
+	}
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return err

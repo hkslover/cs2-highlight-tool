@@ -104,6 +104,26 @@ export namespace app {
 	        this.block_kill_feed = source["block_kill_feed"];
 	    }
 	}
+	export class DebugLaunchRequest {
+	    inject_plugin: boolean;
+	    pov_hud_enabled: boolean;
+	    brand_enabled: boolean;
+	    pov_radar_enabled: boolean;
+	    launch_resolution: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugLaunchRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.inject_plugin = source["inject_plugin"];
+	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.brand_enabled = source["brand_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.launch_resolution = source["launch_resolution"];
+	    }
+	}
 	export class DebugPluginDLLOverrideState {
 	    active: boolean;
 	    path: string;
@@ -116,6 +136,46 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.active = source["active"];
 	        this.path = source["path"];
+	    }
+	}
+	export class DebugSessionState {
+	    session_id: string;
+	    status: string;
+	    inject_plugin: boolean;
+	    pov_hud_enabled: boolean;
+	    brand_enabled: boolean;
+	    pov_radar_enabled: boolean;
+	    launch_resolution: string;
+	    process_started: boolean;
+	    cs2_pid: number;
+	    plugin_enabled: boolean;
+	    plugin_connected: boolean;
+	    plugin_ready: boolean;
+	    plugin_message: string;
+	    error: string;
+	    updated_at_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSessionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
+	        this.status = source["status"];
+	        this.inject_plugin = source["inject_plugin"];
+	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.brand_enabled = source["brand_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.launch_resolution = source["launch_resolution"];
+	        this.process_started = source["process_started"];
+	        this.cs2_pid = source["cs2_pid"];
+	        this.plugin_enabled = source["plugin_enabled"];
+	        this.plugin_connected = source["plugin_connected"];
+	        this.plugin_ready = source["plugin_ready"];
+	        this.plugin_message = source["plugin_message"];
+	        this.error = source["error"];
+	        this.updated_at_ms = source["updated_at_ms"];
 	    }
 	}
 	export class DemoStorageStats {

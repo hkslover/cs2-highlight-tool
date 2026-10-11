@@ -74,6 +74,10 @@ export function GetDebugPluginDLLOverride() {
   return window['go']['app']['App']['GetDebugPluginDLLOverride']();
 }
 
+export function GetDebugSessionState() {
+  return window['go']['app']['App']['GetDebugSessionState']();
+}
+
 export function GetDemoStorageStats() {
   return window['go']['app']['App']['GetDemoStorageStats']();
 }
@@ -136,6 +140,10 @@ export function ImportManualDownload(arg1) {
 
 export function ImportWanmeiMatch(arg1) {
   return window['go']['app']['App']['ImportWanmeiMatch'](arg1);
+}
+
+export function LaunchDebugGame(arg1) {
+  return window['go']['app']['App']['LaunchDebugGame'](arg1);
 }
 
 export function ListFiveERecentMatches(arg1, arg2) {
@@ -232,6 +240,10 @@ export function SaveClipSettings(arg1) {
 
 export function SetWorkspaceDir(arg1) {
   return window['go']['app']['App']['SetWorkspaceDir'](arg1);
+}
+
+export function StopDebugGame() {
+  return window['go']['app']['App']['StopDebugGame']();
 }
 
 export function ValidateWorkspaceDir(arg1) {

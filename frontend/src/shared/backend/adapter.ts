@@ -99,6 +99,7 @@ export const backend: TypedBackendApi = {
   GetClipActionSettings: bindBackendMethod("GetClipActionSettings"),
   GetClipSettings: bindBackendMethod("GetClipSettings"),
   GetDebugPluginDLLOverride: bindBackendMethod("GetDebugPluginDLLOverride"),
+  GetDebugSessionState: bindBackendMethod("GetDebugSessionState"),
   GetDemoStorageStats: bindBackendMethod("GetDemoStorageStats"),
   GetFiveEPlayerName: bindBackendMethod("GetFiveEPlayerName"),
   GetGameInfoHealth: bindBackendMethod("GetGameInfoHealth"),
@@ -115,6 +116,7 @@ export const backend: TypedBackendApi = {
   ImportFiveEMatch: bindBackendMethod("ImportFiveEMatch"),
   ImportManualDownload: bindBackendMethod("ImportManualDownload"),
   ImportWanmeiMatch: bindBackendMethod("ImportWanmeiMatch"),
+  LaunchDebugGame: bindBackendMethod("LaunchDebugGame"),
   ListFiveERecentMatches: bindBackendMethod("ListFiveERecentMatches"),
   ListWanmeiRecentMatches: bindBackendMethod("ListWanmeiRecentMatches"),
   OpenDemoDirectory: bindBackendMethod("OpenDemoDirectory"),
@@ -139,6 +141,7 @@ export const backend: TypedBackendApi = {
   SaveClipActionSettings: bindBackendMethod("SaveClipActionSettings"),
   SaveClipSettings: bindBackendMethod("SaveClipSettings"),
   SetWorkspaceDir: bindBackendMethod("SetWorkspaceDir"),
+  StopDebugGame: bindBackendMethod("StopDebugGame"),
   ValidateWorkspaceDir: bindBackendMethod("ValidateWorkspaceDir"),
 };
 

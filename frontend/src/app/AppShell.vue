@@ -38,6 +38,7 @@ import { backend } from "@/shared/backend";
 import type { ProgressMessage, StartupState } from "@/shared/types";
 import { useSettingsStore } from "@/domains/settings/settings-state";
 import { resetEditDomainForWorkspace } from "@/domains/edit";
+import { resetDebugSessionForWorkspace } from "@/domains/debug";
 import { resetEditSequenceDurationCache } from "@/features/edit/composables/useEditSequenceActions";
 import { preloadAds } from "@/features/ads/composables/useAdsPreload";
 
@@ -159,6 +160,7 @@ function applyState(next: StartupState) {
     settingsStore.resetForWorkspace();
     resetEditDomainForWorkspace();
     resetEditSequenceDurationCache();
+    resetDebugSessionForWorkspace();
   } else if (previousMode === "workspace_init" && next.mode !== "workspace_init") {
     // Keep an always-open settings drawer in sync with the newly selected
     // workspace. init() remains deduplicated for the startup event sequence.

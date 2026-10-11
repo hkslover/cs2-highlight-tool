@@ -17,6 +17,13 @@ export type {
 } from "./app";
 
 export type {
+  DebugSessionStatus,
+  DebugLaunchResolution,
+  DebugLaunchRequest,
+  DebugSessionState,
+} from "./debug";
+
+export type {
   ClipPrimaryView,
   DemoMetadata,
   DemoPlayerInfo,

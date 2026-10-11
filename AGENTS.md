@@ -130,6 +130,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - 录制始终部署并挂载内嵌 `internal/producegame/assets/brand.vpk`，不受设置开关控制；游戏目标为 `game/csgo/brand.vpk`，搜索路径为 `Game\tcsgo/brand.vpk`，与插件路径一起注入，先于可选 POV 路径。沿用 POV 文件生命周期：已有普通 VPK 不覆盖，仅删除本会话创建的文件；启动失败与录制收尾按环境 epoch 回滚，失败保留重试状态。入口为 `internal/app/produce_brand.go` 与 `plugin_generate_launch.go`。
 - `CSDM_WS_PORT` 始终为当前 producews 会话固定的 loopback 端口；`CSDM_LOG_PATH` 指向 `<dataDir>/logs/cs2-server-plugin.log`，插件打不开时按协议回退 `csdm.log`。
 - 仅制作队列成功结束后发送 `end_produce_session`（`payload.request_id`），插件以 `session_exit_ack` 确认并在游戏线程排入 quit。对应连接在有限窗口内断开属于正常收尾，不写 WS 错误或 incident；确认超时再回退 PID 关闭。跨仓库插件行为须另行核验。
+- 调试会话（`internal/app/debug_session.go`、`debug_types.go`）与制作会话互斥但独立：`LaunchDebugGame` 冻结 `DebugLaunchRequest`（`inject_plugin/pov_hud_enabled/brand_enabled/pov_radar_enabled/launch_resolution`），以显式选项准备 gameinfo/plugin DLL/POV/品牌并启动 HLAE；两种模式都注入 `AfxHookSource2.dll`，`inject_plugin=false` 不要求 produce WS、不设置插件连接环境变量，并在本会话的 gameinfo 备份内临时移除残留 `csgo/plugin` 搜索路径。插件模式复用固定 `CSDM_WS_PORT`/`CSDM_LOG_PATH` 并新增 `CSDM_DEBUG_SESSION=<session_id>`；启动选项不写回配置。`GetDebugSessionState`/`StopDebugGame` 使用 `idle|starting|running|stopping|failed`，进程启动、插件连接与调试协议就绪分开报告，插件调试协议就绪由后续步骤实现，不得把已连接报告为 ready。会话活跃时 `produceBusyError`/`GetWorkActivity`、目录清理、正式制作与再次启动互斥；未知 PID 保留启动器句柄与备份，确认退出后才恢复环境。工作目录关闭与 `App.Shutdown` 先停止调试会话再停 WS/Store，切换路由不触发停止。
 - 状态读取：`GetProduceWSState`、`GetProduceQueueState`、`GetProduceTakeSnapshot`、`GetProduceTakeFiles`、`GetProduceHistorySnapshot`。历史的 `history_type=produce_clip|edited_video` 和 `source_label` 为可选字段，缺省按录制片段处理。
 - 剪辑使用 `ProbeClipDuration` / `ConcatEditClips`，后者返回输出路径并发射 `compose_progress`；一次只允许一个合成任务，第二个活跃请求返回忙碌错误而不排队。转场时以后端 ffprobe 探测的时长和 SAR/DAR 为准；入口见 `internal/app/app_edit.go`、`internal/app/edit_ffmpeg.go`、`internal/app/edit_task.go`。
 - 每次合成在 `<outputs>/edit` 下分配带随机后缀的唯一输出名（`O_EXCL` 原子预留）和任务专属临时目录：先写临时视频，验证后才 rename 提交并登记 history；提交前确认任务未取消，并校验预留路径仍是本任务创建的文件，被替换时保留原对象并拒绝覆盖。失败、超时或取消只清理本任务登记的路径，不覆盖既有视频；提交成功后即按成功登记 history，不删除已发布文件。FFprobe/FFmpeg 统一使用任务 context（探测为有限超时，合成超时与工作目录取消分别归类），取消后不进入编码器回退，并等待子进程与输出 reader 结束后才释放文件使用权。
@@ -146,6 +147,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `produce_ws_state_changed`、`produce_queue_state_changed`、`produce_take_status_changed` | `internal/producews/service.go` 的制作状态 |
 | `produce_take_file_changed`、`produce_history_changed` | `internal/app/produce_takefile.go` 的文件与历史快照 |
 | `compose_progress` | `{active, percent, current_step, elapsed_ms, error}` |
+| `debug_session_state_changed` | `internal/app/debug_session.go` 的调试会话快照（含 `session_id/updated_at_ms`），不进入制作队列状态 |
 
 前端本地事件 `clip-settings-saved`、`open-produce-history` 定义于 `frontend/src/shared/events.ts`，与 Wails 事件分开维护。平台进程检查入口为 `CheckPlatformClients` / `RequestClosePlatformClient`；版本说明入口为 `GetPendingChangelog` / `AckChangelog`，首装标记逻辑见 `internal/app/app_changelog.go` 和 `internal/config/config.go`。
 

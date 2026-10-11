@@ -69,9 +69,22 @@
             </div>
 
             <div class="action-row">
-              <n-button type="primary" disabled>{{ t("main.debug.btn_launch") }}</n-button>
-              <n-button secondary disabled>{{ t("main.debug.btn_stop") }}</n-button>
-              <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
+              <n-button
+                type="primary"
+                :loading="launching"
+                :disabled="!canLaunch"
+                @click="handleLaunch"
+              >
+                {{ t("main.debug.btn_launch") }}
+              </n-button>
+              <n-button
+                secondary
+                :loading="stopping"
+                :disabled="!canStop"
+                @click="handleStop"
+              >
+                {{ t("main.debug.btn_stop") }}
+              </n-button>
             </div>
           </n-space>
         </n-card>
@@ -84,13 +97,32 @@
           <n-space vertical :size="12">
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.session_state") }}</span>
-              <n-tag size="small" :bordered="false">{{ t("main.debug.session_idle") }}</n-tag>
+              <n-tag size="small" :bordered="false" :type="statusTagType">
+                {{ t(statusLabelKey) }}
+              </n-tag>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.process_state") }}</span>
+              <n-tag size="small" :bordered="false">
+                {{ sessionState.process_started ? t("main.debug.process_started") : t("main.debug.process_stopped") }}
+              </n-tag>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.cs2_pid") }}</span>
+              <span class="setting-value">{{ sessionState.cs2_pid > 0 ? sessionState.cs2_pid : t("main.debug.value_none") }}</span>
             </div>
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.plugin_state") }}</span>
-              <n-tag size="small" :bordered="false">{{ t("main.debug.not_wired") }}</n-tag>
+              <span class="setting-value setting-value--wrap">{{ sessionState.plugin_message || t("main.debug.value_none") }}</span>
             </div>
-            <span class="setting-hint">{{ t("main.debug.session_hint") }}</span>
+            <div class="setting-row">
+              <span class="setting-label">{{ t("main.debug.session_id") }}</span>
+              <span class="setting-value setting-value--path">{{ sessionState.session_id || t("main.debug.value_none") }}</span>
+            </div>
+            <n-alert v-if="sessionError" type="error" :bordered="false" size="small">
+              {{ sessionError }}
+            </n-alert>
+            <span v-if="!initialized && !sessionError" class="setting-hint">{{ t("main.debug.session_hint") }}</span>
           </n-space>
         </n-card>
 
@@ -118,6 +150,7 @@
             <n-button size="small" type="primary" disabled>
               {{ t("main.debug.btn_play_demo") }}
             </n-button>
+            <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
           </div>
         </n-card>
 
@@ -139,6 +172,7 @@
                 {{ t(item.labelKey) }}
               </n-button>
             </div>
+            <span class="setting-hint">{{ t("main.debug.not_wired") }}</span>
           </n-space>
         </n-card>
 
@@ -193,11 +227,16 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "@/shared/i18n";
 import { useSettingsStore } from "@/domains/settings/settings-state";
+import { useDebugSession } from "@/domains/debug";
 import { selectedEntry } from "@/domains/demo/demo-state";
-import type { ClipSettings } from "@/shared/types/clips";
+import type {
+  DebugLaunchRequest,
+  DebugLaunchResolution,
+  DebugSessionState,
+} from "@/shared/types";
 
 type DebugPluginMode = "plugin" | "none";
-type LaunchResolution = ClipSettings["launch_resolution"];
+type LaunchResolution = DebugLaunchResolution;
 
 interface DebugRecordingResult {
   id: string;
@@ -207,11 +246,16 @@ interface DebugRecordingResult {
 
 const router = useRouter();
 const settingsStore = useSettingsStore();
-
-// Temporary UI draft. Step 02 replaces this local flag with the backend debug
-// session state; until then no launch/recording API exists and every action
-// stays disabled, so nothing here claims a running game or a live connection.
-const sessionRunning = ref(false);
+const {
+  sessionState,
+  initialized,
+  launching,
+  stopping,
+  errorMessage,
+  initDebugSession,
+  launchDebugGame,
+  stopDebugGame,
+} = useDebugSession();
 
 const launch = reactive({
   pluginMode: "plugin" as DebugPluginMode,
@@ -251,8 +295,32 @@ watch(
   { flush: "sync" },
 );
 
-const launchLocked = computed(() => sessionRunning.value);
+const sessionStatus = computed(() => sessionState.value.status);
+const launchLocked = computed(
+  () =>
+    sessionStatus.value === "starting" ||
+    sessionStatus.value === "running" ||
+    sessionStatus.value === "stopping",
+);
+const canLaunch = computed(() => !launchLocked.value && !launching.value);
+const canStop = computed(() => sessionStatus.value !== "idle" && !stopping.value);
 const radarDisabled = computed(() => launch.pluginMode === "none");
+const sessionError = computed(() => errorMessage.value || sessionState.value.error);
+
+const statusLabelKey = computed(() => `main.debug.status_${sessionStatus.value}`);
+const statusTagType = computed(() => {
+  switch (sessionStatus.value) {
+    case "running":
+      return "success";
+    case "starting":
+    case "stopping":
+      return "warning";
+    case "failed":
+      return "error";
+    default:
+      return "default";
+  }
+});
 
 const pluginModeOptions = computed(() => [
   { label: t("main.debug.plugin_mode_plugin"), value: "plugin" },
@@ -273,20 +341,60 @@ const quickCommands = [
 ];
 
 onMounted(async () => {
-  // The debug draft starts from the confirmed settings, but never writes back
-  // to them: debug actions must not change the production configuration.
-  try {
-    await settingsStore.init();
-  } catch {
-    // Keep the placeholder draft; the debug page does not persist settings.
+  await Promise.allSettled([initDebugSession(), settingsStore.init()]);
+  // A session that is already running owns the frozen launch options; otherwise
+  // the draft starts from the confirmed settings without ever writing back.
+  if (sessionStatus.value !== "idle") {
+    applySessionToDraft(sessionState.value);
+    loadingDefaults.value = false;
+    return;
   }
+  applySettingsDefaults();
+});
+
+function applySettingsDefaults() {
   const settings = settingsStore.draftSettings;
   // Stop tracking before applying defaults: these assignments are not user edits.
   loadingDefaults.value = false;
   if (!launchTouched.povHud) launch.povHud = settings.pov_hud_enabled;
   if (!launchTouched.povRadar) launch.povRadar = settings.pov_radar_enabled;
   if (!launchTouched.resolution) launch.resolution = settings.launch_resolution;
-});
+}
+
+function applySessionToDraft(state: DebugSessionState) {
+  launch.pluginMode = state.inject_plugin ? "plugin" : "none";
+  launch.povHud = state.pov_hud_enabled;
+  launch.brandVpk = state.brand_enabled;
+  launch.povRadar = state.pov_radar_enabled;
+  launch.resolution = state.launch_resolution;
+}
+
+function buildLaunchRequest(): DebugLaunchRequest {
+  return {
+    inject_plugin: launch.pluginMode === "plugin",
+    pov_hud_enabled: launch.povHud,
+    brand_enabled: launch.brandVpk,
+    pov_radar_enabled: launch.povRadar,
+    launch_resolution: launch.resolution,
+  };
+}
+
+async function handleLaunch() {
+  try {
+    const state = await launchDebugGame(buildLaunchRequest());
+    applySessionToDraft(state);
+  } catch {
+    // The core keeps the backend error in `errorMessage` for the session card.
+  }
+}
+
+async function handleStop() {
+  try {
+    await stopDebugGame();
+  } catch {
+    // Keep the failed state visible; the button retries the teardown.
+  }
+}
 
 function goToImport() {
   void router.push("/import");
@@ -350,6 +458,11 @@ function goToImport() {
 .setting-value--path {
   color: #97a49c;
   font-size: 12px;
+}
+
+.setting-value--wrap {
+  color: #c6d1c8;
+  white-space: normal;
 }
 
 .setting-control {
