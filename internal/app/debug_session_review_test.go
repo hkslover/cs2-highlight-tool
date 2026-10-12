@@ -248,6 +248,10 @@ func TestDebugRetainedSessionBlocksDirectoryClear(t *testing.T) {
 	exeDir := t.TempDir()
 	app := newTestApp(t, exeDir)
 	launchDebugForReview(t, app)
+	// Force the teardown failure explicitly: relying on the natural path would
+	// depend on closeCS2ProcessByPID failing for the fake PID, which only
+	// happens on non-Windows builds (Windows treats a missing PID as exited).
+	closeCS2ProcessByPIDFn = func(pid int) error { return errors.New("close failed") }
 	if err := app.stopDebugSessionWorker(); err == nil {
 		t.Fatal("expected the debug stop to fail")
 	}

@@ -1182,10 +1182,13 @@ func TestService_SendCommandToConnRejectsStaleConnection(t *testing.T) {
 	defer svc.Stop()
 
 	first := mustConnectGameClient(t, svc.Address())
-	firstID := svc.GameConnID()
-	if firstID == 0 {
-		t.Fatal("first client has no connection id")
-	}
+	// The server assigns the connection id on its own goroutine, so wait for it
+	// instead of reading it synchronously right after Dial.
+	var firstID uint64
+	waitFor(t, 2*time.Second, func() bool {
+		firstID = svc.GameConnID()
+		return firstID != 0
+	})
 	_ = first.Close()
 
 	second := mustConnectGameClient(t, svc.Address())

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -289,6 +290,12 @@ func TestPlayDebugDemoRejectsMissingFile(t *testing.T) {
 }
 
 func TestPlayDebugDemoRejectsPathThatCannotBeQuoted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows filenames cannot contain a double quote, so the fixture path
+		// cannot be created there. TestValidateDebugPlaybackPathRejectsUnquotablePaths
+		// covers the validator on every platform.
+		t.Skip("Windows filenames cannot contain a double quote")
+	}
 	app, _, conn := launchDebugPluginSessionForCommandTest(t)
 	sessionID := app.GetDebugSessionState().SessionID
 	sendDebugReady(t, conn, sessionID, DebugProtocolVersion)
@@ -297,6 +304,20 @@ func TestPlayDebugDemoRejectsPathThatCannotBeQuoted(t *testing.T) {
 	quoted := writeManagedDebugDemo(t, app.exeDir, filepath.Join("raw", `we"ird.dem`))
 	if _, err := app.PlayDebugDemo(DebugPlayDemoRequest{DemoPath: quoted}); err == nil {
 		t.Fatal("a path that cannot be safely quoted was accepted")
+	}
+}
+
+// TestValidateDebugPlaybackPathRejectsUnquotablePaths exercises the quoting
+// guard directly so the check stays covered on Windows, where the file-based
+// test above cannot create its fixture.
+func TestValidateDebugPlaybackPathRejectsUnquotablePaths(t *testing.T) {
+	for _, path := range []string{`we"ird.dem`, "line\nbreak.dem", "carriage\rreturn.dem", "bell\x07.dem"} {
+		if err := validateDebugPlaybackPath(path); err == nil {
+			t.Fatalf("path %q was accepted although it cannot be safely quoted", path)
+		}
+	}
+	if err := validateDebugPlaybackPath(filepath.Join("raw", "normal.dem")); err != nil {
+		t.Fatalf("a normal path was rejected: %v", err)
 	}
 }
 
