@@ -30,20 +30,6 @@
             </div>
 
             <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.pov_radar") }}</span>
-              <div class="setting-control">
-                <n-switch
-                  :value="settingsDraft.pov_radar_enabled"
-                  :disabled="radarDisabled"
-                  @update:value="handleLaunchRadarChange"
-                />
-                <span v-if="radarRequiresPlugin" class="setting-hint">
-                  {{ t("main.debug.pov_radar_requires_plugin") }}
-                </span>
-              </div>
-            </div>
-
-            <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.resolution") }}</span>
               <div class="setting-control">
                 <n-select
@@ -112,7 +98,6 @@
             <n-alert v-if="sessionError" type="error" :bordered="false" size="small">
               {{ sessionError }}
             </n-alert>
-            <span v-if="!initialized && !sessionError" class="setting-hint">{{ t("main.debug.session_hint") }}</span>
           </n-space>
         </n-card>
 
@@ -155,7 +140,6 @@
                 </n-button>
               </div>
             </div>
-            <n-empty v-else size="small" :description="t('main.debug.demo_empty')" />
 
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.demo_playback_state") }}</span>
@@ -171,9 +155,6 @@
             </div>
 
             <div class="action-row">
-              <n-button size="small" secondary @click="goToImport">
-                {{ t("main.debug.btn_back_import") }}
-              </n-button>
               <n-button
                 size="small"
                 type="primary"
@@ -193,8 +174,6 @@
                 {{ pauseButtonLabel }}
               </n-button>
             </div>
-            <span v-if="!canPlay && playDisabledHint" class="setting-hint">{{ playDisabledHint }}</span>
-            <span v-if="!canTogglePause && pauseDisabledHint" class="setting-hint">{{ pauseDisabledHint }}</span>
             <n-alert v-if="playError" type="error" :bordered="false" size="small">
               {{ playError }}
             </n-alert>
@@ -219,111 +198,23 @@
           </n-space>
         </n-card>
 
-        <n-card size="small" :bordered="true" class="debug-card debug-card--wide">
-          <template #header>
-            <span class="card-title">{{ t("main.debug.live_settings_title") }}</span>
-          </template>
-          <template #header-extra>
-            <n-space :size="8" align="center">
-              <n-button
-                size="tiny"
-                secondary
-                :loading="settingsLoading"
-                :disabled="settingsLoading || applyingSettings"
-                @click="handleReloadSettings"
-              >
-                {{ t("main.debug.live_settings_reload") }}
-              </n-button>
-              <n-button
-                size="tiny"
-                type="primary"
-                :loading="applyingAll"
-                :disabled="!canApplyAll"
-                @click="handleApplyAll"
-              >
-                {{ t("main.debug.live_settings_apply_all") }}
-              </n-button>
-            </n-space>
-          </template>
-
-          <n-space vertical :size="10">
-            <span class="setting-hint">{{ t("main.debug.live_settings_hint") }}</span>
-
-            <n-alert v-if="settingsReadError" type="error" :bordered="false" size="small">
-              {{ settingsReadError }}
-            </n-alert>
-            <n-alert v-if="settingsPlanError" type="warning" :bordered="false" size="small">
-              {{ settingsPlanError }}
-            </n-alert>
-            <n-alert v-if="applyError" type="error" :bordered="false" size="small">
-              {{ applyError }}
-            </n-alert>
-
-            <div class="setting-list">
-              <div v-for="row in liveSettingRows" :key="row.key" class="setting-field">
-                <div class="setting-row">
-                  <span class="setting-label">{{ t(row.labelKey) }}</span>
-                  <div class="setting-control">
-                    <n-switch
-                      :value="settingsDraft[row.key]"
-                      :disabled="!canToggleSetting"
-                      @update:value="(value: boolean) => handleSettingToggle(row.key, value)"
-                    />
-                  </div>
-                </div>
-                <span v-if="row.hintKey" class="setting-hint">{{ t(row.hintKey) }}</span>
-                <span v-if="row.key === 'pov_radar_enabled' && sessionRunningWithoutPlugin" class="setting-hint">
-                  {{ t("main.debug.pov_radar_requires_plugin") }}
-                </span>
-                <span
-                  class="setting-command"
-                  :class="{ 'setting-command--empty': !rowPreview(row.key) }"
-                >
-                  {{ rowPreview(row.key) || t("main.debug.value_none") }}
-                </span>
-              </div>
-
-              <div class="setting-field">
-                <div class="setting-row">
-                  <span class="setting-label">{{ t("main.settings.kill_feed_lifetime") }}</span>
-                  <div class="setting-control">
-                    <n-input-number
-                      :value="settingsDraft.kill_feed_lifetime"
-                      :min="1"
-                      :max="10"
-                      :step="1"
-                      :precision="0"
-                      :disabled="!settingsLoaded"
-                      class="control-number"
-                      @update:value="handleLifetimeChange"
-                    />
-                    <n-button
-                      size="tiny"
-                      secondary
-                      :disabled="!canToggleSetting"
-                      @click="handleApplyLifetime"
-                    >
-                      {{ t("main.debug.apply") }}
-                    </n-button>
-                  </div>
-                </div>
-                <span class="setting-command">
-                  {{ rowPreview("kill_feed_lifetime") || t("main.debug.value_none") }}
-                </span>
-              </div>
-            </div>
-
-            <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
-          </n-space>
-        </n-card>
-
         <n-card size="small" :bordered="true" class="debug-card">
           <template #header>
             <span class="card-title">{{ t("main.debug.recording_settings_title") }}</span>
           </template>
+          <template #header-extra>
+            <n-button
+              size="tiny"
+              secondary
+              :loading="settingsLoading"
+              :disabled="settingsLoading || applyingRecording"
+              @click="handleReloadSettings"
+            >
+              {{ t("main.debug.recording_reload") }}
+            </n-button>
+          </template>
 
           <n-space vertical :size="10">
-            <span class="setting-hint">{{ t("main.debug.recording_settings_hint") }}</span>
             <div class="setting-row">
               <span class="setting-label">{{ t("main.settings.record_fps") }}</span>
               <div class="setting-control">
@@ -383,60 +274,26 @@
               >
                 {{ t("main.debug.recording_apply") }}
               </n-button>
-              <span v-if="!canApplyRecording" class="setting-hint">{{ commandDisabledHint }}</span>
             </div>
             <n-alert v-if="recordingApplyError" type="error" :bordered="false" size="small">
               {{ recordingApplyError }}
             </n-alert>
-            <div v-if="settingsPlan && settingsPlan.recording.length > 0" class="command-preview">
-              <span class="setting-label">{{ t("main.debug.command_preview") }}</span>
-              <div class="command-preview__list">
-                <span v-for="command in settingsPlan.recording" :key="command" class="setting-command">
-                  {{ command }}
-                </span>
-              </div>
-            </div>
-          </n-space>
-        </n-card>
-
-        <n-card size="small" :bordered="true" class="debug-card">
-          <template #header>
-            <span class="card-title">{{ t("main.debug.formal_title") }}</span>
-          </template>
-
-          <n-space vertical :size="10">
-            <span class="setting-hint">{{ t("main.debug.formal_hint") }}</span>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.edit_fps") }}</span>
-              <span class="setting-value">{{ formalSettings?.edit_fps ?? t("main.debug.value_none") }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.edit_quality") }}</span>
-              <span class="setting-value">{{ qualityLabel(formalSettings?.edit_quality) }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.killer_pre_seconds") }}</span>
-              <span class="setting-value">{{ formalSettings?.killer_pre_seconds ?? t("main.debug.value_none") }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.killer_post_seconds") }}</span>
-              <span class="setting-value">{{ formalSettings?.killer_post_seconds ?? t("main.debug.value_none") }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.victim_pre_seconds") }}</span>
-              <span class="setting-value">{{ formalSettings?.victim_pre_seconds ?? t("main.debug.value_none") }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.victim_post_seconds") }}</span>
-              <span class="setting-value">{{ formalSettings?.victim_post_seconds ?? t("main.debug.value_none") }}</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.settings.auto_add_victim") }}</span>
-              <span class="setting-value">
-                {{ formalSettings?.auto_add_victim_view ? t("main.debug.value_enabled") : t("main.debug.value_disabled") }}
-              </span>
-            </div>
-            <span class="setting-hint">{{ t("main.debug.formal_clip_hint") }}</span>
+            <n-collapse
+              v-if="settingsPlan && settingsPlan.recording.length > 0"
+              class="command-collapse"
+            >
+              <n-collapse-item :title="t('main.debug.command_preview')" name="recording">
+                <div class="command-preview__list">
+                  <span
+                    v-for="command in settingsPlan.recording"
+                    :key="command"
+                    class="setting-command"
+                  >
+                    {{ command }}
+                  </span>
+                </div>
+              </n-collapse-item>
+            </n-collapse>
           </n-space>
         </n-card>
 
@@ -446,14 +303,23 @@
           </template>
 
           <n-space vertical :size="10">
+            <n-alert v-if="settingsReadError" type="error" :bordered="false" size="small">
+              {{ settingsReadError }}
+            </n-alert>
+            <n-alert v-if="settingsPlanError" type="warning" :bordered="false" size="small">
+              {{ settingsPlanError }}
+            </n-alert>
+
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.quick_title") }}</span>
               <n-select
-                :value="presetKey"
-                :options="presetOptions"
+                :value="quickCommandKey"
+                :options="quickCommandSelectOptions"
+                :loading="settingsLoading || planLoading"
+                filterable
                 :placeholder="t('main.debug.quick_placeholder')"
                 class="control-select control-select--wide"
-                @update:value="applyPreset"
+                @update:value="handleQuickCommandSelect"
               />
             </div>
             <n-input
@@ -471,7 +337,6 @@
               >
                 {{ t("main.debug.btn_send") }}
               </n-button>
-              <span v-if="!canSend" class="setting-hint">{{ commandDisabledHint }}</span>
             </div>
             <n-alert v-if="commandError" type="error" :bordered="false" size="small">
               {{ commandError }}
@@ -500,8 +365,6 @@
           </template>
 
           <n-space vertical :size="10">
-            <span class="setting-hint">{{ t("main.debug.record_hint") }}</span>
-
             <div class="setting-row">
               <span class="setting-label">{{ t("main.debug.record_status") }}</span>
               <n-tag size="small" :bordered="false" :type="activeRecordingTagType">
@@ -535,68 +398,71 @@
               >
                 {{ t("main.debug.btn_stop_record") }}
               </n-button>
-              <span v-if="!canStartRecording && recordDisabledHint" class="setting-hint">
-                {{ recordDisabledHint }}
-              </span>
             </div>
-            <span class="setting-hint">{{ t("main.debug.record_custom_note") }}</span>
             <n-alert v-if="recordError" type="error" :bordered="false" size="small">
               {{ recordError }}
             </n-alert>
 
-            <div class="result-head">
-              <span class="setting-label">{{ t("main.debug.result_title") }}</span>
-            </div>
-            <n-empty
-              v-if="recordingResults.length === 0"
-              size="small"
-              :description="t('main.debug.record_empty')"
-            />
-            <div v-else class="recording-list">
-              <div
-                v-for="item in recordingResults"
-                :key="item.recording_id"
-                class="recording-item"
-              >
-                <div class="setting-row">
-                  <span class="setting-label setting-label--id">{{ item.recording_id }}</span>
-                  <div class="setting-control">
-                    <n-tag size="small" :bordered="false" :type="recordingTagType(item.status)">
-                      {{ recordingStatusLabel(item.status) }}
-                    </n-tag>
-                    <n-button size="tiny" secondary @click="handleOpenRecordingFolder(item.recording_id)">
-                      {{ t("main.debug.btn_open_result") }}
-                    </n-button>
-                    <n-button
-                      v-if="item.status === 'failed'"
-                      size="tiny"
-                      type="primary"
-                      :loading="retryingRecording === item.recording_id"
-                      :disabled="recordingBusy"
-                      @click="handleRetryMerge(item.recording_id)"
-                    >
-                      {{ t("main.debug.btn_retry_merge") }}
-                    </n-button>
-                  </div>
-                </div>
-                <div class="setting-row">
-                  <span class="setting-label">{{ t("main.debug.record_demo") }}</span>
-                  <span class="setting-value setting-value--path" :title="item.demo_path">
-                    {{ item.demo_path || t("main.debug.value_none") }}
-                  </span>
-                </div>
-                <div class="setting-row">
-                  <span class="setting-label">{{ t("main.debug.record_final_path") }}</span>
-                  <span
-                    class="setting-value setting-value--path"
-                    :title="item.final_path || item.directory"
-                  >
-                    {{ item.final_path || item.directory || t("main.debug.value_none") }}
-                  </span>
-                </div>
-                <span v-if="item.error" class="setting-hint">{{ item.error }}</span>
+            <template v-if="recordingResults.length > 0">
+              <div class="result-head">
+                <span class="setting-label">{{ t("main.debug.result_title") }}</span>
               </div>
-            </div>
+              <div class="recording-list">
+                <div
+                  v-for="item in recordingResults"
+                  :key="item.recording_id"
+                  class="recording-item"
+                >
+                  <div class="setting-row">
+                    <span class="setting-label setting-label--id">{{ item.recording_id }}</span>
+                    <div class="setting-control">
+                      <n-tag size="small" :bordered="false" :type="recordingTagType(item.status)">
+                        {{ recordingStatusLabel(item.status) }}
+                      </n-tag>
+                      <n-button size="tiny" secondary @click="handleOpenRecordingFolder(item.recording_id)">
+                        {{ t("main.debug.btn_open_result") }}
+                      </n-button>
+                      <n-button
+                        v-if="item.status === 'failed'"
+                        size="tiny"
+                        type="primary"
+                        :loading="retryingRecording === item.recording_id"
+                        :disabled="recordingBusy"
+                        @click="handleRetryMerge(item.recording_id)"
+                      >
+                        {{ t("main.debug.btn_retry_merge") }}
+                      </n-button>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <span class="setting-label">{{ t("main.debug.record_demo") }}</span>
+                    <span class="setting-value setting-value--path" :title="item.demo_path">
+                      {{ item.demo_path || t("main.debug.value_none") }}
+                    </span>
+                  </div>
+                  <div class="setting-row">
+                    <span class="setting-label">{{ t("main.debug.record_created_at") }}</span>
+                    <span class="setting-value">{{ formatCreatedAt(item.started_at_ms) }}</span>
+                  </div>
+                  <div class="setting-row">
+                    <span class="setting-label">{{ t("main.debug.record_source_dir") }}</span>
+                    <span class="setting-value setting-value--path" :title="item.directory">
+                      {{ item.directory || t("main.debug.value_none") }}
+                    </span>
+                  </div>
+                  <div class="setting-row">
+                    <span class="setting-label">{{ t("main.debug.record_final_path") }}</span>
+                    <span class="setting-value setting-value--path" :title="item.final_path">
+                      {{ item.final_path || t("main.debug.value_none") }}
+                    </span>
+                  </div>
+                  <span v-if="item.status === 'failed'" class="setting-hint">
+                    {{ t("main.debug.record_merge_retry_hint") }}
+                  </span>
+                  <span v-if="item.error" class="setting-hint">{{ item.error }}</span>
+                </div>
+              </div>
+            </template>
             <n-alert v-if="recordFolderError" type="error" :bordered="false" size="small">
               {{ recordFolderError }}
             </n-alert>
@@ -609,23 +475,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { t } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
 import {
   buildDebugDemoOptions,
+  buildDebugQuickCommandOptions,
+  DEBUG_QUICK_COMMAND_GROUPS,
   canToggleDemoPause,
   debugPauseCommand,
-  debugSettingPreview,
   useDebugDemoSelection,
   useDebugSession,
   useDebugSettingsDraft,
-  type DebugSwitchKey,
 } from "@/domains/debug";
 import { demoList, selectedEntry } from "@/domains/demo/demo-state";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type {
-  ClipSettings,
   DebugCommandResponse,
   DebugLaunchRequest,
   DebugLaunchResolution,
@@ -638,16 +502,8 @@ import type {
 
 type LaunchResolution = DebugLaunchResolution;
 
-interface LiveSettingRow {
-  key: DebugSwitchKey;
-  labelKey: string;
-  hintKey?: string;
-}
-
-const router = useRouter();
 const {
   sessionState,
-  initialized,
   launching,
   stopping,
   sending,
@@ -677,15 +533,13 @@ const {
   plan: settingsPlan,
   loaded: settingsLoaded,
   loading: settingsLoading,
+  planLoading,
   errorMessage: settingsReadError,
   planErrorMessage: settingsPlanError,
   loadDebugSettings,
   reloadDebugSettings,
   applyDebugPlan,
   patchDraft,
-  planItem,
-  toggleCommands,
-  setDebugSwitch,
 } = useDebugSettingsDraft();
 
 const launch = reactive({
@@ -696,17 +550,14 @@ const launch = reactive({
 });
 
 const commandText = ref("");
-const presetKey = ref<string | null>(null);
+const quickCommandKey = ref<string | null>(null);
 const commandError = ref("");
 const playError = ref("");
 const folderError = ref("");
 const pauseError = ref("");
 const pauseRequesting = ref(false);
-const applyError = ref("");
 const recordingApplyError = ref("");
-const applyingAll = ref(false);
 const applyingRecording = ref(false);
-const applyingLifetime = ref(false);
 const recordError = ref("");
 const recordFolderError = ref("");
 // The Demo-list watcher must not preempt the import-page default before the
@@ -715,11 +566,9 @@ let demoSelectionInitialized = false;
 
 // Settings load asynchronously and the launch controls stay editable meanwhile.
 // Each field records whether the user touched it during that window, so the
-// late settings response cannot overwrite a choice the user just made. The
-// radar has no separate launch field: its only state is the debug draft.
+// late settings response cannot overwrite a choice the user just made.
 const loadingDefaults = ref(true);
 const launchTouched = { povHud: false, resolution: false };
-const pendingRadarChoice = ref<boolean | null>(null);
 watch(
   () => launch.povHud,
   () => {
@@ -755,15 +604,7 @@ const launchLocked = computed(
 );
 const canLaunch = computed(() => !launchLocked.value && !launching.value);
 const canStop = computed(() => sessionStatus.value !== "idle" && !stopping.value);
-// Radar is a hot-updatable setting, but its hot-update home is the runtime
-// row: while a session is starting/running/stopping the launch card only
-// mirrors the draft, so every editable radar control sends a real command.
-const radarDisabled = computed(() => !launch.injectPlugin || launchLocked.value);
-const radarRequiresPlugin = computed(() => !launch.injectPlugin);
 const sessionError = computed(() => errorMessage.value || sessionState.value.error);
-const sessionRunningWithoutPlugin = computed(
-  () => sessionStatus.value === "running" && !sessionState.value.plugin_enabled,
-);
 
 const statusLabelKey = computed(() => `main.debug.status_${sessionStatus.value}`);
 const statusTagType = computed(() => {
@@ -820,64 +661,47 @@ const recordQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
 
-/** Quick presets only prepare the shared input; sending stays explicit. */
-const commandPresets = [
-  { key: "sky-off", labelKey: "main.debug.quick_sky_off", command: "r_drawskybox 0" },
-  { key: "sky-on", labelKey: "main.debug.quick_sky_on", command: "r_drawskybox 1" },
-  { key: "ui-hide", labelKey: "main.debug.quick_ui_hide", command: "cl_draw_only_deathnotices 1" },
-  { key: "ui-show", labelKey: "main.debug.quick_ui_show", command: "cl_draw_only_deathnotices 0" },
-];
-const presetOptions = computed(() =>
-  commandPresets.map((preset) => ({ label: t(preset.labelKey), value: preset.key })),
+/**
+ * Console quick commands built from the backend plan. Selecting one only fills
+ * the shared input; the page never assembles a command string or edits the
+ * debug draft from these options.
+ */
+const quickCommandOptions = computed(() => buildDebugQuickCommandOptions(settingsPlan.value));
+const quickCommandSelectOptions = computed(() =>
+  DEBUG_QUICK_COMMAND_GROUPS.map((group) => ({
+    type: "group" as const,
+    label: t(`main.debug.quick_group_${group}`),
+    key: group,
+    children: quickCommandOptions.value
+      .filter((option) => option.group === group)
+      .map((option) => ({ label: t(option.labelKey), value: option.key })),
+  })).filter((group) => group.children.length > 0),
 );
 
-function applyPreset(key: string | null) {
-  const preset = commandPresets.find((item) => item.key === key);
-  if (!preset) {
-    presetKey.value = null;
+function handleQuickCommandSelect(key: string | null) {
+  const option = quickCommandOptions.value.find((entry) => entry.key === key);
+  if (!option) {
+    quickCommandKey.value = null;
     return;
   }
-  commandText.value = preset.command;
-  presetKey.value = preset.key;
+  commandText.value = option.command;
+  quickCommandKey.value = option.key;
 }
 
-// A manual edit no longer matches the preset it started from, so the dropdown
-// clears. Selecting the same preset again then restores its command instead of
-// being swallowed as "no change".
+// A manual edit no longer matches the selected option, so the dropdown clears.
+// Selecting the same option again then restores its command instead of being
+// swallowed as "no change". A plan refresh that changes the option's command
+// also clears the selection rather than silently keeping a stale command; the
+// shared input keeps whatever the user was editing.
 watch(commandText, (text) => {
-  const preset = commandPresets.find((item) => item.key === presetKey.value);
-  if (preset && text !== preset.command) presetKey.value = null;
+  const option = quickCommandOptions.value.find((entry) => entry.key === quickCommandKey.value);
+  if (option && text !== option.command) quickCommandKey.value = null;
 });
-
-/** Rows in the runtime group. Commands stay backend-built; this is only layout. */
-const liveSettingRows: LiveSettingRow[] = [
-  { key: "sky_blackout", labelKey: "main.settings.sky_blackout" },
-  { key: "disable_clouds", labelKey: "main.settings.disable_clouds" },
-  { key: "hide_all_ui", labelKey: "main.settings.hide_all_ui" },
-  { key: "hide_player_avatars", labelKey: "main.settings.hide_player_avatars" },
-  {
-    key: "hide_chat_messages",
-    labelKey: "main.settings.hide_chat_messages",
-    hintKey: "main.debug.hint_hide_chat_restore",
-  },
-  { key: "enable_spec_show_xray_zero", labelKey: "main.settings.enable_spec_show_xray_zero" },
-  { key: "enable_voice", labelKey: "main.settings.enable_voice" },
-  {
-    key: "use_shoulder_camera",
-    labelKey: "main.settings.use_shoulder_camera",
-    hintKey: "main.debug.hint_shoulder_restore",
-  },
-  { key: "pov_radar_enabled", labelKey: "main.debug.pov_radar" },
-  {
-    key: "block_kill_feed",
-    labelKey: "main.settings.block_kill_feed",
-    hintKey: "main.debug.hint_kill_feed_clear",
-  },
-];
-
-function rowPreview(key: string): string {
-  return debugSettingPreview(planItem(key));
-}
+watch(quickCommandOptions, (options) => {
+  if (!quickCommandKey.value) return;
+  const option = options.find((entry) => entry.key === quickCommandKey.value);
+  if (!option || option.command !== commandText.value) quickCommandKey.value = null;
+});
 
 const effectivePresetLabel = computed(() => {
   const plan = settingsPlan.value;
@@ -907,53 +731,17 @@ const selectedDebugDemo = computed(
 const canSend = computed(
   () => sessionStatus.value === "running" && sessionState.value.plugin_ready && !sending.value,
 );
-const commandDisabledHint = computed(() => {
-  if (sessionStatus.value !== "running") return t("main.debug.cmd_need_session");
-  if (!sessionState.value.plugin_enabled) return t("main.debug.cmd_need_plugin");
-  if (!sessionState.value.plugin_ready) {
-    return sessionState.value.plugin_message || t("main.debug.cmd_need_ready");
-  }
-  return "";
-});
 
-const canToggleSetting = computed(
-  () =>
-    canSend.value &&
-    settingsLoaded.value &&
-    !settingsLoading.value &&
-    settingsPlan.value !== null &&
-    !applyingAll.value &&
-    !applyingRecording.value &&
-    !applyingLifetime.value,
-);
-const canApplyAll = computed(
-  () =>
-    canSend.value &&
-    settingsLoaded.value &&
-    !settingsLoading.value &&
-    settingsPlan.value !== null &&
-    !applyingAll.value &&
-    !applyingRecording.value &&
-    !applyingLifetime.value,
-);
 const canApplyRecording = computed(
   () =>
     canSend.value &&
     settingsLoaded.value &&
     !settingsLoading.value &&
     settingsPlan.value !== null &&
-    !applyingAll.value &&
     !applyingRecording.value &&
-    !applyingLifetime.value &&
     // The next-segment recording settings are frozen while a segment is active;
     // applying them mid-recording would change the running configuration.
     !recordingBusy.value,
-);
-
-// Apply and reload share admission: a reload must not steal the plan request
-// an apply is waiting for (and vice versa).
-const applyingSettings = computed(
-  () => applyingAll.value || applyingRecording.value || applyingLifetime.value,
 );
 
 const canPlay = computed(
@@ -967,12 +755,6 @@ const canPlay = computed(
     !!selectedDebugDemo.value &&
     !!selectedDebugDemo.value.file_path,
 );
-const playDisabledHint = computed(() => {
-  if (!selectedDebugDemo.value) return t("main.debug.demo_empty");
-  if (recordingBusy.value) return t("main.debug.record_busy_demo_hint");
-  if (sessionState.value.demo_play_pending) return t("main.debug.pause_pending_hint");
-  return commandDisabledHint.value;
-});
 const playbackLabel = computed(() =>
   sessionState.value.demo_playing ? t("main.debug.demo_playing") : t("main.debug.demo_stopped"),
 );
@@ -991,9 +773,6 @@ const canTogglePause = computed(() =>
     demoPlaying: sessionState.value.demo_playing,
     demoPlayPending: sessionState.value.demo_play_pending,
   }),
-);
-const pauseDisabledHint = computed(() =>
-  sessionState.value.demo_play_pending ? t("main.debug.pause_pending_hint") : "",
 );
 const pauseButtonLabel = computed(() =>
   sessionState.value.demo_paused ? t("main.debug.btn_resume_demo") : t("main.debug.btn_pause_demo"),
@@ -1022,6 +801,14 @@ const recordingStatusLabels: Record<DebugRecordingStatusValue, string> = {
 
 function recordingStatusLabel(status: DebugRecordingStatusValue): string {
   return t(recordingStatusLabels[status] ?? "main.debug.record_status_failed");
+}
+
+/** Result rows show the segment's local creation time, not only H:M:S. */
+function formatCreatedAt(timestampMs: number): string {
+  if (!timestampMs) return t("main.debug.value_none");
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return t("main.debug.value_none");
+  return date.toLocaleString();
 }
 
 function recordingTagType(
@@ -1069,11 +856,6 @@ const canStopRecording = computed(() => {
     !stoppingRecording.value
   );
 });
-const recordDisabledHint = computed(() => {
-  if (!sessionState.value.demo_playing) return t("main.debug.record_need_play");
-  if (recordingBusy.value) return t("main.debug.record_active_hint");
-  return commandDisabledHint.value || t("main.debug.record_need_session");
-});
 
 async function handleStartRecording() {
   if (!canStartRecording.value) return;
@@ -1118,21 +900,6 @@ async function handleOpenRecordingFolder(recordingID: string) {
   }
 }
 
-const formalSettings = computed<ClipSettings | null>(() => sourceSettings.value);
-
-function qualityLabel(value: ClipSettings["edit_quality"] | undefined): string {
-  switch (value) {
-    case "standard":
-      return t("main.settings.edit_quality_standard");
-    case "ultra":
-      return t("main.settings.edit_quality_ultra");
-    case "high":
-      return t("main.settings.edit_quality_high");
-    default:
-      return t("main.debug.value_none");
-  }
-}
-
 onMounted(async () => {
   await Promise.allSettled([initDebugSession(), loadDebugSettings()]);
   // The debug page keeps its own pending Demo. The import selection is only a
@@ -1167,48 +934,29 @@ function applySettingsDefaults(force = false) {
     // choices so the launch options follow the reloaded draft again.
     launchTouched.povHud = false;
     launchTouched.resolution = false;
-    pendingRadarChoice.value = null;
   }
   if (!launchTouched.povHud) launch.povHud = settings.pov_hud_enabled;
   // Resolution lives in the session debug draft, so a route switch keeps the
   // user's pre-launch choice instead of resetting it from persisted settings.
   // The draft was initialized from the same settings.
   if (!launchTouched.resolution) launch.resolution = settingsDraft.value.launch_resolution;
-  // Radar belongs to the draft alone; only a choice made while the initial
-  // read was in flight needs to be pushed back after the late assignment.
-  if (pendingRadarChoice.value !== null) {
-    patchDraft({ pov_radar_enabled: pendingRadarChoice.value });
-    pendingRadarChoice.value = null;
-  }
-}
-
-/**
- * The launch-card radar and the runtime row are one debug-draft field; the
- * play-time command is always rebuilt from that draft. Before the settings
- * read completes the draft is still the placeholder, so remember the choice
- * and re-apply it after the late assignment.
- */
-function handleLaunchRadarChange(value: boolean) {
-  if (radarDisabled.value) return;
-  if (loadingDefaults.value) pendingRadarChoice.value = value;
-  patchDraft({ pov_radar_enabled: value });
 }
 
 function applySessionToDraft(state: DebugSessionState) {
   launch.injectPlugin = state.inject_plugin;
   launch.povHud = state.pov_hud_enabled;
   launch.brandVpk = state.brand_enabled;
-  // Radar is deliberately not taken from the frozen launch request: the draft
-  // owns the latest runtime state and the locked launch switch displays it.
   launch.resolution = state.launch_resolution;
 }
 
 function buildLaunchRequest(): DebugLaunchRequest {
+  // The launch request never enables the POV radar: radar is a runtime action
+  // sent through the console quick commands, not a launch option.
   return {
     inject_plugin: launch.injectPlugin,
     pov_hud_enabled: launch.povHud,
     brand_enabled: launch.brandVpk,
-    pov_radar_enabled: settingsDraft.value.pov_radar_enabled,
+    pov_radar_enabled: false,
     launch_resolution: launch.resolution,
   };
 }
@@ -1234,7 +982,7 @@ async function handleStop() {
 
 /** Reload the debug draft from the persisted settings, not from the page. */
 async function handleReloadSettings() {
-  if (settingsLoading.value || applyingSettings.value) return;
+  if (settingsLoading.value || applyingRecording.value) return;
   const ok = await reloadDebugSettings();
   if (ok && sessionStatus.value === "idle") {
     applySettingsDefaults(true);
@@ -1255,57 +1003,6 @@ async function sendCommands(commands: string[], errorSink: { value: string }) {
     }
   } catch (error: unknown) {
     errorSink.value = describeCommandError(error);
-  }
-}
-
-/** A switch click sends exactly one variant from the backend-built plan. */
-async function handleSettingToggle(key: DebugSwitchKey, value: boolean) {
-  setDebugSwitch(key, value);
-  if (!canToggleSetting.value) return;
-  const commands = toggleCommands(key, value);
-  if (commands.length === 0) {
-    applyError.value = t("main.debug.plan_required");
-    return;
-  }
-  await sendCommands(commands, applyError);
-}
-
-function handleLifetimeChange(value: number | null) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return;
-  const clamped = Math.min(10, Math.max(1, Math.round(value)));
-  patchDraft({ kill_feed_lifetime: clamped });
-}
-
-async function handleApplyLifetime() {
-  if (!canToggleSetting.value || applyingLifetime.value) return;
-  applyingLifetime.value = true;
-  try {
-    const plan = await applyDebugPlan();
-    const item = plan?.settings.find((entry) => entry.key === "kill_feed_lifetime");
-    if (!item || item.commands.length === 0) {
-      applyError.value = t("main.debug.plan_required");
-      return;
-    }
-    await sendCommands([...item.commands], applyError);
-  } finally {
-    applyingLifetime.value = false;
-  }
-}
-
-/** Apply-all always rebuilds the plan so the sent order matches the draft. */
-async function handleApplyAll() {
-  if (!canApplyAll.value || applyingAll.value) return;
-  applyingAll.value = true;
-  try {
-    const plan = await applyDebugPlan();
-    const commands = plan?.apply_all ?? [];
-    if (commands.length === 0) {
-      applyError.value = t("main.debug.plan_required");
-      return;
-    }
-    await sendCommands([...commands], applyError);
-  } finally {
-    applyingAll.value = false;
   }
 }
 
@@ -1342,15 +1039,6 @@ function handleVideoPresetChange(value: string | number | null) {
   patchDraft({ video_preset: value });
 }
 
-/**
- * Playback applies the session debug draft's radar state through the
- * backend-built plan (both on and off), so a runtime toggle is never
- * overridden by a separate launch-card copy and no command is assembled here.
- */
-function buildPlaybackCommands(): string[] {
-  return toggleCommands("pov_radar_enabled", settingsDraft.value.pov_radar_enabled);
-}
-
 async function handlePlayDemo() {
   const entry = selectedDebugDemo.value;
   if (!entry || !entry.file_path) {
@@ -1359,10 +1047,10 @@ async function handlePlayDemo() {
   }
   playError.value = "";
   try {
-    const result: DebugPlayDemoResponse | null = await playDebugDemo(
-      entry.file_path,
-      buildPlaybackCommands(),
-    );
+    // Playback carries no quick commands: the radar and every other runtime
+    // setting are sent explicitly from the console card and must never be
+    // overwritten by a hidden draft value at play time.
+    const result: DebugPlayDemoResponse | null = await playDebugDemo(entry.file_path, []);
     if (result && result.status !== "executed") {
       playError.value = result.error || t("main.debug.play_failed");
     }
@@ -1408,16 +1096,17 @@ async function handleSendCommand() {
   }
   await sendCommands([raw], commandError);
 }
-
-function goToImport() {
-  void router.push("/import");
-}
 </script>
 
 <style scoped>
 .debug-page {
   height: 100%;
   min-height: 0;
+  /* The debug workbench is a read-out surface: titles, labels, paths, commands
+     and errors must be selectable/copyable. The global app-wide `user-select:
+     none` is overridden only here. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .debug-scroll {
@@ -1450,18 +1139,6 @@ function goToImport() {
   display: flex;
   gap: 12px;
   justify-content: space-between;
-}
-
-.setting-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.setting-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .setting-label {
@@ -1512,22 +1189,15 @@ function goToImport() {
   word-break: break-all;
 }
 
-.setting-command--empty {
-  color: #5f6a63;
-}
-
-.command-preview {
-  border-top: 1px solid #252c27;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 8px;
-}
-
 .command-preview__list {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.command-collapse {
+  border-top: 1px solid #252c27;
+  padding-top: 8px;
 }
 
 .control-select {

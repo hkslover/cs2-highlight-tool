@@ -22,20 +22,24 @@ export {
 } from "./debugPlaybackPolicy";
 export type { DebugPauseFacts } from "./debugPlaybackPolicy";
 export {
-  DEBUG_SWITCH_KEYS,
+  buildDebugQuickCommandOptions,
+  DEBUG_QUICK_COMMAND_GROUPS,
+} from "./debugQuickCommands";
+export type {
+  DebugQuickCommandGroup,
+  DebugQuickCommandOption,
+} from "./debugQuickCommands";
+export {
   createDebugSettingsCore,
   debugSettingCommandsFor,
-  debugSettingPreview,
   debugSettingsDraftFromClipSettings,
   emptyDebugSettingsDraft,
-  isDebugSwitchKey,
 } from "./debugSettingsCore";
 export type {
   DebugSettingsBackend,
   DebugSettingsCell,
   DebugSettingsCore,
   DebugSettingsCoreOptions,
-  DebugSwitchKey,
 } from "./debugSettingsCore";
 export {
   resetDebugSettingsForWorkspace,

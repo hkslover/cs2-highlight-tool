@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   createDebugSettingsCore,
   debugSettingCommandsFor,
-  debugSettingPreview,
   debugSettingsDraftFromClipSettings,
   emptyDebugSettingsDraft,
 } from "../node_modules/.cache/cs2-highlight-tool-backend-tests/domains/debug/debugSettingsCore.js";
@@ -226,20 +225,10 @@ test("toggle commands come from the backend plan variants", () => {
   const sky = plan.settings.find((item) => item.key === "sky_blackout");
   assert.deepEqual(debugSettingCommandsFor(sky, true), ["r_drawskybox 0"]);
   assert.deepEqual(debugSettingCommandsFor(sky, false), ["r_drawskybox 1"]);
-  assert.equal(debugSettingPreview(sky), "r_drawskybox 1");
 
   const lifetime = plan.settings.find((item) => item.key === "kill_feed_lifetime");
   assert.deepEqual(debugSettingCommandsFor(lifetime, true), ["mirv_deathmsg lifetime 4"]);
   assert.equal(debugSettingCommandsFor(undefined, true).length, 0);
-});
-
-test("the core picks toggle commands from its own plan", async () => {
-  const { core } = createCore();
-  assert.deepEqual(core.toggleCommands("sky_blackout", true), []);
-  await core.refreshPlan();
-  assert.deepEqual(core.toggleCommands("sky_blackout", true), ["r_drawskybox 0"]);
-  assert.deepEqual(core.toggleCommands("sky_blackout", false), ["r_drawskybox 1"]);
-  assert.equal(core.planItem("kill_feed_lifetime").commands.length, 1);
 });
 
 test("dispose drops an in-flight load and clears local facts", async () => {

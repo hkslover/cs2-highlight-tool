@@ -5,30 +5,6 @@ import type {
   DebugSettingsDraft,
 } from "@/shared/types";
 
-/**
- * The hot-updatable settings whose rows behave as switches. The page uses this
- * list only to choose between the backend plan's on/off variants; command
- * strings are never assembled here.
- */
-export const DEBUG_SWITCH_KEYS = [
-  "pov_radar_enabled",
-  "sky_blackout",
-  "disable_clouds",
-  "hide_all_ui",
-  "hide_player_avatars",
-  "hide_chat_messages",
-  "enable_spec_show_xray_zero",
-  "enable_voice",
-  "use_shoulder_camera",
-  "block_kill_feed",
-] as const;
-
-export type DebugSwitchKey = (typeof DEBUG_SWITCH_KEYS)[number];
-
-export function isDebugSwitchKey(key: string): key is DebugSwitchKey {
-  return (DEBUG_SWITCH_KEYS as readonly string[]).includes(key);
-}
-
 export interface DebugSettingsBackend {
   getClipSettings: () => Promise<ClipSettings>;
   getConsolePlan: (draft: DebugSettingsDraft) => Promise<DebugConsolePlan>;
@@ -93,7 +69,8 @@ export function debugSettingsDraftFromClipSettings(
 
 /**
  * Pick the command variant for a switch row. The plan's on/off arrays are the
- * only command source; a missing plan yields no command at all.
+ * only command source; a missing plan yields no command at all. A non-switch
+ * row (no variants) falls back to its current `commands`.
  */
 export function debugSettingCommandsFor(
   planItem: DebugSettingPlan | undefined,
@@ -107,11 +84,6 @@ export function debugSettingCommandsFor(
     return [...variant];
   }
   return [...(planItem.commands ?? [])];
-}
-
-/** Preview text of the commands currently built for one row. */
-export function debugSettingPreview(planItem: DebugSettingPlan | undefined): string {
-  return (planItem?.commands ?? []).join(" ; ");
 }
 
 export interface DebugSettingsCore {
@@ -128,9 +100,6 @@ export interface DebugSettingsCore {
   load(force?: boolean): Promise<boolean>;
   refreshPlan(): Promise<DebugConsolePlan | null>;
   patchDraft(patch: Partial<DebugSettingsDraft>): void;
-  planItem(key: string): DebugSettingPlan | undefined;
-  /** Commands for a switch toggle, taken from the latest plan. */
-  toggleCommands(key: string, enabled: boolean): string[];
   dispose(): void;
 }
 
@@ -234,14 +203,6 @@ export function createDebugSettingsCore(
     draft.value = { ...draft.value, ...patch };
   }
 
-  function planItem(key: string): DebugSettingPlan | undefined {
-    return plan.value?.settings.find((item) => item.key === key);
-  }
-
-  function toggleCommands(key: string, enabled: boolean): string[] {
-    return debugSettingCommandsFor(planItem(key), enabled);
-  }
-
   /** Clear local draft facts on a workspace switch; in-flight reads are dropped. */
   function dispose(): void {
     generation++;
@@ -267,8 +228,6 @@ export function createDebugSettingsCore(
     load,
     refreshPlan,
     patchDraft,
-    planItem,
-    toggleCommands,
     dispose,
   };
 }

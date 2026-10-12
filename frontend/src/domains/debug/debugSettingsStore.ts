@@ -3,7 +3,6 @@ import { backend } from "../../shared/backend/adapter.js";
 import {
   createDebugSettingsCore,
   type DebugSettingsCell,
-  type DebugSwitchKey,
 } from "./debugSettingsCore.js";
 import type {
   ClipSettings,
@@ -140,14 +139,6 @@ export function resetDebugSettingsForWorkspace(): void {
   core.dispose();
 }
 
-/**
- * Write one switch row. Every DEBUG_SWITCH_KEYS entry is a boolean draft
- * field, so the union-keyed write stays type-safe.
- */
-function setDebugSwitch(key: DebugSwitchKey, value: boolean): void {
-  core.draft.value[key] = value;
-}
-
 export function useDebugSettingsDraft() {
   return {
     draft: core.draft as Readonly<Ref<DebugSettingsDraft>>,
@@ -161,9 +152,6 @@ export function useDebugSettingsDraft() {
     loadDebugSettings,
     reloadDebugSettings,
     applyDebugPlan,
-    planItem: core.planItem,
-    toggleCommands: core.toggleCommands,
     patchDraft: core.patchDraft,
-    setDebugSwitch,
   };
 }

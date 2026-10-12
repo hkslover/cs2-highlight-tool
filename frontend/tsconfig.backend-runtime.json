@@ -28,6 +28,7 @@
     "src/domains/edit/history.ts",
     "src/domains/debug/debugSessionCore.ts",
     "src/domains/debug/debugSettingsCore.ts",
+    "src/domains/debug/debugQuickCommands.ts",
     "src/domains/debug/debugDemoSelection.ts",
     "src/domains/debug/debugPlaybackPolicy.ts",
     "src/domains/debug/debugSessionStore.ts",
