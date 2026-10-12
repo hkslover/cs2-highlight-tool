@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	"cs2-highlight-tool-v2/internal/config"
-	"cs2-highlight-tool-v2/internal/demo"
 	editdomain "cs2-highlight-tool-v2/internal/edit"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
 	"cs2-highlight-tool-v2/internal/producews"
@@ -95,41 +93,6 @@ func TestResolveEditTrimRange_ValidatesFiniteBoundedNonEmptyRange(t *testing.T) 
 
 func ptrFloat64(value float64) *float64 {
 	return &value
-}
-
-func TestWriteProduceTakeMetadataSidecar_PreservesTimingFields(t *testing.T) {
-	videoPath := filepath.Join(t.TempDir(), "take0000.mp4")
-	item := ProduceHistoryItem{
-		DemoPath:           "match.dem",
-		TakeIndex:          1,
-		View:               "victim",
-		SpecMode:           1,
-		KillIDs:            []string{"kill-1"},
-		Kills:              []demo.ClipKill{{ID: "kill-1", Tick: 1200}},
-		TickRate:           64,
-		RecordStartTick:    1100,
-		RecordEndTick:      1400,
-		KillOffsetsSeconds: []float64{1.5625},
-		VideoPath:          videoPath,
-	}
-	if err := writeProduceTakeMetadataSidecar(videoPath, item); err != nil {
-		t.Fatalf("write sidecar: %v", err)
-	}
-
-	payload, err := os.ReadFile(produceTakeMetadataPath(videoPath))
-	if err != nil {
-		t.Fatalf("read sidecar: %v", err)
-	}
-	var decoded ProduceHistoryItem
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		t.Fatalf("decode sidecar: %v", err)
-	}
-	if decoded.View != "victim" || decoded.RecordStartTick != 1100 || decoded.RecordEndTick != 1400 || decoded.TickRate != 64 {
-		t.Fatalf("sidecar timing fields = %+v", decoded)
-	}
-	if len(decoded.KillOffsetsSeconds) != 1 || decoded.KillOffsetsSeconds[0] != 1.5625 {
-		t.Fatalf("sidecar offsets = %+v", decoded.KillOffsetsSeconds)
-	}
 }
 
 func TestMergeObservedTakeStatusKeepsSourceWindow(t *testing.T) {

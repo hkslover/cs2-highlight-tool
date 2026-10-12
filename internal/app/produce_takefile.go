@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -320,35 +319,8 @@ func (a *App) addProduceHistoryEntry(state *produceSessionRuntime, plan ProduceT
 		CompletedAtMs:      nowMs(),
 	}
 
-	// The in-memory history remains the source for the current session. Keep a
-	// small same-name sidecar beside each merged take so a later tool can recover
-	// the timing markers without changing the recording itself. A sidecar write
-	// is deliberately best-effort: it must never turn a successful recording
-	// into a failed take.
-	_ = writeProduceTakeMetadataSidecar(videoPath, item)
+	// The in-memory history remains the source for the current session.
 	a.appendProduceHistoryItem(key, item)
-}
-
-const produceTakeMetadataSuffix = ".fastedit.json"
-
-func produceTakeMetadataPath(videoPath string) string {
-	return strings.TrimSpace(videoPath) + produceTakeMetadataSuffix
-}
-
-func writeProduceTakeMetadataSidecar(videoPath string, item ProduceHistoryItem) error {
-	path := produceTakeMetadataPath(videoPath)
-	if path == produceTakeMetadataSuffix {
-		return fmt.Errorf("视频路径为空")
-	}
-	payload, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return fmt.Errorf("序列化录制元数据失败: %w", err)
-	}
-	payload = append(payload, '\n')
-	if err := os.WriteFile(path, payload, 0644); err != nil {
-		return fmt.Errorf("写入录制元数据旁车失败: %w", err)
-	}
-	return nil
 }
 
 func (a *App) addEditedHistoryEntry(videoPath string, sourceLabel string) {
