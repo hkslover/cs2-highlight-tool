@@ -96,3 +96,63 @@ func TestBuildPlan_FullRoundPassPrecedesVictimPassAndKeepsSourceID(t *testing.T)
 		t.Fatalf("victim take mismatch: %+v", plan.TakePlans)
 	}
 }
+
+func TestBuildPlan_PovRadarEnabledFlowsIntoPerPassCommands(t *testing.T) {
+	settings := testGenerationSettings()
+	settings.PovRadarEnabled = true
+	input := PlanInput{
+		DemoPath: "/demo/match.dem",
+		Items: []clipsjson.Item{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7}, IncludeKiller: boolPtr(true)},
+			{Kill: demo.ClipKill{ID: "k2", Tick: 900, KillerSlot: 9}, IncludeKiller: boolPtr(true)},
+		},
+		TickRate: 64,
+		Settings: settings,
+	}
+	plan, err := BuildPlan(input)
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if len(plan.TakePlans) != 2 {
+		t.Fatalf("take plans=%d want 2: %+v", len(plan.TakePlans), plan.TakePlans)
+	}
+	// bootstrap + one sequence per killer pass.
+	if len(plan.Sequences) != 3 {
+		t.Fatalf("sequences=%d want 3: %+v", len(plan.Sequences), plan.Sequences)
+	}
+	for _, action := range plan.Sequences[0].Actions {
+		if strings.HasPrefix(action.Cmd, "csdm_radar_pov") {
+			t.Fatalf("bootstrap must not enable the radar: %+v", plan.Sequences[0].Actions)
+		}
+	}
+	for i, sequence := range plan.Sequences[1:] {
+		count := 0
+		for _, action := range sequence.Actions {
+			if action.Cmd == "csdm_radar_pov 1" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("pass %d radar count=%d want 1: %+v", i, count, sequence.Actions)
+		}
+	}
+}
+
+func TestBuildPlan_PovRadarInsufficientStartPropagates(t *testing.T) {
+	settings := testGenerationSettings()
+	settings.PovRadarEnabled = true
+	_, err := BuildPlan(PlanInput{
+		DemoPath: "/demo/match.dem",
+		Items: []clipsjson.Item{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 287, KillerSlot: 7}, IncludeKiller: boolPtr(true)},
+		},
+		TickRate: 64,
+		Settings: settings,
+	})
+	if err == nil {
+		t.Fatal("expected POV radar warm-up error to propagate")
+	}
+	if !strings.Contains(err.Error(), "POV 雷达") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

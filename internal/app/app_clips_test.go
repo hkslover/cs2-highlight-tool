@@ -1503,6 +1503,71 @@ func helperLaunchCommand(_ string, _ ...string) *exec.Cmd {
 	return cmd
 }
 
+func TestGeneratePluginJSON_PovRadarEnabledProducesPerPassSequences(t *testing.T) {
+	exeDir := t.TempDir()
+	app := newTestApp(t, exeDir)
+
+	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1, PovRadarEnabled: true}); err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+
+	demoPath := writeDemoFile(t)
+
+	result, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: false},
+			{Kill: demo.ClipKill{ID: "k2", Tick: 900, KillerSlot: 9, VictimSlot: 12}, IncludeVictim: false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GeneratePluginJSON: %v", err)
+	}
+	// bootstrap + one sequence per killer pass.
+	if result.SequenceCount != 3 {
+		t.Fatalf("sequence_count=%d want 3", result.SequenceCount)
+	}
+	sequences := readGeneratedSequences(t, demoPath+".json")
+	if len(sequences) != 3 {
+		t.Fatalf("sequence len=%d want 3", len(sequences))
+	}
+	assertNoPrefixAction(t, sequences[0].Actions, "csdm_radar_pov")
+	for i, sequence := range sequences[1:] {
+		assertHasAction(t, sequence.Actions, "csdm_radar_pov 1")
+		start := mustFindPluginAction(t, sequence.Actions, "mirv_streams record start")
+		radar := mustFindPluginAction(t, sequence.Actions, "csdm_radar_pov 1")
+		if warmup := start.Tick - radar.Tick; warmup < 128 {
+			t.Fatalf("pass %d warmup=%d ticks want >= 128", i, warmup)
+		}
+	}
+}
+
+func TestGeneratePluginJSON_PovRadarInsufficientStartLeavesNoJSON(t *testing.T) {
+	exeDir := t.TempDir()
+	app := newTestApp(t, exeDir)
+
+	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1, PovRadarEnabled: true}); err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+
+	demoPath := writeDemoFile(t)
+
+	_, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 287, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: false},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "POV 雷达") {
+		t.Fatalf("expected POV radar warm-up error, got: %v", err)
+	}
+	if _, statErr := os.Stat(demoPath + ".json"); !os.IsNotExist(statErr) {
+		t.Fatalf("generation error must not leave a JSON file: %v", statErr)
+	}
+}
+
 func TestHelperProcessLaunchHLAE(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS_LAUNCH_HLAE") != "1" {
 		return
@@ -1550,6 +1615,17 @@ func assertHasAction(t *testing.T, actions []pluginAction, cmd string) {
 		}
 	}
 	t.Fatalf("action %q not found in %#v", cmd, actions)
+}
+
+func mustFindPluginAction(t *testing.T, actions []pluginAction, cmd string) pluginAction {
+	t.Helper()
+	for _, action := range actions {
+		if action.Cmd == cmd {
+			return action
+		}
+	}
+	t.Fatalf("action %q not found in %#v", cmd, actions)
+	return pluginAction{}
 }
 
 func assertNoAction(t *testing.T, actions []pluginAction, cmd string) {

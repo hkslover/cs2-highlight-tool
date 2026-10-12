@@ -20,6 +20,16 @@ const (
 	segmentRecordDelay     = 2
 	segmentSeekSettleSec   = 2.0
 	matchEndSafetySec      = 0.25
+
+	// POV radar per-pass warm-up. povRadarWarmupSeconds is Demo time: when
+	// `pov_radar_enabled` is on, every recording pass switches the camera, enables
+	// the radar and then plays at least this much Demo time before
+	// `mirv_streams record start`. povRadarSpecPlayerToRadar keeps the radar
+	// command after the camera switch; povRadarSpecModeToSpecPlayer mirrors the
+	// legacy spec_mode -> spec_player spacing so the switch order stays stable.
+	povRadarWarmupSeconds        = 2.0
+	povRadarSpecPlayerToRadar    = 2
+	povRadarSpecModeToSpecPlayer = segmentSpecPlayerDelay - segmentSpecModeDelay
 )
 
 const shoulderCameraCommand = "cam_command 1;cam_idealdist 30;cam_idealyaw 0;cam_idealpitch 0;c_thirdpersonshoulder 1;c_thirdpersonshoulderaimdist 300;c_thirdpersonshoulderdist 40;c_thirdpersonshoulderheight 2;c_thirdpersonshoulderoffset 20;"
@@ -177,7 +187,6 @@ type bootstrapOptions struct {
 	HidePlayerAvatars  bool
 	HideChatMessages   bool
 	UseShoulderCamera  bool
-	PovRadarEnabled    bool
 	SkyBlackout        bool
 	DisableClouds      bool
 	KillFeedLifetime   int
@@ -261,10 +270,14 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 
 	killerSegments := buildKillerSegments(normalized, tickRate, preTicks, postTicks, matchEndBoundTick)
 	victimSegments := buildVictimSegments(normalized, tickRate, victimPreTicks, victimPostTicks, matchEndBoundTick)
-	sequences, takePlans := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, tickRate, buildPassCommandOptions{
-		ForceVoice: opts.ForcePerPassVoiceCommands,
-		ForceXray:  opts.ForcePerPassXrayCommands,
+	sequences, takePlans, err := buildMaterialSequences(opts.FullRoundPOVSegments, killerSegments, victimSegments, "disconnect", seekSettleTicks, tickRate, buildPassCommandOptions{
+		ForceVoice:      opts.ForcePerPassVoiceCommands,
+		ForceXray:       opts.ForcePerPassXrayCommands,
+		PovRadarEnabled: opts.PovRadarEnabled,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	if bootstrap := buildBootstrapSequence(bootstrapOptions{
 		ActionSettings:     opts.ActionSettings,
@@ -274,7 +287,6 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		HidePlayerAvatars:  opts.HidePlayerAvatars,
 		HideChatMessages:   opts.HideChatMessages,
 		UseShoulderCamera:  opts.UseShoulderCamera,
-		PovRadarEnabled:    opts.PovRadarEnabled,
 		SkyBlackout:        opts.SkyBlackout,
 		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
@@ -519,8 +531,9 @@ func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defau
 }
 
 type buildPassCommandOptions struct {
-	ForceVoice bool
-	ForceXray  bool
+	ForceVoice      bool
+	ForceXray       bool
+	PovRadarEnabled bool
 }
 
 func buildMaterialSequences(
@@ -531,7 +544,7 @@ func buildMaterialSequences(
 	seekSettleTicks int,
 	tickRate float64,
 	passCommandOptions buildPassCommandOptions,
-) ([]Sequence, []TakePlan) {
+) ([]Sequence, []TakePlan, error) {
 	sequences := make([]Sequence, 0, 2+len(victimSegments))
 	takePlans := make([]TakePlan, 0, len(fullRoundSegments)+len(killerSegments)+len(victimSegments))
 	takeCounter := 0
@@ -566,17 +579,6 @@ func buildMaterialSequences(
 			EnableSpecShowXray: seg.EnableSpecShowXray,
 		})
 	}
-	if len(fullRoundPasses) > 0 {
-		command := terminalAction
-		if len(killerSegments) > 0 || len(victimSegments) > 0 {
-			command = "go_to_next_sequence"
-		}
-		actions, plans := buildActionsFromPasses(fullRoundPasses, command, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
-		if len(actions) > 0 {
-			sequences = append(sequences, Sequence{Actions: actions})
-			takePlans = append(takePlans, plans...)
-		}
-	}
 
 	killerPasses := make([]clipPass, 0, len(killerSegments))
 	for _, seg := range killerSegments {
@@ -593,24 +595,10 @@ func buildMaterialSequences(
 			EnableSpecShowXray: seg.EnableSpecShowXray,
 		})
 	}
-	if len(killerPasses) > 0 {
-		command := terminalAction
-		if len(victimSegments) > 0 {
-			command = "go_to_next_sequence"
-		}
-		actions, plans := buildActionsFromPasses(killerPasses, command, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
-		if len(actions) > 0 {
-			sequences = append(sequences, Sequence{Actions: actions})
-			takePlans = append(takePlans, plans...)
-		}
-	}
 
-	for idx, seg := range victimSegments {
-		finalCommand := "go_to_next_sequence"
-		if idx == len(victimSegments)-1 {
-			finalCommand = terminalAction
-		}
-		actions, plans := buildActionsFromPasses([]clipPass{{
+	victimPasses := make([]clipPass, 0, len(victimSegments))
+	for _, seg := range victimSegments {
+		victimPasses = append(victimPasses, clipPass{
 			StartTick:          seg.StartTick,
 			EndTick:            seg.EndTick,
 			Target:             seg.Target,
@@ -621,14 +609,58 @@ func buildMaterialSequences(
 			Round:              seg.Round,
 			EnableVoice:        seg.EnableVoice,
 			EnableSpecShowXray: seg.EnableSpecShowXray,
-		}}, finalCommand, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
+		})
+	}
+
+	groups := buildMaterialPassGroups(fullRoundPasses, killerPasses, victimPasses, passCommandOptions.PovRadarEnabled)
+	for idx, passes := range groups {
+		finalCommand := terminalAction
+		if idx < len(groups)-1 {
+			finalCommand = "go_to_next_sequence"
+		}
+		actions, plans, err := buildActionsFromPasses(passes, finalCommand, &takeCounter, seekSettleTicks, tickRate, passCommandOptions)
+		if err != nil {
+			return nil, nil, err
+		}
 		if len(actions) > 0 {
 			sequences = append(sequences, Sequence{Actions: actions})
 			takePlans = append(takePlans, plans...)
 		}
 	}
 
-	return sequences, takePlans
+	return sequences, takePlans, nil
+}
+
+// buildMaterialPassGroups assembles the material passes into sequence groups in
+// the fixed full-round -> killer -> victim order. Without the POV radar the
+// legacy grouping is kept (all full-round passes share one sequence, all killer
+// passes share another, each victim pass is its own sequence). With the radar
+// enabled every pass gets its own sequence so a later pass can seek back and
+// warm the radar up without switching players during the previous recording.
+func buildMaterialPassGroups(fullRoundPasses, killerPasses, victimPasses []clipPass, radarPerPass bool) [][]clipPass {
+	groups := make([][]clipPass, 0, 2+len(victimPasses))
+	if radarPerPass {
+		for _, pass := range fullRoundPasses {
+			groups = append(groups, []clipPass{pass})
+		}
+		for _, pass := range killerPasses {
+			groups = append(groups, []clipPass{pass})
+		}
+		for _, pass := range victimPasses {
+			groups = append(groups, []clipPass{pass})
+		}
+		return groups
+	}
+	if len(fullRoundPasses) > 0 {
+		groups = append(groups, fullRoundPasses)
+	}
+	if len(killerPasses) > 0 {
+		groups = append(groups, killerPasses)
+	}
+	for _, pass := range victimPasses {
+		groups = append(groups, []clipPass{pass})
+	}
+	return groups
 }
 
 func segSourceID(seg FullRoundPOVSegment) string {
@@ -662,9 +694,6 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	}
 	if opts.SkyBlackout {
 		appendCommand(SkyBlackoutCommand(true))
-	}
-	if opts.PovRadarEnabled {
-		appendCommand(PovRadarCommand(true))
 	}
 	appendCommand(KillFeedLifetimeCommand(opts.KillFeedLifetime))
 	if opts.BlockKillFeed {
@@ -723,9 +752,9 @@ func buildActionsFromPasses(
 	seekSettleTicks int,
 	tickRate float64,
 	passCommandOptions buildPassCommandOptions,
-) ([]Action, []TakePlan) {
+) ([]Action, []TakePlan, error) {
 	if len(passes) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	command := strings.TrimSpace(finalCommand)
 	if command == "" {
@@ -734,9 +763,11 @@ func buildActionsFromPasses(
 	if tickRate <= 0 {
 		tickRate = DefaultTickRate
 	}
+	minSpecModeTick := DefaultActionTick + segmentSpecModeDelay
 
-	actions := make([]Action, 0, len(passes)*5+1)
+	actions := make([]Action, 0, len(passes)*6+1)
 	takePlans := make([]TakePlan, 0, len(passes))
+	lastRecordEndTick := 0
 	for idx, pass := range passes {
 		jumpTick := DefaultActionTick
 		if idx > 0 {
@@ -745,7 +776,48 @@ func buildActionsFromPasses(
 				jumpTick = DefaultActionTick
 			}
 		}
+
+		// The recorder window always comes from the legacy timing so the
+		// exported video never changes when the POV radar is enabled.
+		specModeTick := pass.StartTick + segmentSpecModeDelay
+		if specModeTick < minSpecModeTick {
+			specModeTick = minSpecModeTick
+		}
+		specPlayerTick := pass.StartTick + segmentSpecPlayerDelay
+		if specPlayerTick < DefaultActionTick+segmentSpecPlayerDelay {
+			specPlayerTick = DefaultActionTick + segmentSpecPlayerDelay
+		}
+		startTick := specPlayerTick + segmentRecordDelay
+		if startTick < DefaultActionTick+segmentSpecPlayerDelay+segmentRecordDelay {
+			startTick = DefaultActionTick + segmentSpecPlayerDelay + segmentRecordDelay
+		}
+		endTick := pass.EndTick + 1
+		if endTick < startTick {
+			endTick = startTick
+		}
+		lastRecordEndTick = endTick
+
+		radarTick := 0
+		if passCommandOptions.PovRadarEnabled {
+			// Switch the camera first, enable the radar, then let the Demo play
+			// at least povRadarWarmupSeconds of Demo time before the recorder
+			// starts. Move the whole preparation earlier instead of delaying the
+			// recording, otherwise short clips would lose their kill.
+			warmupTicks := int(math.Ceil(povRadarWarmupSeconds * tickRate))
+			radarTick = startTick - warmupTicks
+			specPlayerTick = radarTick - povRadarSpecPlayerToRadar
+			specModeTick = specPlayerTick - povRadarSpecModeToSpecPlayer
+			if specModeTick < minSpecModeTick {
+				return nil, nil, fmt.Errorf(
+					"Demo 起点不足以完成 POV 雷达两秒预热：%s start_tick=%d spec_mode_tick=%d 低于安全下限 %d；请减少录制前置时间（pre_seconds）或关闭 POV 雷达",
+					describePass(pass), pass.StartTick, specModeTick, minSpecModeTick)
+			}
+		}
+
 		seekTargetTick := pass.StartTick - seekSettleTicks
+		if passCommandOptions.PovRadarEnabled {
+			seekTargetTick = specModeTick - seekSettleTicks
+		}
 		minSeekTargetTick := 0
 		if idx > 0 {
 			minSeekTargetTick = jumpTick
@@ -753,12 +825,14 @@ func buildActionsFromPasses(
 		if seekTargetTick < minSeekTargetTick {
 			seekTargetTick = minSeekTargetTick
 		}
-		actions = append(actions, Action{Cmd: fmt.Sprintf("demo_gototick %d", seekTargetTick), Tick: jumpTick})
-
-		specModeTick := pass.StartTick + segmentSpecModeDelay
-		if specModeTick < DefaultActionTick+segmentSpecModeDelay {
-			specModeTick = DefaultActionTick + segmentSpecModeDelay
+		// Radar passes each start in a fresh sequence at Demo tick 0. A seek
+		// back to (or onto) its own trigger tick would be consumed again when
+		// playback crosses that tick, since the plugin tracks tick crossings,
+		// not consumed actions. Let these early passes play from 0 instead.
+		if !passCommandOptions.PovRadarEnabled || seekTargetTick > jumpTick {
+			actions = append(actions, Action{Cmd: fmt.Sprintf("demo_gototick %d", seekTargetTick), Tick: jumpTick})
 		}
+
 		if passCommandOptions.ForceVoice {
 			voiceValue := voiceIndicesValue(pass.EnableVoice)
 			actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices %d", voiceValue), Tick: specModeTick})
@@ -767,19 +841,10 @@ func buildActionsFromPasses(
 		if passCommandOptions.ForceXray {
 			actions = append(actions, Action{Cmd: fmt.Sprintf("spec_show_xray %d", xrayCommandValue(pass.EnableSpecShowXray)), Tick: specModeTick})
 		}
-		specPlayerTick := pass.StartTick + segmentSpecPlayerDelay
-		if specPlayerTick < DefaultActionTick+segmentSpecPlayerDelay {
-			specPlayerTick = DefaultActionTick + segmentSpecPlayerDelay
-		}
 		actions = append(actions, Action{Cmd: fmt.Sprintf("spec_mode %d", normalizeSpecMode(pass.SpecMode)), Tick: specModeTick})
 		actions = append(actions, Action{Cmd: "spec_player " + pass.Target, Tick: specPlayerTick})
-		startTick := specPlayerTick + segmentRecordDelay
-		if startTick < DefaultActionTick+segmentSpecPlayerDelay+segmentRecordDelay {
-			startTick = DefaultActionTick + segmentSpecPlayerDelay + segmentRecordDelay
-		}
-		endTick := pass.EndTick + 1
-		if endTick < startTick {
-			endTick = startTick
+		if radarTick > 0 {
+			actions = append(actions, Action{Cmd: PovRadarCommand(true), Tick: radarTick})
 		}
 		if takeCounter != nil {
 			*takeCounter = *takeCounter + 1
@@ -826,13 +891,40 @@ func buildActionsFromPasses(
 		}
 	}
 
+	// Never cut the sequence before the recorder has stopped: a very short
+	// clip can clamp the record end past the source window end.
 	disconnectTick := passes[len(passes)-1].EndTick + 1
+	if disconnectTick < lastRecordEndTick {
+		disconnectTick = lastRecordEndTick
+	}
 	actions = append(actions, Action{Cmd: command, Tick: disconnectTick})
 
 	sort.SliceStable(actions, func(i, j int) bool {
 		return actions[i].Tick < actions[j].Tick
 	})
-	return actions, takePlans
+	return actions, takePlans, nil
+}
+
+// describePass identifies one material pass in generation errors without
+// leaking any App or filesystem concerns into this package.
+func describePass(pass clipPass) string {
+	parts := make([]string, 0, 4)
+	if view := strings.TrimSpace(pass.View); view != "" {
+		parts = append(parts, "view="+view)
+	}
+	if sourceID := strings.TrimSpace(pass.SourceID); sourceID != "" {
+		parts = append(parts, "source_id="+sourceID)
+	}
+	if len(pass.KillIDs) > 0 {
+		parts = append(parts, "kill_ids="+strings.Join(pass.KillIDs, ","))
+	}
+	if target := strings.TrimSpace(pass.Target); target != "" {
+		parts = append(parts, "target="+target)
+	}
+	if len(parts) == 0 {
+		return "pass"
+	}
+	return "pass[" + strings.Join(parts, " ") + "]"
 }
 
 func xrayCommandValue(enableSpecShowXray bool) int {
