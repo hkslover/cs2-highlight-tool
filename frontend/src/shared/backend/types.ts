@@ -1,6 +1,15 @@
 import type {
   ClipSettings,
+  DebugCommandRequest,
+  DebugCommandResponse,
+  DebugConsolePlan,
+  DebugLaunchRequest,
+  DebugPlayDemoRequest,
+  DebugPlayDemoResponse,
   DebugPluginDLLOverrideState,
+  DebugRecordingRequest,
+  DebugSessionState,
+  DebugSettingsDraft,
   DemoStorageStats,
   FullRoundPOVPlan,
   GeneratePluginJSONBatchRequest,
@@ -99,7 +108,9 @@ export interface BackendApi {
   ) => Promise<GeneratePluginJSONBatchResult>;
   GetClipActionSettings: () => Promise<ClipActionSettings>;
   GetClipSettings: () => Promise<ClipSettings>;
+  GetDebugConsolePlan: (draft: DebugSettingsDraft) => Promise<DebugConsolePlan>;
   GetDebugPluginDLLOverride: () => Promise<DebugPluginDLLOverrideState>;
+  GetDebugSessionState: () => Promise<DebugSessionState>;
   GetDemoStorageStats: () => Promise<DemoStorageStats>;
   GetFiveEPlayerName: () => Promise<string>;
   GetGameInfoHealth: () => Promise<GameInfoHealth>;
@@ -116,12 +127,15 @@ export interface BackendApi {
   ImportFiveEMatch: (matchID: string) => Promise<string[]>;
   ImportManualDownload: (componentID: string) => Promise<StartupState>;
   ImportWanmeiMatch: (matchID: string) => Promise<string[]>;
+  LaunchDebugGame: (request: DebugLaunchRequest) => Promise<DebugSessionState>;
   ListFiveERecentMatches: (
     playerName: string,
     page: number,
   ) => Promise<FiveEMatchListResult>;
   ListWanmeiRecentMatches: (page: number) => Promise<WanmeiMatchListResult>;
   OpenDemoDirectory: () => Promise<void>;
+  OpenDemoInFolder: (demoPath: string) => Promise<void>;
+  OpenDebugRecordingInFolder: (recordingID: string) => Promise<void>;
   OpenExternalURL: (rawURL: string) => Promise<void>;
   OpenManualDownload: (componentID: string) => Promise<void>;
   OpenOutputsDirectory: () => Promise<void>;
@@ -144,12 +158,20 @@ export interface BackendApi {
   ) => Promise<PlatformClientCloseResult>;
   ResetWorkspace: () => Promise<void>;
   RetryStartupComponent: (componentID: string) => Promise<StartupState>;
+  RetryDebugRecordingMerge: (recordingID: string) => Promise<DebugSessionState>;
   RunStartupChecks: () => Promise<StartupState>;
   SaveClipActionSettings: (
     settings: ClipActionSettings,
   ) => Promise<ClipActionSettings>;
   SaveClipSettings: (settings: ClipSettings) => Promise<ClipSettings>;
+  SendDebugConsoleCommand: (
+    request: DebugCommandRequest,
+  ) => Promise<DebugCommandResponse>;
+  PlayDebugDemo: (request: DebugPlayDemoRequest) => Promise<DebugPlayDemoResponse>;
   SetWorkspaceDir: (path: string) => Promise<void>;
+  StartDebugRecording: (request: DebugRecordingRequest) => Promise<DebugSessionState>;
+  StopDebugGame: () => Promise<DebugSessionState>;
+  StopDebugRecording: () => Promise<DebugSessionState>;
   ValidateWorkspaceDir: (path: string) => Promise<WorkspaceValidateResult>;
 }
 

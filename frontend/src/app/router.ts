@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
+import { useDebugSettings } from "@/shared/state/useDebugSettings";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -43,6 +44,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import("@/features/edit/pages/EditPage.vue"),
   },
   {
+    path: "/debug",
+    name: "debug",
+    component: () => import("@/features/debug/pages/DebugPage.vue"),
+  },
+  {
     path: "/settings",
     name: "settings",
     component: () => import("@/features/settings/pages/SettingsPage.vue"),
@@ -52,6 +58,18 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+});
+
+// The debug workbench only exists after the hidden brand-click activation.
+// A direct hash entry without it must land on the normal import step instead
+// of rendering a page whose backend methods are not available. Match the route
+// record instead of `to.path`, because `/debug/` resolves to the same record.
+router.beforeEach((to) => {
+  const isDebugRoute = to.matched.some((record) => record.name === "debug");
+  if (isDebugRoute && !useDebugSettings().debugEnabled.value) {
+    return { path: "/import" };
+  }
+  return true;
 });
 
 export default router;

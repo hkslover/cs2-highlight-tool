@@ -43,11 +43,41 @@ type povSessionState struct {
 	vpkInstalled bool
 }
 
+// gameInfoPrepOptions is the explicit search-path contract of one game
+// environment preparation. The formal produce pipeline always enables the
+// plugin and brand paths and follows cfg.PovHudEnabled; the debug workbench
+// derives every entry from its own launch request.
+type gameInfoPrepOptions struct {
+	InjectPlugin  bool
+	BrandEnabled  bool
+	PovHudEnabled bool
+}
+
 func (a *App) prepareGameInfoForProduce() error {
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return err
 	}
+	return a.prepareGameInfoForProduceWithOptions(gameInfoPrepOptions{
+		InjectPlugin:  true,
+		BrandEnabled:  true,
+		PovHudEnabled: cfg.PovHudEnabled,
+	})
+}
+
+func (a *App) prepareGameInfoForProduceWithOptions(opts gameInfoPrepOptions) error {
+	cfg, err := a.loadConfig()
+	if err != nil {
+		return err
+	}
+	return a.prepareGameInfoWithConfig(cfg, opts)
+}
+
+// prepareGameInfoWithConfig prepares the gameinfo search paths from one frozen
+// config snapshot. Every helper in a launch pipeline must share that snapshot
+// so a concurrent CS2 path change cannot split the prepared install from the
+// one HLAE starts.
+func (a *App) prepareGameInfoWithConfig(cfg *config.Config, opts gameInfoPrepOptions) error {
 	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
 	if err != nil {
 		return err
@@ -65,22 +95,47 @@ func (a *App) prepareGameInfoForProduce() error {
 	}
 	content := string(contentBytes)
 
-	// Plugin and branding are always required; POV is added only when
-	// PovHudEnabled. Inject branding before POV so its HUD style takes priority.
-	// Use the same path set for the early-return check and the injection loop.
-	targetPaths := []string{producegame.SearchPathPlugin, producegame.SearchPathBrand}
-	if cfg.PovHudEnabled {
-		targetPaths = append(targetPaths, producegame.SearchPathPOV)
+	// The desired set is injected in a stable order (plugin, brand, POV) so the
+	// brand HUD style keeps priority over POV. The disabled set is removed from
+	// the effective search paths without deleting the user's own VPK/DLL; the
+	// session backup restores the exact original content on exit.
+	desired := make([]string, 0, 3)
+	if opts.InjectPlugin {
+		desired = append(desired, producegame.SearchPathPlugin)
+	}
+	if opts.BrandEnabled {
+		desired = append(desired, producegame.SearchPathBrand)
+	}
+	if opts.PovHudEnabled {
+		desired = append(desired, producegame.SearchPathPOV)
+	}
+	disabled := make([]string, 0, 3)
+	if !opts.InjectPlugin {
+		disabled = append(disabled, producegame.SearchPathPlugin)
+	}
+	if !opts.BrandEnabled {
+		disabled = append(disabled, producegame.SearchPathBrand)
+	}
+	if !opts.PovHudEnabled {
+		disabled = append(disabled, producegame.SearchPathPOV)
 	}
 
-	allPresent := true
-	for _, p := range targetPaths {
+	needsWork := false
+	for _, p := range desired {
 		if !producegame.HasSearchPath(content, p) {
-			allPresent = false
+			needsWork = true
 			break
 		}
 	}
-	if allPresent {
+	if !needsWork {
+		for _, p := range disabled {
+			if producegame.HasSearchPath(content, p) {
+				needsWork = true
+				break
+			}
+		}
+	}
+	if !needsWork {
 		a.produceStateMu.Lock()
 		a.produceState.gameInfo = gameInfoSessionState{
 			gameInfoPath: gameInfoPath,
@@ -91,19 +146,23 @@ func (a *App) prepareGameInfoForProduce() error {
 		return nil
 	}
 
-	injected := content
-	for _, p := range targetPaths {
-		next, ok := producegame.InjectSearchPath(injected, p)
+	updated := content
+	for _, p := range disabled {
+		next, _ := producegame.RemoveSearchPath(updated, p)
+		updated = next
+	}
+	for _, p := range desired {
+		next, ok := producegame.InjectSearchPath(updated, p)
 		if !ok {
 			return fmt.Errorf("无法在 gameinfo.gi 中找到可注入位置")
 		}
-		injected = next
+		updated = next
 	}
 	backupPath := gameInfoPath + produceGameInfoBackupSuffix
 	if err := copyFile(gameInfoPath, backupPath); err != nil {
 		return fmt.Errorf("备份 gameinfo.gi 失败: %w", err)
 	}
-	if err := os.WriteFile(gameInfoPath, []byte(injected), 0644); err != nil {
+	if err := os.WriteFile(gameInfoPath, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("写入 gameinfo.gi 失败: %w", err)
 	}
 	a.produceStateMu.Lock()
@@ -233,8 +292,22 @@ func (a *App) preparePovForProduce() error {
 	if err != nil {
 		return err
 	}
-	if !cfg.PovHudEnabled {
-		// Toggle off — leave POV session state empty.
+	return a.preparePovForProduceWithOptions(cfg.PovHudEnabled)
+}
+
+func (a *App) preparePovForProduceWithOptions(povHudEnabled bool) error {
+	cfg, err := a.loadConfig()
+	if err != nil {
+		return err
+	}
+	return a.preparePovWithConfig(cfg, povHudEnabled)
+}
+
+// preparePovWithConfig installs the POV VPK from one frozen config snapshot.
+func (a *App) preparePovWithConfig(cfg *config.Config, povHudEnabled bool) error {
+	if !povHudEnabled {
+		// Toggle off — leave POV session state empty. A pre-existing pov.vpk is
+		// never deleted; the disabled search path is handled by gameinfo prep.
 		return nil
 	}
 	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
@@ -290,6 +363,12 @@ func (a *App) preparePluginDLLForProduce() (retErr error) {
 	if err != nil {
 		return err
 	}
+	return a.preparePluginDLLWithConfig(cfg)
+}
+
+// preparePluginDLLWithConfig injects the plugin DLL resolved from one frozen
+// config snapshot.
+func (a *App) preparePluginDLLWithConfig(cfg *config.Config) (retErr error) {
 	cs2Exe, err := resolveCS2ExeForLaunch(cfg)
 	if err != nil {
 		return err

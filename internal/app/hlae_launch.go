@@ -65,12 +65,28 @@ type launchJobContext struct {
 	plans    []ProduceTakePlan
 }
 
+// hlaeLaunchOptions is the explicit launch contract shared by the formal
+// produce pipeline and the debug workbench. Both modes inject
+// AfxHookSource2.dll; PluginEnabled only controls whether this project's
+// plugin transport is wired up for the launched game.
+type hlaeLaunchOptions struct {
+	LaunchResolution string
+	PluginEnabled    bool
+	DebugSessionID   string
+}
+
 func (a *App) launchHLAEGame() (int, error) {
 	cfg, err := a.loadConfig()
 	if err != nil {
 		return 0, err
 	}
+	return a.launchHLAEGameWithOptions(cfg, hlaeLaunchOptions{
+		LaunchResolution: cfg.LaunchResolution,
+		PluginEnabled:    true,
+	})
+}
 
+func (a *App) launchHLAEGameWithOptions(cfg *config.Config, opts hlaeLaunchOptions) (int, error) {
 	hlaeExe := config.CleanPath(cfg.HLAEExe)
 	if hlaeExe == "" {
 		return 0, fmt.Errorf("HLAE 路径为空")
@@ -95,19 +111,8 @@ func (a *App) launchHLAEGame() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("枚举 cs2 进程失败: %w", err)
 	}
-	if a.produceW == nil {
-		return 0, fmt.Errorf("produce websocket server is not available")
-	}
-	port, err := a.produceW.Port()
-	if err != nil {
-		return 0, fmt.Errorf("获取 produce websocket 端口失败: %w", err)
-	}
-	pluginLogPath := a.dataPath("logs", "cs2-server-plugin.log")
-	if err := os.MkdirAll(filepath.Dir(pluginLogPath), 0o755); err != nil {
-		return 0, fmt.Errorf("创建插件日志目录失败: %w", err)
-	}
 
-	cmdLine := buildHLAECommandLine(cfg.LaunchResolution)
+	cmdLine := buildHLAECommandLine(opts.LaunchResolution)
 	args := []string{
 		"-noGui", "-autoStart", "-noConfig",
 		"-afxDisableSteamStorage", "-customLoader",
@@ -116,12 +121,30 @@ func (a *App) launchHLAEGame() (int, error) {
 		"-cmdLine", cmdLine,
 	}
 
+	env := os.Environ()
+	if opts.PluginEnabled {
+		if a.produceW == nil {
+			return 0, fmt.Errorf("produce websocket server is not available")
+		}
+		port, err := a.produceW.Port()
+		if err != nil {
+			return 0, fmt.Errorf("获取 produce websocket 端口失败: %w", err)
+		}
+		pluginLogPath := a.dataPath("logs", "cs2-server-plugin.log")
+		if err := os.MkdirAll(filepath.Dir(pluginLogPath), 0o755); err != nil {
+			return 0, fmt.Errorf("创建插件日志目录失败: %w", err)
+		}
+		env = append(env,
+			fmt.Sprintf("CSDM_WS_PORT=%d", port),
+			"CSDM_LOG_PATH="+pluginLogPath,
+		)
+		if sessionID := strings.TrimSpace(opts.DebugSessionID); sessionID != "" {
+			env = append(env, "CSDM_DEBUG_SESSION="+sessionID)
+		}
+	}
+
 	cmd := launchHLAECommand(hlaeExe, args...)
-	cmd.Env = append(
-		os.Environ(),
-		fmt.Sprintf("CSDM_WS_PORT=%d", port),
-		"CSDM_LOG_PATH="+pluginLogPath,
-	)
+	cmd.Env = env
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("启动 HLAE 失败: %w", err)
 	}

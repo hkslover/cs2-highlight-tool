@@ -245,7 +245,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 	if recordFPS <= 0 {
 		recordFPS = 60
 	}
-	videoPreset, ffmpegParams, err := buildFFmpegParams(opts.VideoPreset, opts.RecordQuality, opts.LaunchResolution)
+	videoPreset, ffmpegParams, err := BuildRecordEncoding(opts.VideoPreset, opts.RecordQuality, opts.LaunchResolution)
 	if err != nil {
 		return nil, err
 	}
@@ -643,59 +643,61 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	actions := make([]Action, 0, 16+len(opts.ExtraCommands))
 	actionTick := DefaultActionTick
 	voiceEnabled := opts.ActionSettings.EnableVoiceIndices && opts.ActionSettings.EnableVoiceIndicesH
-	voiceValue := voiceIndicesValue(voiceEnabled)
+	appendCommand := func(cmd string) {
+		actions = append(actions, Action{Cmd: cmd, Tick: actionTick})
+	}
 
 	if opts.UseShoulderCamera {
-		actions = append(actions, Action{Cmd: shoulderCameraCommand, Tick: actionTick})
+		for _, cmd := range ShoulderCameraCommands(true) {
+			appendCommand(cmd)
+		}
 	}
-	actions = append(actions, Action{Cmd: "r_show_build_info 0", Tick: actionTick})
-	actions = append(actions, Action{Cmd: "cl_trueview_show_status 0", Tick: actionTick})
-	actions = append(actions, Action{Cmd: "engine_no_focus_sleep 0", Tick: actionTick})
-	actions = append(actions, Action{Cmd: "cl_demo_predict 0", Tick: actionTick})
-	actions = append(actions, Action{Cmd: "cl_spec_show_bindings 0", Tick: actionTick})
+	appendCommand("r_show_build_info 0")
+	appendCommand("cl_trueview_show_status 0")
+	appendCommand("engine_no_focus_sleep 0")
+	appendCommand("cl_demo_predict 0")
+	appendCommand("cl_spec_show_bindings 0")
 	if opts.DisableClouds {
-		actions = append(actions, Action{Cmd: "mirv_sky clouds draw 0", Tick: actionTick})
+		appendCommand(CloudsCommand(true))
 	}
 	if opts.SkyBlackout {
-		actions = append(actions, Action{Cmd: "r_drawskybox 0", Tick: actionTick})
+		appendCommand(SkyBlackoutCommand(true))
 	}
 	if opts.PovRadarEnabled {
-		actions = append(actions, Action{Cmd: "csdm_radar_pov 1", Tick: actionTick})
+		appendCommand(PovRadarCommand(true))
 	}
-	lifetime := opts.KillFeedLifetime
-	if lifetime <= 0 {
-		lifetime = 4
-	}
-	actions = append(actions, Action{Cmd: fmt.Sprintf("mirv_deathmsg lifetime %d", lifetime), Tick: actionTick})
+	appendCommand(KillFeedLifetimeCommand(opts.KillFeedLifetime))
 	if opts.BlockKillFeed {
-		actions = append(actions, Action{Cmd: "mirv_deathmsg filter add block 1", Tick: actionTick})
+		for _, cmd := range BlockKillFeedCommands(true) {
+			appendCommand(cmd)
+		}
 	}
 
-	actions = append(actions, Action{Cmd: fmt.Sprintf("spec_show_xray %d", xrayCommandValue(opts.EnableSpecShowXray)), Tick: actionTick})
+	appendCommand(SpecShowXrayCommand(opts.EnableSpecShowXray))
 	if opts.HideAllUI {
-		actions = append(actions, Action{Cmd: "cl_draw_only_deathnotices 1", Tick: actionTick})
+		appendCommand(HideAllUICommand(true))
 	}
-	actions = append(actions, Action{Cmd: fmt.Sprintf("cl_teamcounter_playercount_instead_of_avatars %t", opts.HidePlayerAvatars), Tick: actionTick})
+	appendCommand(PlayerAvatarModeCommand(opts.HidePlayerAvatars))
 	if opts.HideChatMessages {
-		actions = append(actions, Action{Cmd: "hidehud 128", Tick: actionTick})
+		appendCommand(HideChatCommand(true))
 	}
-	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices %d", voiceValue), Tick: actionTick})
-	actions = append(actions, Action{Cmd: fmt.Sprintf("tv_listen_voice_indices_h %d", voiceValue), Tick: actionTick})
-	actions = append(actions, Action{Cmd: "mirv_streams record screen enabled 1", Tick: actionTick})
-	actions = append(actions, Action{Cmd: fmt.Sprintf("mirv_streams record fps %d", opts.RecordFPS), Tick: actionTick})
-	actions = append(actions, Action{Cmd: "mirv_streams record startMovieWav 1", Tick: actionTick})
-	actions = append(actions, Action{
-		Cmd:  fmt.Sprintf(`mirv_streams settings add ffmpeg %s "%s {QUOTE}{AFX_STREAM_PATH}.mp4{QUOTE}"`, opts.VideoPreset, opts.FFmpegParams),
-		Tick: actionTick,
-	})
-	actions = append(actions, Action{Cmd: fmt.Sprintf("mirv_streams record screen settings %s", opts.VideoPreset), Tick: actionTick})
-	actions = append(actions, Action{Cmd: fmt.Sprintf(`mirv_streams record name "%s"`, opts.RecordName), Tick: actionTick})
+	for _, cmd := range VoiceIndicesCommands(voiceEnabled) {
+		appendCommand(cmd)
+	}
+	for _, cmd := range RecordInitCommands(RecordInitOptions{
+		RecordFPS:    opts.RecordFPS,
+		VideoPreset:  opts.VideoPreset,
+		FFmpegParams: opts.FFmpegParams,
+		RecordName:   opts.RecordName,
+	}) {
+		appendCommand(cmd)
+	}
 	for _, cmd := range opts.ExtraCommands {
 		command := strings.TrimSpace(cmd)
 		if command == "" {
 			continue
 		}
-		actions = append(actions, Action{Cmd: command, Tick: actionTick})
+		appendCommand(command)
 	}
 	if len(actions) == 0 {
 		return Sequence{}
@@ -857,7 +859,11 @@ func killOffsetsFromTicks(killTicks []int, recordStartTick int, tickRate float64
 	return offsets
 }
 
-func buildFFmpegParams(preset string, quality string, launchResolution string) (string, string, error) {
+// BuildRecordEncoding resolves the HLAE ffmpeg profile and its encode
+// parameters for one already-resolved preset. The two 4:3 launch resolutions
+// keep the real-pixel stretch. Callers resolve `auto` to an effective preset
+// before calling this helper.
+func BuildRecordEncoding(preset string, quality string, launchResolution string) (string, string, error) {
 	videoPreset, _, err := ffmpegprofile.HLAEProfileByID(preset)
 	if err != nil {
 		return "", "", err

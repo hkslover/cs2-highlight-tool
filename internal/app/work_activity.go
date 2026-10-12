@@ -26,12 +26,19 @@ func (a *App) GetWorkActivity() WorkActivity {
 	// teardownErr is only read after done closes. A failed teardown retains
 	// ownership of files, but a new launch may retry that completed teardown.
 	retained := runtime != nil && (!produceRuntimeDone(runtime) || runtime.teardownErr != nil)
+	// debugRecordingBusyError reports an active recording/merge even after the
+	// debug session was closed: the segment still owns ffmpeg work and the
+	// workspace files it will clean up.
+	debugRetained := a.debugRetainedForActivity() || a.debugActiveRecordingTask() != nil
 	a.managedFilesMu.Lock()
 	storageBusy := a.managedFileUsers > 0 || a.managedFilesClearing
 	a.managedFilesMu.Unlock()
 	session := a.workspaceSnapshot().session
 	closing := session != nil && session.isClosed()
-	return WorkActivity{ProduceBusy: busy, StorageBusy: busy || retained || storageBusy || closing}
+	return WorkActivity{
+		ProduceBusy: busy || debugRetained,
+		StorageBusy: busy || debugRetained || retained || storageBusy || closing,
+	}
 }
 
 // Caller holds produceLaunchMu. Never cancel an active runtime to make room
@@ -45,6 +52,17 @@ func (a *App) produceBusyError() error {
 	a.produceStateMu.Unlock()
 	if !produceRuntimeDone(runtime) {
 		return fmt.Errorf("当前制作会话仍在合成或收尾，请完成后再试")
+	}
+	// A live debug session owns the game environment just like a produce
+	// session; both the produce launch pipeline and directory clearing must be
+	// rejected until it is stopped.
+	if err := a.debugBusyError(); err != nil {
+		return err
+	}
+	// A manual debug recording or its bounded merge also owns workspace files
+	// and ffmpeg, so a new session must wait for it to finish or fail.
+	if err := a.debugRecordingBusyError(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -247,6 +265,12 @@ func (a *App) beginManagedExclusion(requireWorkspace bool) (func(), error) {
 	if runtime != nil && runtime.teardownErr != nil {
 		a.produceLaunchMu.Unlock()
 		return nil, fmt.Errorf("制作会话收尾尚未成功，请先重试制作以恢复环境")
+	}
+	// A debug runtime that finished with a failed teardown still owns the shared
+	// environment and its backups; clearing directories would overwrite them.
+	if a.debugRetainedForActivity() {
+		a.produceLaunchMu.Unlock()
+		return nil, fmt.Errorf("调试会话收尾尚未成功，请先重试关闭调试游戏")
 	}
 	if requireWorkspace {
 		dataDir := snapshot.root

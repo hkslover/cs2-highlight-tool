@@ -78,6 +78,38 @@ type App struct {
 
 	debugPluginDLLMu       sync.Mutex
 	debugPluginDLLOverride string
+
+	// debugStateMu guards the debug workbench runtime pointer. The runtime owns
+	// its own mutex; debugStateMu is only ever held for field reads/writes and
+	// never while waiting on the game process or file I/O.
+	debugStateMu sync.Mutex
+	debugRuntime *debugSessionRuntime
+
+	// debugRecordingsMu guards the App-scoped manual recording result list. The
+	// tasks live outside the session runtime so a failed merge stays retryable
+	// after the game was closed; they are cleared when the workspace changes.
+	debugRecordingsMu   sync.Mutex
+	debugRecordings     map[string]*debugRecordingTask
+	debugRecordingOrder []string
+
+	// debugWorkbenchOpMu serializes the interactive workbench mutations that
+	// must not interleave: switching/starting the Demo playback, starting or
+	// stopping a manual recording, and retrying a failed merge. Plugin event
+	// handlers never take it (they must stay able to deliver the receipt the
+	// holder is waiting for), so it only orders public operations.
+	debugWorkbenchOpMu sync.Mutex
+
+	// debugClockMu guards debugClockMs, the shared strictly increasing stamp
+	// source for every debug workbench mutation. Session and recording changes
+	// both draw from it, and the snapshot version is the newest stamp actually
+	// reflected by the returned data, so the frontend can order any pair of
+	// events/reads even when two changes happen within one millisecond.
+	debugClockMu sync.Mutex
+	debugClockMs int64
+	// debugSnapshotFloorMs stamps a change of the recording collection itself
+	// (for example a workspace reset that cleared the list) when no task is left
+	// to carry the stamp, so the snapshot version never moves backwards.
+	debugSnapshotFloorMs int64
 }
 
 func New(wailsConfigData []byte) *App {
@@ -88,6 +120,7 @@ func New(wailsConfigData []byte) *App {
 		version:  version,
 		produceW: producews.NewDefault(nil),
 	}
+	a.attachDebugMessageHandler()
 	a.initWorkspaceLocked()
 	a.configureProduceDiagnostics(a.dataRoot())
 	return a
@@ -223,6 +256,12 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.produceW.SetEmitter(func(name string, payload any) {
 		wruntime.EventsEmit(ctx, name, payload)
+		// A debug session's transport state is part of its public snapshot. The
+		// websocket service owns connection transitions, so re-emit the debug
+		// snapshot when it changes instead of leaving the page on a stale value.
+		if name == "produce_ws_state_changed" {
+			a.refreshDebugPluginState()
+		}
 	})
 	if err := a.produceW.Start(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("start produce websocket server failed: %v", err))
@@ -256,11 +295,25 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	// Never restore game files while an owned CS2 process may still be alive.
 	// A failed stop retains the runtime and its backups for next-start recovery.
-	if err := a.stopProduceSessionWorker(); err != nil {
+	// The debug session is stopped first: it owns a workspace file reservation
+	// that the session close below would otherwise wait on.
+	debugStopErr := a.stopDebugSessionWorker()
+	if debugStopErr != nil {
 		if ctx != nil {
-			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", err))
+			wruntime.LogError(ctx, fmt.Sprintf("stop debug session on shutdown failed: %v", debugStopErr))
 		}
-	} else if err := a.forceRestoreProduceEnvironmentForProduce(); err != nil {
+	}
+	produceStopErr := a.stopProduceSessionWorker()
+	if produceStopErr != nil {
+		if ctx != nil {
+			wruntime.LogError(ctx, fmt.Sprintf("stop produce session on shutdown failed: %v", produceStopErr))
+		}
+	}
+	// forceRestoreProduceEnvironmentForProduce uses the shared produce
+	// environment state and bypasses the per-runtime exit proof. It is only
+	// safe after every owned runtime released that state; a retained debug or
+	// produce runtime keeps its backups for the next start.
+	if err := a.restoreSharedEnvironmentAfterShutdown(debugStopErr, produceStopErr); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("restore produce environment failed: %v", err))
 	}
 	if session := a.workspaceSnapshot().session; session != nil {
@@ -271,6 +324,18 @@ func (a *App) Shutdown(ctx context.Context) {
 	if err := a.produceW.Stop(); err != nil {
 		wruntime.LogError(ctx, fmt.Sprintf("stop produce websocket server failed: %v", err))
 	}
+}
+
+// restoreSharedEnvironmentAfterShutdown restores the shared produce
+// environment only when every owned runtime released it during shutdown. A
+// retained debug or produce runtime still owns the gameinfo/plugin/VPK state
+// and its backups, so an unconditional epoch-0 restore would bypass the
+// "process exit confirmed" guard and destroy the retry state.
+func (a *App) restoreSharedEnvironmentAfterShutdown(debugStopErr, produceStopErr error) error {
+	if debugStopErr != nil || produceStopErr != nil {
+		return nil
+	}
+	return a.forceRestoreProduceEnvironmentForProduce()
 }
 
 func resolveExecutableDir() string {

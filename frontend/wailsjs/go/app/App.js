@@ -70,8 +70,16 @@ export function GetClipSettings() {
   return window['go']['app']['App']['GetClipSettings']();
 }
 
+export function GetDebugConsolePlan(arg1) {
+  return window['go']['app']['App']['GetDebugConsolePlan'](arg1);
+}
+
 export function GetDebugPluginDLLOverride() {
   return window['go']['app']['App']['GetDebugPluginDLLOverride']();
+}
+
+export function GetDebugSessionState() {
+  return window['go']['app']['App']['GetDebugSessionState']();
 }
 
 export function GetDemoStorageStats() {
@@ -138,6 +146,10 @@ export function ImportWanmeiMatch(arg1) {
   return window['go']['app']['App']['ImportWanmeiMatch'](arg1);
 }
 
+export function LaunchDebugGame(arg1) {
+  return window['go']['app']['App']['LaunchDebugGame'](arg1);
+}
+
 export function ListFiveERecentMatches(arg1, arg2) {
   return window['go']['app']['App']['ListFiveERecentMatches'](arg1, arg2);
 }
@@ -146,8 +158,16 @@ export function ListWanmeiRecentMatches(arg1) {
   return window['go']['app']['App']['ListWanmeiRecentMatches'](arg1);
 }
 
+export function OpenDebugRecordingInFolder(arg1) {
+  return window['go']['app']['App']['OpenDebugRecordingInFolder'](arg1);
+}
+
 export function OpenDemoDirectory() {
   return window['go']['app']['App']['OpenDemoDirectory']();
+}
+
+export function OpenDemoInFolder(arg1) {
+  return window['go']['app']['App']['OpenDemoInFolder'](arg1);
 }
 
 export function OpenExternalURL(arg1) {
@@ -190,6 +210,10 @@ export function PickWorkspaceDir() {
   return window['go']['app']['App']['PickWorkspaceDir']();
 }
 
+export function PlayDebugDemo(arg1) {
+  return window['go']['app']['App']['PlayDebugDemo'](arg1);
+}
+
 export function PreviewFullRoundPOV(arg1, arg2) {
   return window['go']['app']['App']['PreviewFullRoundPOV'](arg1, arg2);
 }
@@ -214,6 +238,10 @@ export function ResetWorkspace() {
   return window['go']['app']['App']['ResetWorkspace']();
 }
 
+export function RetryDebugRecordingMerge(arg1) {
+  return window['go']['app']['App']['RetryDebugRecordingMerge'](arg1);
+}
+
 export function RetryStartupComponent(arg1) {
   return window['go']['app']['App']['RetryStartupComponent'](arg1);
 }
@@ -230,8 +258,24 @@ export function SaveClipSettings(arg1) {
   return window['go']['app']['App']['SaveClipSettings'](arg1);
 }
 
+export function SendDebugConsoleCommand(arg1) {
+  return window['go']['app']['App']['SendDebugConsoleCommand'](arg1);
+}
+
 export function SetWorkspaceDir(arg1) {
   return window['go']['app']['App']['SetWorkspaceDir'](arg1);
+}
+
+export function StartDebugRecording(arg1) {
+  return window['go']['app']['App']['StartDebugRecording'](arg1);
+}
+
+export function StopDebugGame() {
+  return window['go']['app']['App']['StopDebugGame']();
+}
+
+export function StopDebugRecording() {
+  return window['go']['app']['App']['StopDebugRecording']();
 }
 
 export function ValidateWorkspaceDir(arg1) {

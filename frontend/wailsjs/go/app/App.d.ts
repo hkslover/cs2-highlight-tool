@@ -41,7 +41,11 @@ export function GetClipActionSettings():Promise<app.ClipActionSettings>;
 
 export function GetClipSettings():Promise<app.ClipSettings>;
 
+export function GetDebugConsolePlan(arg1:app.DebugSettingsDraft):Promise<app.DebugConsolePlan>;
+
 export function GetDebugPluginDLLOverride():Promise<app.DebugPluginDLLOverrideState>;
+
+export function GetDebugSessionState():Promise<app.DebugSessionState>;
 
 export function GetDemoStorageStats():Promise<app.DemoStorageStats>;
 
@@ -75,11 +79,17 @@ export function ImportManualDownload(arg1:string):Promise<envsetup.StartupState>
 
 export function ImportWanmeiMatch(arg1:string):Promise<Array<string>>;
 
+export function LaunchDebugGame(arg1:app.DebugLaunchRequest):Promise<app.DebugSessionState>;
+
 export function ListFiveERecentMatches(arg1:string,arg2:number):Promise<fivee.FiveEMatchListResult>;
 
 export function ListWanmeiRecentMatches(arg1:number):Promise<wanmei.WanmeiMatchListResult>;
 
+export function OpenDebugRecordingInFolder(arg1:string):Promise<void>;
+
 export function OpenDemoDirectory():Promise<void>;
+
+export function OpenDemoInFolder(arg1:string):Promise<void>;
 
 export function OpenExternalURL(arg1:string):Promise<void>;
 
@@ -101,6 +111,8 @@ export function PickRecordOutputDir():Promise<string>;
 
 export function PickWorkspaceDir():Promise<string>;
 
+export function PlayDebugDemo(arg1:app.DebugPlayDemoRequest):Promise<app.DebugPlayDemoResponse>;
+
 export function PreviewFullRoundPOV(arg1:string,arg2:string):Promise<demo.FullRoundPOVPlan>;
 
 export function ProbeClipDuration(arg1:string):Promise<number>;
@@ -113,6 +125,8 @@ export function RequestClosePlatformClient(arg1:string):Promise<app.PlatformClie
 
 export function ResetWorkspace():Promise<void>;
 
+export function RetryDebugRecordingMerge(arg1:string):Promise<app.DebugSessionState>;
+
 export function RetryStartupComponent(arg1:string):Promise<envsetup.StartupState>;
 
 export function RunStartupChecks():Promise<envsetup.StartupState>;
@@ -121,6 +135,14 @@ export function SaveClipActionSettings(arg1:app.ClipActionSettings):Promise<app.
 
 export function SaveClipSettings(arg1:app.ClipSettings):Promise<app.ClipSettings>;
 
+export function SendDebugConsoleCommand(arg1:app.DebugCommandRequest):Promise<app.DebugCommandResponse>;
+
 export function SetWorkspaceDir(arg1:string):Promise<void>;
+
+export function StartDebugRecording(arg1:app.DebugRecordingRequest):Promise<app.DebugSessionState>;
+
+export function StopDebugGame():Promise<app.DebugSessionState>;
+
+export function StopDebugRecording():Promise<app.DebugSessionState>;
 
 export function ValidateWorkspaceDir(arg1:string):Promise<app.WorkspaceValidateResult>;

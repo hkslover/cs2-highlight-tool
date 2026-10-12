@@ -104,6 +104,148 @@ export namespace app {
 	        this.block_kill_feed = source["block_kill_feed"];
 	    }
 	}
+	export class DebugCommandRequest {
+	    commands: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugCommandRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.commands = source["commands"];
+	    }
+	}
+	export class DebugCommandResponse {
+	    request_id: string;
+	    status: string;
+	    error?: string;
+	    commands: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugCommandResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.request_id = source["request_id"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.commands = source["commands"];
+	    }
+	}
+	export class DebugSettingPlan {
+	    key: string;
+	    commands: string[];
+	    on?: string[];
+	    off?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSettingPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.commands = source["commands"];
+	        this.on = source["on"];
+	        this.off = source["off"];
+	    }
+	}
+	export class DebugConsolePlan {
+	    settings: DebugSettingPlan[];
+	    apply_all: string[];
+	    recording: string[];
+	    effective_video_preset: string;
+	    effective_video_encoder: string;
+	    effective_video_status: string;
+	    record_output_dir: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugConsolePlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.settings = this.convertValues(source["settings"], DebugSettingPlan);
+	        this.apply_all = source["apply_all"];
+	        this.recording = source["recording"];
+	        this.effective_video_preset = source["effective_video_preset"];
+	        this.effective_video_encoder = source["effective_video_encoder"];
+	        this.effective_video_status = source["effective_video_status"];
+	        this.record_output_dir = source["record_output_dir"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DebugLaunchRequest {
+	    inject_plugin: boolean;
+	    pov_hud_enabled: boolean;
+	    brand_enabled: boolean;
+	    pov_radar_enabled: boolean;
+	    launch_resolution: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugLaunchRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.inject_plugin = source["inject_plugin"];
+	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.brand_enabled = source["brand_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.launch_resolution = source["launch_resolution"];
+	    }
+	}
+	export class DebugPlayDemoRequest {
+	    demo_path: string;
+	    commands?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugPlayDemoRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.demo_path = source["demo_path"];
+	        this.commands = source["commands"];
+	    }
+	}
+	export class DebugPlayDemoResponse {
+	    request_id: string;
+	    status: string;
+	    error?: string;
+	    demo_path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugPlayDemoResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.request_id = source["request_id"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.demo_path = source["demo_path"];
+	    }
+	}
 	export class DebugPluginDLLOverrideState {
 	    active: boolean;
 	    path: string;
@@ -116,6 +258,173 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.active = source["active"];
 	        this.path = source["path"];
+	    }
+	}
+	export class DebugRecordingRequest {
+	    record_fps: number;
+	    record_quality: string;
+	    video_preset: string;
+	    keep_intermediate_files: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugRecordingRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
+	        this.video_preset = source["video_preset"];
+	        this.keep_intermediate_files = source["keep_intermediate_files"];
+	    }
+	}
+	export class DebugRecordingStatus {
+	    recording_id: string;
+	    demo_path: string;
+	    take_name: string;
+	    status: string;
+	    error?: string;
+	    directory: string;
+	    video_path?: string;
+	    audio_path?: string;
+	    final_path?: string;
+	    start_tick?: number;
+	    end_tick?: number;
+	    started_at_ms: number;
+	    updated_at_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugRecordingStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.recording_id = source["recording_id"];
+	        this.demo_path = source["demo_path"];
+	        this.take_name = source["take_name"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.directory = source["directory"];
+	        this.video_path = source["video_path"];
+	        this.audio_path = source["audio_path"];
+	        this.final_path = source["final_path"];
+	        this.start_tick = source["start_tick"];
+	        this.end_tick = source["end_tick"];
+	        this.started_at_ms = source["started_at_ms"];
+	        this.updated_at_ms = source["updated_at_ms"];
+	    }
+	}
+	export class DebugSessionState {
+	    session_id: string;
+	    status: string;
+	    inject_plugin: boolean;
+	    pov_hud_enabled: boolean;
+	    brand_enabled: boolean;
+	    pov_radar_enabled: boolean;
+	    launch_resolution: string;
+	    process_started: boolean;
+	    cs2_pid: number;
+	    plugin_enabled: boolean;
+	    plugin_connected: boolean;
+	    plugin_ready: boolean;
+	    plugin_message: string;
+	    plugin_state: string;
+	    demo_path: string;
+	    demo_playing: boolean;
+	    demo_paused: boolean;
+	    demo_play_pending: boolean;
+	    recording?: DebugRecordingStatus;
+	    recordings: DebugRecordingStatus[];
+	    error: string;
+	    updated_at_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSessionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
+	        this.status = source["status"];
+	        this.inject_plugin = source["inject_plugin"];
+	        this.pov_hud_enabled = source["pov_hud_enabled"];
+	        this.brand_enabled = source["brand_enabled"];
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.launch_resolution = source["launch_resolution"];
+	        this.process_started = source["process_started"];
+	        this.cs2_pid = source["cs2_pid"];
+	        this.plugin_enabled = source["plugin_enabled"];
+	        this.plugin_connected = source["plugin_connected"];
+	        this.plugin_ready = source["plugin_ready"];
+	        this.plugin_message = source["plugin_message"];
+	        this.plugin_state = source["plugin_state"];
+	        this.demo_path = source["demo_path"];
+	        this.demo_playing = source["demo_playing"];
+	        this.demo_paused = source["demo_paused"];
+	        this.demo_play_pending = source["demo_play_pending"];
+	        this.recording = this.convertValues(source["recording"], DebugRecordingStatus);
+	        this.recordings = this.convertValues(source["recordings"], DebugRecordingStatus);
+	        this.error = source["error"];
+	        this.updated_at_ms = source["updated_at_ms"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class DebugSettingsDraft {
+	    pov_radar_enabled: boolean;
+	    sky_blackout: boolean;
+	    disable_clouds: boolean;
+	    hide_all_ui: boolean;
+	    hide_player_avatars: boolean;
+	    hide_chat_messages: boolean;
+	    enable_spec_show_xray_zero: boolean;
+	    enable_voice: boolean;
+	    use_shoulder_camera: boolean;
+	    kill_feed_lifetime: number;
+	    block_kill_feed: boolean;
+	    record_fps: number;
+	    record_quality: string;
+	    video_preset: string;
+	    launch_resolution: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DebugSettingsDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pov_radar_enabled = source["pov_radar_enabled"];
+	        this.sky_blackout = source["sky_blackout"];
+	        this.disable_clouds = source["disable_clouds"];
+	        this.hide_all_ui = source["hide_all_ui"];
+	        this.hide_player_avatars = source["hide_player_avatars"];
+	        this.hide_chat_messages = source["hide_chat_messages"];
+	        this.enable_spec_show_xray_zero = source["enable_spec_show_xray_zero"];
+	        this.enable_voice = source["enable_voice"];
+	        this.use_shoulder_camera = source["use_shoulder_camera"];
+	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
+	        this.block_kill_feed = source["block_kill_feed"];
+	        this.record_fps = source["record_fps"];
+	        this.record_quality = source["record_quality"];
+	        this.video_preset = source["video_preset"];
+	        this.launch_resolution = source["launch_resolution"];
 	    }
 	}
 	export class DemoStorageStats {
