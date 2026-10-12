@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -1993,21 +1994,25 @@ func TestAddProduceHistoryEntry_UsesRuntimeKillSnapshot(t *testing.T) {
 	state := &produceSessionRuntime{
 		killsByDemo: map[string]map[string]demo.ClipKill{
 			"demoA.dem": {
-				"k1": {ID: "k1", Round: 5, KillerName: "A", VictimName: "B", WeaponName: "ak47"},
-				"k2": {ID: "k2", Round: 9, KillerName: "C", VictimName: "D", WeaponName: "awp"},
+				"k1": {ID: "k1", Tick: 1200, Round: 5, KillerName: "A", VictimName: "B", WeaponName: "ak47"},
+				"k2": {ID: "k2", Tick: 1400, Round: 9, KillerName: "C", VictimName: "D", WeaponName: "awp"},
 			},
 		},
 	}
 	plan := ProduceTakePlan{
-		DemoPath:  "demoA.dem",
-		TakeIndex: 1,
-		TakeName:  "take0000",
-		View:      "killer",
-		SpecMode:  1,
-		KillIDs:   []string{"k1", "k2"},
+		DemoPath:        "demoA.dem",
+		TakeIndex:       1,
+		TakeName:        "take0000",
+		View:            "killer",
+		SpecMode:        1,
+		KillIDs:         []string{"k1", "k2"},
+		TickRate:        64,
+		RecordStartTick: 1100,
+		RecordEndTick:   1500,
 	}
+	videoPath := filepath.Join(t.TempDir(), "take0000.mp4")
 
-	app.addProduceHistoryEntry(state, plan, "D:/clips/120000.mp4")
+	app.addProduceHistoryEntry(state, plan, videoPath)
 	snapshot := app.getProduceHistorySnapshot()
 	if len(snapshot.Items) != 1 {
 		t.Fatalf("history items=%d want 1", len(snapshot.Items))
@@ -2021,6 +2026,18 @@ func TestAddProduceHistoryEntry_UsesRuntimeKillSnapshot(t *testing.T) {
 	}
 	if item.Kills[1].ID != "k2" || item.Kills[1].Round != 9 {
 		t.Fatalf("unexpected second kill: %+v", item.Kills[1])
+	}
+	if item.TickRate != 64 || item.RecordStartTick != 1100 || item.RecordEndTick != 1500 {
+		t.Fatalf("recorder timing metadata = %+v", item)
+	}
+	wantOffsets := []float64{(1200 - 1100) / 64.0, (1400 - 1100) / 64.0}
+	if !reflect.DeepEqual(item.KillOffsetsSeconds, wantOffsets) {
+		t.Fatalf("kill offsets = %v want %v", item.KillOffsetsSeconds, wantOffsets)
+	}
+	// The in-memory history is the only metadata channel; recording must not
+	// leave a sidecar next to the merged video.
+	if _, err := os.Stat(videoPath + ".fastedit.json"); !os.IsNotExist(err) {
+		t.Fatalf("recording must not write a .fastedit.json sidecar, stat err=%v", err)
 	}
 }
 

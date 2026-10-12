@@ -48,7 +48,7 @@
 - `producegame/assets/brand.vpk` 为每次录制必需的内嵌品牌资源，无配置或 UI 开关；`app/produce_brand.go` 部署至 CS2 的 `csgo/brand.vpk`，与可选 POV 同样保留用户既有 VPK，仅清理本会话创建的文件。挂载、环境 epoch 回滚、失败收尾重试和 gameinfo 残留修复须同时覆盖品牌路径。
 - `hide_chat_messages` 默认开启，旧配置缺少字段时继承默认值，显式 false 保持关闭；开启时每个 Demo 的初始化序列写入 `hidehud 128`，在片段录制前执行，关闭时不写入或重置 `hidehud`。
 - `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。
-- 录制 take plan/history 的 `tick_rate`、`record_start_tick`、`record_end_tick`、`kill_offsets_seconds` 只作为后续剪辑的可选观测元数据；插件动作和原有 source window 保持不变。最终视频旁的 `.fastedit.json` 只能 best-effort 写入，不能让成功录制失败。
+- 录制 take plan/history 的 `tick_rate`、`record_start_tick`、`record_end_tick`、`kill_offsets_seconds` 只作为后续剪辑的可选观测元数据；插件动作和原有 source window 保持不变。这些字段只保留在内存录制历史与 `GetProduceHistorySnapshot` 快照中，不在视频旁写入 `.fastedit.json` 或任何衍生文件。
 - debug DLL override 只作为 `App` 会话状态，不写入配置，也不参与启动插件版本检测。
 - debug override 仅改变注入源 DLL，目标、备份和恢复复用 `preparePluginDLLForProduce` / `forceRestorePluginDLLForProduce`。
 - 修改生成计划时核对 take 命名、稳定 source ID、历史去重键与前端选择状态，不能仅验证 JSON 能序列化。
