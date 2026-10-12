@@ -676,10 +676,26 @@ func (a *App) completeDebugRecordingMerge(task *debugRecordingTask, attempt uint
 		return
 	}
 	task.mergeCancel = nil
-	task.updatedAtMs = a.nextDebugStamp()
 	keepIntermediate := task.keepIntermediate
 	videoPath := task.videoPath
 	audioPath := task.audioPath
+	a.debugRecordingsMu.Unlock()
+
+	// Remove the raw sources before the success status becomes observable, so a
+	// snapshot that reports `completed` always implies the cleanup already ran.
+	// The task stays `merging` during the removal, which keeps the single-active
+	// admission closed and preserves the attempt guard below.
+	if mergeErr == nil && !keepIntermediate {
+		a.cleanupDebugRecordingSources(videoPath, audioPath)
+	}
+
+	a.debugRecordingsMu.Lock()
+	// Re-check the attempt id: the removal ran outside the lock, and only this
+	// attempt may write the final status.
+	if task.mergeAttempt != attempt {
+		a.debugRecordingsMu.Unlock()
+		return
+	}
 	if mergeErr != nil {
 		task.status = DebugRecordingStatusFailed
 		task.lastError = mergeErr.Error()
@@ -688,11 +704,8 @@ func (a *App) completeDebugRecordingMerge(task *debugRecordingTask, attempt uint
 		task.finalPath = finalPath
 		task.lastError = ""
 	}
+	task.updatedAtMs = a.nextDebugStamp()
 	a.debugRecordingsMu.Unlock()
-
-	if mergeErr == nil && !keepIntermediate {
-		a.cleanupDebugRecordingSources(videoPath, audioPath)
-	}
 	a.emitDebugSessionState()
 }
 
