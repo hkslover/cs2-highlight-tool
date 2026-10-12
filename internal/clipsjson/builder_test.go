@@ -3,6 +3,7 @@ package clipsjson
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -368,7 +369,63 @@ func TestBuild_SkyBlackoutAndCloudsAreIndependent(t *testing.T) {
 	}
 }
 
-func TestBuild_PovRadarCommandOnlyWhenEnabled(t *testing.T) {
+func TestBuild_PovRadarEnabledOnlyInMaterialPassAfterCameraSwitch(t *testing.T) {
+	result, err := Build([]Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 2 {
+		t.Fatalf("sequence len=%d want 2", len(result.Sequences))
+	}
+	// The bootstrap must never enable the radar now; each pass does it itself.
+	assertNoPrefixAction(t, result.Sequences[0].Actions, "csdm_radar_pov")
+
+	actions := result.Sequences[1].Actions
+	specMode := mustFindAction(t, actions, "spec_mode 1")
+	specPlayer := mustFindAction(t, actions, "spec_player 7")
+	radar := mustFindAction(t, actions, "csdm_radar_pov 1")
+	start := mustFindAction(t, actions, "mirv_streams record start")
+	end := mustFindAction(t, actions, "mirv_streams record end")
+	if !(specMode.Tick < specPlayer.Tick && specPlayer.Tick < radar.Tick && radar.Tick < start.Tick && start.Tick <= end.Tick) {
+		t.Fatalf("unexpected ordering: mode=%d player=%d radar=%d start=%d end=%d", specMode.Tick, specPlayer.Tick, radar.Tick, start.Tick, end.Tick)
+	}
+	// 64 tick/s, kill=500, pre/post=1s: S=436, E=564.
+	if specMode.Tick != 311 || specPlayer.Tick != 316 || radar.Tick != 318 || start.Tick != 446 || end.Tick != 565 {
+		t.Fatalf("unexpected ticks: mode=%d player=%d radar=%d start=%d end=%d", specMode.Tick, specPlayer.Tick, radar.Tick, start.Tick, end.Tick)
+	}
+	assertHasAction(t, actions, "demo_gototick 183")
+	if warmup := start.Tick - radar.Tick; warmup < int(math.Ceil(povRadarWarmupSeconds*64)) {
+		t.Fatalf("radar warmup=%d ticks want >= %d", warmup, int(math.Ceil(povRadarWarmupSeconds*64)))
+	}
+
+	if len(result.TakePlans) != 1 {
+		t.Fatalf("take plans len=%d want 1", len(result.TakePlans))
+	}
+	plan := result.TakePlans[0]
+	if plan.StartTick != 436 || plan.EndTick != 564 {
+		t.Fatalf("source window changed: %+v", plan)
+	}
+	if plan.RecordStartTick != start.Tick || plan.RecordEndTick != end.Tick {
+		t.Fatalf("take plan boundaries must match the record actions: plan=%+v start=%d end=%d", plan, start.Tick, end.Tick)
+	}
+}
+
+func TestBuild_PovRadarDisabledKeepsLegacyTimingAndGrouping(t *testing.T) {
+	items := []Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7}, IncludeVictim: false},
+		{Kill: demo.ClipKill{ID: "k2", Tick: 650, KillerSlot: 9}, IncludeVictim: false},
+	}
 	baseOptions := BuildOptions{
 		TickRate:          64,
 		KillerPreSeconds:  1,
@@ -377,24 +434,406 @@ func TestBuild_PovRadarCommandOnlyWhenEnabled(t *testing.T) {
 		VideoPreset:       "n1",
 		RecordOutputDir:   `D:/clips/output`,
 	}
-	items := []Item{{
-		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+
+	off, err := Build(items, baseOptions)
+	if err != nil {
+		t.Fatalf("Build radar off: %v", err)
+	}
+	if len(off.Sequences) != 2 {
+		t.Fatalf("radar off sequence len=%d want 2 (bootstrap + merged killer group)", len(off.Sequences))
+	}
+	for _, seq := range off.Sequences {
+		assertNoPrefixAction(t, seq.Actions, "csdm_radar_pov")
+	}
+	assertHasAction(t, off.Sequences[1].Actions, "demo_gototick 308")
+	assertHasAction(t, off.Sequences[1].Actions, "demo_gototick 565")
+
+	onOptions := baseOptions
+	onOptions.PovRadarEnabled = true
+	on, err := Build(items, onOptions)
+	if err != nil {
+		t.Fatalf("Build radar on: %v", err)
+	}
+	if len(on.Sequences) != 3 {
+		t.Fatalf("radar on sequence len=%d want 3 (bootstrap + one sequence per pass)", len(on.Sequences))
+	}
+	if len(on.TakePlans) != len(off.TakePlans) {
+		t.Fatalf("radar changed take count: off=%d on=%d", len(off.TakePlans), len(on.TakePlans))
+	}
+	for i := range off.TakePlans {
+		if off.TakePlans[i].StartTick != on.TakePlans[i].StartTick || off.TakePlans[i].EndTick != on.TakePlans[i].EndTick {
+			t.Fatalf("radar changed take %d source window: off=%+v on=%+v", i, off.TakePlans[i], on.TakePlans[i])
+		}
+		if off.TakePlans[i].RecordStartTick != on.TakePlans[i].RecordStartTick || off.TakePlans[i].RecordEndTick != on.TakePlans[i].RecordEndTick {
+			t.Fatalf("radar changed take %d recorder window: off=%+v on=%+v", i, off.TakePlans[i], on.TakePlans[i])
+		}
+		if off.TakePlans[i].TakeName != on.TakePlans[i].TakeName {
+			t.Fatalf("radar changed take %d identity: off=%q on=%q", i, off.TakePlans[i].TakeName, on.TakePlans[i].TakeName)
+		}
+	}
+}
+
+func TestBuild_PovRadarEmitsOneCommandPerPassEvenForSameTarget(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7}, IncludeVictim: false},
+		{Kill: demo.ClipKill{ID: "k2", Tick: 900, KillerSlot: 7}, IncludeVictim: false},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 3 {
+		t.Fatalf("sequence len=%d want 3", len(result.Sequences))
+	}
+	for i, seq := range result.Sequences[1:] {
+		count := 0
+		for _, action := range seq.Actions {
+			if action.Cmd == "csdm_radar_pov 1" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("pass %d radar command count=%d want 1: %+v", i, count, seq.Actions)
+		}
+	}
+	if len(result.TakePlans) != 2 || result.TakePlans[0].TakeName != "take0000" || result.TakePlans[1].TakeName != "take0001" {
+		t.Fatalf("unexpected take identity: %+v", result.TakePlans)
+	}
+}
+
+func TestBuild_PovRadarSeparatesAdjacentPassesAcrossSequences(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7}, IncludeVictim: false},
+		{Kill: demo.ClipKill{ID: "k2", Tick: 560, KillerSlot: 9}, IncludeVictim: false},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Two overlapping windows would be merged into one group without the radar;
+	// enabling it must not merge or reorder them.
+	if len(result.Sequences) != 3 {
+		t.Fatalf("sequence len=%d want 3", len(result.Sequences))
+	}
+	for _, seq := range result.Sequences[1:] {
+		assertHasAction(t, seq.Actions, "csdm_radar_pov 1")
+		assertHasAction(t, seq.Actions, "mirv_streams record start")
+	}
+	assertHasAction(t, result.Sequences[1].Actions, "go_to_next_sequence")
+	assertHasAction(t, result.Sequences[2].Actions, "disconnect")
+	if len(result.TakePlans) != 2 {
+		t.Fatalf("take plans len=%d want 2: %+v", len(result.TakePlans), result.TakePlans)
+	}
+	for i, seq := range result.Sequences[1:] {
+		startAction := mustFindAction(t, seq.Actions, "mirv_streams record start")
+		radarAction := mustFindAction(t, seq.Actions, "csdm_radar_pov 1")
+		if warmup := startAction.Tick - radarAction.Tick; warmup < int(math.Ceil(povRadarWarmupSeconds*64)) {
+			t.Fatalf("pass %d warmup=%d ticks want >= %d", i, warmup, int(math.Ceil(povRadarWarmupSeconds*64)))
+		}
+	}
+}
+
+func TestBuild_PovRadarCoversFullRoundKillerAndVictimPasses(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 600, KillerSlot: 7, VictimSlot: 11}, IncludeVictim: true},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		VictimPreSeconds:  1,
+		VictimPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+		FullRoundPOVSegments: []FullRoundPOVSegment{
+			{Round: 1, StartTick: 1000, EndTick: 1800, Target: "12", SpecMode: 1, PlayerSteamID: "76561190000000001"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 4 {
+		t.Fatalf("sequence len=%d want 4 (bootstrap + three passes)", len(result.Sequences))
+	}
+	views := []string{"full_round_pov", "killer", "victim"}
+	for i, wantView := range views {
+		seq := result.Sequences[i+1]
+		assertHasAction(t, seq.Actions, "csdm_radar_pov 1")
+		if result.TakePlans[i].View != wantView {
+			t.Fatalf("take %d view=%q want %q", i, result.TakePlans[i].View, wantView)
+		}
+	}
+	for _, seq := range result.Sequences[1:3] {
+		assertHasAction(t, seq.Actions, "go_to_next_sequence")
+	}
+	assertHasAction(t, result.Sequences[3].Actions, "disconnect")
+}
+
+func TestBuild_PovRadarMergedKillStaysOnePassAndOneCommand(t *testing.T) {
+	result, err := Build([]Item{
+		{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7}, IncludeVictim: false},
+		{Kill: demo.ClipKill{ID: "k2", Tick: 520, KillerSlot: 7}, IncludeVictim: false},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 2 {
+		t.Fatalf("sequence len=%d want 2 (merged pass kept together)", len(result.Sequences))
+	}
+	count := 0
+	for _, action := range result.Sequences[1].Actions {
+		if action.Cmd == "csdm_radar_pov 1" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("radar command count=%d want 1", count)
+	}
+	if len(result.TakePlans) != 1 {
+		t.Fatalf("take plans len=%d want 1", len(result.TakePlans))
+	}
+	if ids := result.TakePlans[0].KillIDs; len(ids) != 2 || ids[0] != "k1" || ids[1] != "k2" {
+		t.Fatalf("merged kill ids changed: %+v", ids)
+	}
+}
+
+func TestBuild_PovRadarWarmupUsesDemoTickRate(t *testing.T) {
+	tests := []struct {
+		name     string
+		tickRate float64
+		killTick int
+	}{
+		{name: "64 tick", tickRate: 64, killTick: 500},
+		{name: "128 tick", tickRate: 128, killTick: 1000},
+		{name: "non-integer tick", tickRate: 70.5, killTick: 400},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Build([]Item{{
+				Kill:          demo.ClipKill{ID: "k1", Tick: tt.killTick, KillerSlot: 7},
+				IncludeVictim: false,
+			}}, BuildOptions{
+				TickRate:          tt.tickRate,
+				KillerPreSeconds:  1,
+				KillerPostSeconds: 1,
+				RecordFPS:         60,
+				VideoPreset:       "n1",
+				RecordOutputDir:   `D:/clips/output`,
+				PovRadarEnabled:   true,
+			})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			actions := result.Sequences[1].Actions
+			radar := mustFindAction(t, actions, "csdm_radar_pov 1")
+			start := mustFindAction(t, actions, "mirv_streams record start")
+			want := int(math.Ceil(povRadarWarmupSeconds * tt.tickRate))
+			if warmup := start.Tick - radar.Tick; warmup < want {
+				t.Fatalf("warmup=%d ticks want >= %d (tickRate=%v)", warmup, want, tt.tickRate)
+			}
+			assertNoPrefixAction(t, result.Sequences[0].Actions, "csdm_radar_pov")
+		})
+	}
+}
+
+func TestBuild_PovRadarInsufficientDemoStartReturnsError(t *testing.T) {
+	// 64 tick/s, pre=1s: StartTick=223 -> spec_mode tick 98, one tick below the
+	// DefaultActionTick+segmentSpecModeDelay safety floor.
+	_, err := Build([]Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 287, KillerSlot: 7},
 		IncludeVictim: false,
-	}}
-
-	enabledOptions := baseOptions
-	enabledOptions.PovRadarEnabled = true
-	enabled, err := Build(items, enabledOptions)
-	if err != nil {
-		t.Fatalf("Build enabled POV radar: %v", err)
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err == nil {
+		t.Fatal("expected insufficient demo start error")
 	}
-	assertHasAction(t, enabled.Sequences[0].Actions, "csdm_radar_pov 1")
-
-	disabled, err := Build(items, baseOptions)
-	if err != nil {
-		t.Fatalf("Build disabled POV radar: %v", err)
+	if !strings.Contains(err.Error(), "POV 雷达") || !strings.Contains(err.Error(), "kill_ids=k1") {
+		t.Fatalf("error must name the radar warm-up and the pass: %v", err)
 	}
-	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "csdm_radar_pov")
+}
+
+func TestBuild_PovRadarBoundaryExactlyFeasibleSucceeds(t *testing.T) {
+	// 64 tick/s, pre=1s: StartTick=224 -> spec_mode tick 99, exactly at the floor.
+	result, err := Build([]Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 288, KillerSlot: 7},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovRadarEnabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("Build at boundary: %v", err)
+	}
+	actions := result.Sequences[1].Actions
+	specMode := mustFindAction(t, actions, "spec_mode 1")
+	if specMode.Tick != DefaultActionTick+segmentSpecModeDelay {
+		t.Fatalf("spec_mode tick=%d want %d", specMode.Tick, DefaultActionTick+segmentSpecModeDelay)
+	}
+	assertNoPrefixAction(t, actions, "demo_gototick")
+	radar := mustFindAction(t, actions, "csdm_radar_pov 1")
+	start := mustFindAction(t, actions, "mirv_streams record start")
+	if warmup := start.Tick - radar.Tick; warmup < 128 {
+		t.Fatalf("warmup=%d ticks want >= 128", warmup)
+	}
+}
+
+func TestBuild_PovRadarEarlySeekDoesNotRepeatDuringPlayback(t *testing.T) {
+	for _, sourceStart := range []int{224, 300, 349, 350} {
+		t.Run(strconv.Itoa(sourceStart), func(t *testing.T) {
+			result, err := Build(nil, BuildOptions{
+				TickRate:        64,
+				VideoPreset:     "c1",
+				PovRadarEnabled: true,
+				FullRoundPOVSegments: []FullRoundPOVSegment{
+					{StartTick: 1000, EndTick: 1100, Target: "7", SpecMode: 1},
+					{StartTick: sourceStart, EndTick: sourceStart + 100, Target: "9", SpecMode: 1},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			// At S=349 the proposed seek target is exactly its trigger tick
+			// (96); S=350 is the first case that can safely seek forward.
+			earlyActions := result.Sequences[2].Actions
+			if sourceStart <= 349 {
+				assertNoPrefixAction(t, earlyActions, "demo_gototick")
+			} else {
+				assertHasAction(t, earlyActions, "demo_gototick 97")
+			}
+
+			// Model the plugin's tick-crossing consumer, including asynchronous
+			// seeks and the reset to 0 between sequences. Do not mark actions as
+			// consumed: a backward seek must expose repeat execution here.
+			sequenceIndex, previousTick, tick := 0, -1, 0
+			starts, ends, radars := 0, 0, 0
+			for frame := 0; frame < 5000 && sequenceIndex < len(result.Sequences); frame++ {
+				nextTick := tick + 1
+				nextSequence := false
+				for _, action := range result.Sequences[sequenceIndex].Actions {
+					if action.Tick > tick || action.Tick <= previousTick {
+						continue
+					}
+					switch {
+					case strings.HasPrefix(action.Cmd, "demo_gototick "):
+						var parseErr error
+						nextTick, parseErr = strconv.Atoi(strings.TrimPrefix(action.Cmd, "demo_gototick "))
+						if parseErr != nil {
+							t.Fatal(parseErr)
+						}
+					case action.Cmd == "csdm_radar_pov 1":
+						radars++
+					case action.Cmd == "mirv_streams record start":
+						starts++
+					case action.Cmd == "mirv_streams record end":
+						ends++
+					case action.Cmd == "go_to_next_sequence" || action.Cmd == "disconnect":
+						nextSequence = true
+					}
+					if nextSequence {
+						break
+					}
+				}
+				previousTick, tick = tick, nextTick
+				if nextSequence {
+					sequenceIndex++
+					previousTick, tick = -1, 0
+				}
+			}
+			if sequenceIndex != len(result.Sequences) || starts != 2 || ends != 2 || radars != 2 {
+				t.Fatalf("playback did not complete exactly once per pass: sequence=%d/%d starts=%d ends=%d radars=%d",
+					sequenceIndex, len(result.Sequences), starts, ends, radars)
+			}
+			plan := result.TakePlans[1]
+			if plan.RecordStartTick != sourceStart+10 || plan.RecordEndTick != sourceStart+101 {
+				t.Fatalf("early pass recording window changed: %+v", plan)
+			}
+			start := mustFindAction(t, earlyActions, "mirv_streams record start")
+			radar := mustFindAction(t, earlyActions, "csdm_radar_pov 1")
+			if start.Tick-radar.Tick != 128 {
+				t.Fatalf("early pass warmup=%d want 128", start.Tick-radar.Tick)
+			}
+		})
+	}
+}
+
+func TestBuild_PovRadarKeepsVoiceAndXrayOverridesBeforeRecording(t *testing.T) {
+	result, err := Build([]Item{
+		{
+			Kill:                    demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7},
+			IncludeVictim:           false,
+			EnableVoice:             false,
+			EnableSpecShowXray:      false,
+			HasVoiceOverride:        true,
+			HasSpecShowXrayOverride: true,
+		},
+		{
+			Kill:          demo.ClipKill{ID: "k2", Tick: 900, KillerSlot: 9},
+			IncludeVictim: false,
+		},
+	}, BuildOptions{
+		TickRate:                  64,
+		KillerPreSeconds:          1,
+		KillerPostSeconds:         1,
+		RecordFPS:                 60,
+		VideoPreset:               "n1",
+		RecordOutputDir:           `D:/clips/output`,
+		EnableSpecShowXray:        true,
+		ForcePerPassVoiceCommands: true,
+		ForcePerPassXrayCommands:  true,
+		PovRadarEnabled:           true,
+		ActionSettings: ActionSettings{
+			EnableVoiceIndices:  true,
+			EnableVoiceIndicesH: true,
+			VoiceIndicesValue:   -1,
+			VoiceIndicesHValue:  -1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for i, seq := range result.Sequences[1:] {
+		start := mustFindAction(t, seq.Actions, "mirv_streams record start")
+		voice := mustFindAction(t, seq.Actions, "tv_listen_voice_indices 0")
+		xray := mustFindAction(t, seq.Actions, "spec_show_xray -1")
+		if voice.Tick >= start.Tick || xray.Tick >= start.Tick {
+			t.Fatalf("pass %d override commands must precede recording: voice=%d xray=%d start=%d", i, voice.Tick, xray.Tick, start.Tick)
+		}
+	}
 }
 
 func TestBuild_KillFeedLifetimeFollowsOption(t *testing.T) {
@@ -983,4 +1422,49 @@ func mustFindAction(t *testing.T, actions []Action, cmd string) Action {
 
 func takeName(index int) string {
 	return fmt.Sprintf("take%04d", index-1)
+}
+
+func TestBuild_ShortClipKeepsRecordEndBeforeTerminal(t *testing.T) {
+	for _, radarEnabled := range []bool{false, true} {
+		result, err := Build([]Item{{
+			Kill:          demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7},
+			IncludeVictim: false,
+		}}, BuildOptions{
+			TickRate:          64,
+			KillerPreSeconds:  0,
+			KillerPostSeconds: 0,
+			RecordFPS:         60,
+			VideoPreset:       "n1",
+			RecordOutputDir:   `D:/clips/output`,
+			PovRadarEnabled:   radarEnabled,
+		})
+		if err != nil {
+			t.Fatalf("Build radar=%v: %v", radarEnabled, err)
+		}
+		actions := result.Sequences[len(result.Sequences)-1].Actions
+		start := mustFindAction(t, actions, "mirv_streams record start")
+		end := mustFindAction(t, actions, "mirv_streams record end")
+		terminal := mustFindAction(t, actions, "disconnect")
+		if end.Tick < start.Tick {
+			t.Fatalf("radar=%v record end=%d before start=%d", radarEnabled, end.Tick, start.Tick)
+		}
+		if terminal.Tick < end.Tick {
+			t.Fatalf("radar=%v terminal=%d before record end=%d", radarEnabled, terminal.Tick, end.Tick)
+		}
+		endIndex, terminalIndex := -1, -1
+		for i, action := range actions {
+			switch action.Cmd {
+			case "mirv_streams record end":
+				endIndex = i
+			case "disconnect":
+				terminalIndex = i
+			}
+		}
+		if endIndex < 0 || terminalIndex < 0 || endIndex > terminalIndex {
+			t.Fatalf("radar=%v record end must precede terminal: %+v", radarEnabled, actions)
+		}
+		if plan := result.TakePlans[0]; plan.RecordStartTick != start.Tick || plan.RecordEndTick != end.Tick {
+			t.Fatalf("radar=%v take plan does not match boundaries: %+v", radarEnabled, plan)
+		}
+	}
 }

@@ -44,7 +44,7 @@
 ## 设置、生成与游戏环境
 
 - 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；除 `hide_player_avatars` 始终写入 `cl_teamcounter_playercount_instead_of_avatars true|false` 外，关闭命令开关时不生成命令或重置命令。运行时画面/声音与录制初始化的无副作用命令构建集中在 `clipsjson/gamesettings.go`（包括调试专用的显式恢复命令与 `RecordInitCommands`），`app/debug_settings.go` 的 `GetDebugConsolePlan` 只负责草稿归一化、`auto` 编码解析与 DTO 装配，不得把命令拼接放回 App 或前端；调试草稿不得写回配置，调试录制输出固定为 `<dataDir>/outputs/debug`，并使用按编码参数派生的 `DebugRecordSettingsName`（正式 Build 继续用实际 preset 名），因为同一游戏进程内 HLAE 不覆盖同名 settings 条目；`GetDebugConsolePlan` 必须可重复调用且同一参数派生同一名称。编码设置的 `effective_video_preset`、`effective_video_encoder`、`effective_video_status` 仅作为 Get/Save 响应的只读探测结果，不能覆盖持久化的 `video_preset` 用户策略。
-- `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动；`sky_blackout` 不得联动关闭云层。
+- `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动（雷达开关不控制 POV VPK 的部署/卸载）；`sky_blackout` 不得联动关闭云层。开启时 `clipsjson` 逐 pass 在 `spec_mode`/`spec_player` 后、`mirv_streams record start` 前发一次 `csdm_radar_pov 1`，录制起点前至少两秒 Demo 预热；关闭时保持原序列分组与 tick 时序。
 - `producegame/assets/brand.vpk` 为每次录制必需的内嵌品牌资源，无配置或 UI 开关；`app/produce_brand.go` 部署至 CS2 的 `csgo/brand.vpk`，与可选 POV 同样保留用户既有 VPK，仅清理本会话创建的文件。挂载、环境 epoch 回滚、失败收尾重试和 gameinfo 残留修复须同时覆盖品牌路径。
 - `hide_chat_messages` 默认开启，旧配置缺少字段时继承默认值，显式 false 保持关闭；开启时每个 Demo 的初始化序列写入 `hidehud 128`，在片段录制前执行，关闭时不写入或重置 `hidehud`。
 - `primary_view`、单片段覆盖和整局 POV 的语义遵循根文件。主视角是选中玩家视角，不能固定为 killer；`include_killer` 缺省 true 的兼容性须保留。
