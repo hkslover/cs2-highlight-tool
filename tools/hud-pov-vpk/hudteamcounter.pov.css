@@ -1,0 +1,15 @@
+/* POV: show health only for the currently viewed player's team.
+ * HUD--team--* follows the viewed player, not the demo spectator's own team.
+ * Hide the whole container so the red healthbar__bg cannot reveal enemy health.
+ * Opacity preserves avatar spacing; unknown/no team defaults to hidden.
+ */
+.healthbar-container
+{
+	opacity: 0;
+}
+
+.HUD--team--ct #TeamLargeCT .healthbar-container,
+.HUD--team--terrorist #TeamLargeT .healthbar-container
+{
+	opacity: 1;
+}
