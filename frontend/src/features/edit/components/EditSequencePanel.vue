@@ -205,9 +205,7 @@ function povRowStatusLabel(item: ProduceHistoryItem): string {
 }
 
 .sequence-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 1 1 auto;
   padding: 8px;
   display: flex;
   flex-direction: column;

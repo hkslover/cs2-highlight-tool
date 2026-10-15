@@ -3,7 +3,7 @@
     <n-card
       :bordered="true"
       class="edit-card"
-      content-style="height: 100%; overflow: hidden; padding: 0;"
+      content-style="padding: 0;"
       content-class="edit-card-content"
     >
       <div class="page-head">
@@ -43,22 +43,25 @@ const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter
 </script>
 
 <style scoped>
+/*
+ * 剪辑页整体滚动：卡片高度随内容增长，页面根节点作为唯一滚动容器，
+ * 左右面板内部列表不再各自滚动，避免嵌套滚动条。
+ */
 .edit-page {
   height: 100%;
-  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .edit-card {
-  height: 100%;
+  min-height: 100%;
   background: #181b19;
 }
 
 .edit-card :deep(.edit-card-content) {
-  height: 100%;
-  min-height: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .page-head {
@@ -71,10 +74,10 @@ const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter
 }
 
 .edit-body {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
   padding: 8px 10px 10px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-title {
@@ -84,8 +87,8 @@ const { isResizing, leftPanelStyle, rightPanelStyle, startResize } = useSplitter
 
 .edit-layout {
   display: flex;
-  height: 100%;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .edit-splitter {
