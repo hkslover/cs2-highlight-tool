@@ -3,6 +3,7 @@ import { EventsOn } from "../../../wailsjs/runtime/runtime.js";
 import { backend } from "../../shared/backend/adapter.js";
 import {
   createDebugSessionCore,
+  DEFAULT_DEBUG_LAUNCH_ARGUMENTS,
   type DebugSessionCell,
 } from "./debugSessionCore.js";
 import { resolveDebugDemoKey } from "./debugDemoSelection.js";
@@ -59,6 +60,8 @@ export const openDebugRecordingInFolder = core.openRecordingInFolder;
 // next `play` request targets and never claims that the engine already plays
 // it.
 const debugDemoKeyState = ref<string | null>(null);
+const debugLaunchInput = ref({ arguments: DEFAULT_DEBUG_LAUNCH_ARGUMENTS, commands: "" });
+export function useDebugLaunchInput() { return debugLaunchInput; }
 
 /**
  * Keep the debug selection valid. The current key wins while it still exists;
@@ -87,6 +90,7 @@ export function selectDebugDemo(key: string | null): void {
 export function resetDebugSessionForWorkspace(): void {
   core.dispose();
   debugDemoKeyState.value = null;
+  debugLaunchInput.value = { arguments: DEFAULT_DEBUG_LAUNCH_ARGUMENTS, commands: "" };
 }
 
 export function useDebugSession() {

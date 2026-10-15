@@ -200,6 +200,8 @@ export namespace app {
 	    brand_enabled: boolean;
 	    pov_radar_enabled: boolean;
 	    launch_resolution: string;
+	    launch_arguments?: string;
+	    startup_commands?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DebugLaunchRequest(source);
@@ -212,6 +214,8 @@ export namespace app {
 	        this.brand_enabled = source["brand_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.launch_resolution = source["launch_resolution"];
+	        this.launch_arguments = source["launch_arguments"];
+	        this.startup_commands = source["startup_commands"];
 	    }
 	}
 	export class DebugPlayDemoRequest {
@@ -322,6 +326,9 @@ export namespace app {
 	    brand_enabled: boolean;
 	    pov_radar_enabled: boolean;
 	    launch_resolution: string;
+	    launch_arguments: string;
+	    startup_commands: string[];
+	    startup_command_result?: DebugCommandResponse;
 	    process_started: boolean;
 	    cs2_pid: number;
 	    plugin_enabled: boolean;
@@ -351,6 +358,9 @@ export namespace app {
 	        this.brand_enabled = source["brand_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.launch_resolution = source["launch_resolution"];
+	        this.launch_arguments = source["launch_arguments"];
+	        this.startup_commands = source["startup_commands"];
+	        this.startup_command_result = this.convertValues(source["startup_command_result"], DebugCommandResponse);
 	        this.process_started = source["process_started"];
 	        this.cs2_pid = source["cs2_pid"];
 	        this.plugin_enabled = source["plugin_enabled"];

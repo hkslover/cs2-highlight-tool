@@ -31,6 +31,9 @@ export interface DebugLaunchRequest {
   brand_enabled: boolean;
   pov_radar_enabled: boolean;
   launch_resolution: DebugLaunchResolution;
+  /** Omitted uses legacy defaults; empty explicitly removes default flags. */
+  launch_arguments?: string;
+  startup_commands?: string[];
 }
 
 /** Console execution status reported by the plugin's game thread. */
@@ -180,6 +183,10 @@ export interface DebugSessionState {
   brand_enabled: boolean;
   pov_radar_enabled: boolean;
   launch_resolution: DebugLaunchResolution;
+
+  launch_arguments?: string;
+  startup_commands?: string[];
+  startup_command_result?: DebugCommandResponse;
 
   process_started: boolean;
   cs2_pid: number;

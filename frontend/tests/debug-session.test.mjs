@@ -2,9 +2,49 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDebugSessionCore,
+  parseDebugStartupCommands,
+  parseLaunchResolutionFromArguments,
   emptyDebugSessionState,
   mergeDebugSessionState,
+  DEFAULT_DEBUG_LAUNCH_ARGUMENTS,
 } from "../node_modules/.cache/cs2-highlight-tool-backend-tests/domains/debug/debugSessionCore.js";
+
+test("startup commands preserve semicolons, quotes and order across CRLF lines", () => {
+  assert.deepEqual(parseDebugStartupCommands('  sv_cheats 1\r\n\r\n echo "a;b"; fps_max 120 \n'), ['sv_cheats 1', 'echo "a;b"; fps_max 120']);
+  assert.deepEqual(parseDebugStartupCommands("  \n"), []);
+});
+
+// The debug page has no resolution selector: the recording profile follows the
+// CS2 backbuffer written in the launch arguments, and the backend re-derives it
+// from the same string.
+test("launch resolution is derived from the launch arguments", () => {
+  assert.equal(parseLaunchResolutionFromArguments("-console -w 1280 -h 960"), "4:3_1280x960");
+  assert.equal(parseLaunchResolutionFromArguments("-console -w 1440 -h 1080"), "4:3");
+  assert.equal(parseLaunchResolutionFromArguments("-console -w 1024 -h 768"), "4:3");
+  assert.equal(parseLaunchResolutionFromArguments("-console -w 1920 -h 1080"), "16:9");
+  assert.equal(parseLaunchResolutionFromArguments("-console"), "4:3");
+  assert.equal(parseLaunchResolutionFromArguments("-w 1920 -h 1080 -w 1280 -h 960"), "4:3_1280x960");
+  assert.equal(parseLaunchResolutionFromArguments("-width 1920 -height 1080"), "16:9");
+  assert.equal(parseLaunchResolutionFromArguments("-w abc -h 960"), "4:3");
+  assert.equal(parseLaunchResolutionFromArguments("-w 1280"), "4:3");
+});
+
+test("resolution parsing respects quoted values and console text", () => {
+  for (const argumentsText of [
+    '-w "1280" -h "960"',
+    '-w 1280 -h 960 +echo "test -w 1920 -h 1080 test"',
+    '+echo "test -w 1920 -h 1080 test" -w 1280 -h 960',
+    '-w 1280 -h 960 +echo ""',
+    '-w 1280 -h 960 +echo "test -w 1920 -h 1080',
+    String.raw`-w 1280 -h 960 +echo "test \"quoted\" -w 1920 -h 1080 test"`,
+  ]) {
+    assert.equal(parseLaunchResolutionFromArguments(argumentsText), "4:3_1280x960", argumentsText);
+  }
+});
+
+test("the debug default arguments carry the 4:3 1280x960 backbuffer", () => {
+  assert.equal(parseLaunchResolutionFromArguments(DEFAULT_DEBUG_LAUNCH_ARGUMENTS), "4:3_1280x960");
+});
 
 function createCell(initial) {
   return { value: initial };

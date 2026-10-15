@@ -73,6 +73,11 @@ type hlaeLaunchOptions struct {
 	LaunchResolution string
 	PluginEnabled    bool
 	DebugSessionID   string
+	LaunchArguments  *string
+	// ResolutionFromArguments is the debug workbench contract: LaunchArguments
+	// is the complete CS2 command line, resolution included, so no -w/-h is
+	// appended and the formal resolution setting cannot fight the session.
+	ResolutionFromArguments bool
 }
 
 func (a *App) launchHLAEGame() (int, error) {
@@ -112,7 +117,10 @@ func (a *App) launchHLAEGameWithOptions(cfg *config.Config, opts hlaeLaunchOptio
 		return 0, fmt.Errorf("枚举 cs2 进程失败: %w", err)
 	}
 
-	cmdLine := buildHLAECommandLine(opts.LaunchResolution)
+	cmdLine := buildHLAECommandLineWithArguments(opts.LaunchResolution, opts.LaunchArguments)
+	if opts.ResolutionFromArguments {
+		cmdLine = buildHLAECommandLineFromArguments(opts.LaunchArguments)
+	}
 	args := []string{
 		"-noGui", "-autoStart", "-noConfig",
 		"-afxDisableSteamStorage", "-customLoader",
@@ -164,8 +172,21 @@ func (a *App) launchHLAEGameWithOptions(cfg *config.Config, opts hlaeLaunchOptio
 	return pid, nil
 }
 
+const defaultHLAEArguments = "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console"
+
+// The debug workbench has no resolution selector: its default command line
+// carries the 4:3 1280x960 backbuffer the recording profile expects.
+const defaultDebugLaunchArguments = defaultHLAEArguments + " -w 1280 -h 960"
+
 func buildHLAECommandLine(launchResolution string) string {
-	cmdLine := "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console"
+	return buildHLAECommandLineWithArguments(launchResolution, nil)
+}
+
+func buildHLAECommandLineWithArguments(launchResolution string, arguments *string) string {
+	cmdLine := defaultHLAEArguments
+	if arguments != nil {
+		cmdLine = strings.TrimSpace(*arguments)
+	}
 	switch strings.TrimSpace(launchResolution) {
 	case config.LaunchResolution4x3:
 		cmdLine += " -w 1440 -h 1080"
@@ -173,6 +194,16 @@ func buildHLAECommandLine(launchResolution string) string {
 		cmdLine += " -w 1280 -h 960"
 	}
 	return cmdLine
+}
+
+// buildHLAECommandLineFromArguments is the debug workbench's command line: the
+// arguments are complete, so the render resolution they carry is never
+// overridden by an appended -w/-h pair.
+func buildHLAECommandLineFromArguments(arguments *string) string {
+	if arguments == nil {
+		return defaultDebugLaunchArguments
+	}
+	return strings.TrimSpace(*arguments)
 }
 
 func resolveCS2ExeForLaunch(cfg *config.Config) (string, error) {

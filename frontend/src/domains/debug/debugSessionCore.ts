@@ -2,11 +2,99 @@ import type {
   DebugCommandRequest,
   DebugCommandResponse,
   DebugLaunchRequest,
+  DebugLaunchResolution,
   DebugPlayDemoRequest,
   DebugPlayDemoResponse,
   DebugRecordingRequest,
   DebugSessionState,
 } from "@/shared/types";
+
+// The debug workbench has no resolution selector: the CS2 render resolution
+// lives in the launch arguments, and this default keeps the 4:3 1280x960
+// backbuffer the recording profile expects.
+export const DEFAULT_DEBUG_LAUNCH_ARGUMENTS =
+  "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console -w 1280 -h 960";
+
+/**
+ * Map the CS2 backbuffer carried by the launch arguments onto the recording
+ * profile. Both 4:3 sizes keep the real-pixel stretch, a 16:9 backbuffer must
+ * not be stretched. Without an explicit -w/-h the game falls back to its own
+ * video settings and the 4:3 profile stays the default, because its stretch
+ * filter is a no-op for 16:9 input. The backend re-derives this from the same
+ * arguments and its result is authoritative.
+ */
+export function parseLaunchResolutionFromArguments(text: string): DebugLaunchResolution {
+  const { width, height } = parseRenderResolution(text);
+  if (width <= 0 || height <= 0) return "4:3";
+  if (width * 3 !== height * 4) return "16:9";
+  if (width === 1280 && height === 960) return "4:3_1280x960";
+  return "4:3";
+}
+
+/** The last -w/-h pair wins, matching how a repeated engine switch resolves. */
+function parseRenderResolution(text: string): { width: number; height: number } {
+  const fields = splitLaunchArguments(text);
+  let width = 0;
+  let height = 0;
+  for (let index = 0; index < fields.length; index += 1) {
+    const flag = fields[index].toLowerCase();
+    if (flag !== "-w" && flag !== "-width" && flag !== "-h" && flag !== "-height") continue;
+    const raw = fields[index + 1] ?? "";
+    if (!/^\d+$/.test(raw)) continue;
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    if (flag === "-w" || flag === "-width") width = value;
+    else height = value;
+  }
+  return { width, height };
+}
+
+/**
+ * Tokenize without changing the command line sent to CS2. Double quotes group
+ * whitespace; backslashes before a quote follow Windows command-line rules.
+ * In particular, switches inside a quoted console command are not switches.
+ */
+function splitLaunchArguments(text: string): string[] {
+  const fields: string[] = [];
+  let field = "";
+  let quoted = false;
+  let started = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (!quoted && /[ \t\r\n]/.test(character)) {
+      if (started) fields.push(field);
+      field = "";
+      started = false;
+      continue;
+    }
+    started = true;
+    if (character === "\\") {
+      let end = index;
+      while (text[end] === "\\") end += 1;
+      const count = end - index;
+      if (text[end] === '"') {
+        field += "\\".repeat(Math.floor(count / 2));
+        if (count % 2 === 0) quoted = !quoted;
+        else field += '"';
+        index = end;
+      } else {
+        field += "\\".repeat(count);
+        index = end - 1;
+      }
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else {
+      field += character;
+    }
+  }
+  if (started) fields.push(field);
+  return fields;
+}
+
+/** Each nonempty line is one command; semicolons and quotes stay untouched. */
+export function parseDebugStartupCommands(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
 
 export const DEBUG_SESSION_EVENT = "debug_session_state_changed";
 

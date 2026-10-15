@@ -17,7 +17,7 @@ import (
 // startDebugPluginSession launches a plugin-mode debug session backed by a real
 // produce websocket service. It does not connect a fake plugin, so callers can
 // observe the first-ready timeout before any transport exists.
-func startDebugPluginSession(t *testing.T, wireEmitter bool) (*App, *producews.Service) {
+func startDebugPluginSession(t *testing.T, wireEmitter bool, requests ...DebugLaunchRequest) (*App, *producews.Service) {
 	t.Helper()
 	exeDir := t.TempDir()
 	app := newTestApp(t, exeDir)
@@ -53,11 +53,13 @@ func startDebugPluginSession(t *testing.T, wireEmitter bool) (*App, *producews.S
 	}
 	closeCS2ProcessByPIDFn = func(pid int) error { return nil }
 
-	if _, err := app.LaunchDebugGame(DebugLaunchRequest{
-		InjectPlugin:     true,
-		BrandEnabled:     true,
-		LaunchResolution: config.LaunchResolution4x3,
-	}); err != nil {
+	req := DebugLaunchRequest{
+		InjectPlugin: true, BrandEnabled: true, LaunchResolution: config.LaunchResolution4x3,
+	}
+	if len(requests) > 0 {
+		req = requests[0]
+	}
+	if _, err := app.LaunchDebugGame(req); err != nil {
 		t.Fatalf("LaunchDebugGame: %v", err)
 	}
 	t.Cleanup(func() { _, _ = app.StopDebugGame() })
