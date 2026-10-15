@@ -107,11 +107,10 @@ func TestLaunchDebugGameNoPluginMode(t *testing.T) {
 	closeCS2ProcessByPIDFn = func(pid int) error { return nil }
 
 	state, err := app.LaunchDebugGame(DebugLaunchRequest{
-		InjectPlugin:     false,
-		BrandEnabled:     false,
-		PovHudEnabled:    false,
-		LaunchResolution: config.LaunchResolution4x3,
-		LaunchArguments:  stringPointer(`-insecure -console +echo "custom args"`),
+		InjectPlugin:    false,
+		BrandEnabled:    false,
+		PovHudEnabled:   false,
+		LaunchArguments: stringPointer(`-insecure -console +echo "custom args"`),
 	})
 	if err != nil {
 		t.Fatalf("LaunchDebugGame: %v", err)
@@ -131,8 +130,11 @@ func TestLaunchDebugGameNoPluginMode(t *testing.T) {
 	if captured == nil {
 		t.Fatal("HLAE launcher was not invoked")
 	}
-	if got := argValue(capturedArgs, "-cmdLine"); got != `-insecure -console +echo "custom args" -w 1440 -h 1080` {
+	if got := argValue(capturedArgs, "-cmdLine"); got != `-insecure -console +echo "custom args"` {
 		t.Fatalf("custom CS2 arguments not forwarded as one value: %q", got)
+	}
+	if state.LaunchArguments != `-insecure -console +echo "custom args"` {
+		t.Fatalf("session kept %q as its launch arguments", state.LaunchArguments)
 	}
 	if !hasArg(capturedArgs, "-hookDllPath") {
 		t.Fatalf("HLAE hook DLL was not passed: %v", capturedArgs)
@@ -252,10 +254,9 @@ func TestLaunchDebugGamePluginModeCarriesTransportAndSession(t *testing.T) {
 	closeCS2ProcessByPIDFn = func(pid int) error { return nil }
 
 	state, err := app.LaunchDebugGame(DebugLaunchRequest{
-		InjectPlugin:     true,
-		BrandEnabled:     true,
-		PovHudEnabled:    false,
-		LaunchResolution: config.LaunchResolution4x3Low,
+		InjectPlugin:  true,
+		BrandEnabled:  true,
+		PovHudEnabled: false,
 	})
 	if err != nil {
 		t.Fatalf("LaunchDebugGame: %v", err)
@@ -278,8 +279,13 @@ func TestLaunchDebugGamePluginModeCarriesTransportAndSession(t *testing.T) {
 	if got := envValue(captured.Env, "CSDM_DEBUG_SESSION"); got != state.SessionID {
 		t.Fatalf("CSDM_DEBUG_SESSION = %q, want %q", got, state.SessionID)
 	}
-	if cmdLine := argValue(capturedArgs, "-cmdLine"); !strings.Contains(cmdLine, "-w 1280 -h 960") {
-		t.Fatalf("resolution args missing from cmdLine %q", cmdLine)
+	// The debug workbench carries its resolution inside the launch arguments, so
+	// the default command line must reach CS2 untouched.
+	if cmdLine := argValue(capturedArgs, "-cmdLine"); cmdLine != defaultDebugLaunchArguments {
+		t.Fatalf("cmdLine = %q, want %q", cmdLine, defaultDebugLaunchArguments)
+	}
+	if state.LaunchResolution != config.LaunchResolution4x3Low {
+		t.Fatalf("launch resolution = %q, want the 1280x960 profile from the default arguments", state.LaunchResolution)
 	}
 	content := readFileString(t, debugGameInfoPath(cs2Exe))
 	for _, path := range []string{producegame.SearchPathPlugin, producegame.SearchPathBrand} {

@@ -29,18 +29,6 @@
               </div>
             </div>
 
-            <div class="setting-row">
-              <span class="setting-label">{{ t("main.debug.resolution") }}</span>
-              <div class="setting-control">
-                <n-select
-                  v-model:value="launch.resolution"
-                  :options="resolutionOptions"
-                  :disabled="launchLocked"
-                  class="control-select"
-                />
-              </div>
-            </div>
-
             <span class="setting-label">{{ t("main.debug.launch_arguments") }}</span>
             <n-input v-model:value="launchInput.arguments" :disabled="launchLocked" />
             <n-button size="tiny" :disabled="launchLocked" @click="resetLaunchArguments">
@@ -505,21 +493,22 @@ import {
   useDebugSettingsDraft,
 } from "@/domains/debug";
 import { useDebugLaunchInput } from "@/domains/debug/debugSessionStore";
-import { DEFAULT_DEBUG_LAUNCH_ARGUMENTS, parseDebugStartupCommands } from "@/domains/debug/debugSessionCore";
+import {
+  DEFAULT_DEBUG_LAUNCH_ARGUMENTS,
+  parseDebugStartupCommands,
+  parseLaunchResolutionFromArguments,
+} from "@/domains/debug/debugSessionCore";
 import { demoList, selectedEntry } from "@/domains/demo/demo-state";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type {
   DebugCommandResponse,
   DebugLaunchRequest,
-  DebugLaunchResolution,
   DebugPlayDemoResponse,
   DebugPluginState,
   DebugRecordingStatus,
   DebugRecordingStatusValue,
   DebugSessionState,
 } from "@/shared/types";
-
-type LaunchResolution = DebugLaunchResolution;
 
 const {
   sessionState,
@@ -568,7 +557,6 @@ const launch = reactive({
   injectPlugin: true,
   povHud: true,
   brandVpk: true,
-  resolution: "4:3" as LaunchResolution,
 });
 
 const commandText = ref("");
@@ -590,7 +578,7 @@ let demoSelectionInitialized = false;
 // Each field records whether the user touched it during that window, so the
 // late settings response cannot overwrite a choice the user just made.
 const loadingDefaults = ref(true);
-const launchTouched = { povHud: false, resolution: false };
+const launchTouched = { povHud: false };
 watch(
   () => launch.povHud,
   () => {
@@ -598,22 +586,14 @@ watch(
   },
   { flush: "sync" },
 );
-watch(
-  () => launch.resolution,
-  () => {
-    if (loadingDefaults.value) launchTouched.resolution = true;
-  },
-  { flush: "sync" },
-);
 
-// The console plan must be built from the resolution the session actually
-// uses, not only from the settings snapshot the draft started with.
+// The launch arguments own the CS2 render resolution, so the console plan must
+// be built from the backbuffer the user actually typed, not from the persisted
+// formal setting. The backend derives the same profile from these arguments.
 watch(
-  () => launch.resolution,
-  (value) => {
-    if (settingsDraft.value.launch_resolution !== value) {
-      patchDraft({ launch_resolution: value });
-    }
+  () => launchInput.value.arguments,
+  () => {
+    syncLaunchResolutionDraft();
   },
 );
 
@@ -672,11 +652,6 @@ const pluginTagType = computed(() => pluginTag.value.type);
 // The backend message keeps the troubleshooting detail behind the tag.
 const pluginDetail = computed(() => sessionState.value.plugin_message);
 
-const resolutionOptions = computed(() => [
-  { label: t("main.settings.resolution_16_9"), value: "16:9" },
-  { label: t("main.settings.resolution_4_3"), value: "4:3" },
-  { label: t("main.settings.resolution_4_3_1280x960"), value: "4:3_1280x960" },
-]);
 const recordQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_standard"), value: "standard" },
   { label: t("main.settings.edit_quality_high"), value: "high" },
@@ -955,22 +930,37 @@ function applySettingsDefaults(force = false) {
     // An explicit "reload from formal settings" also drops the pre-launch
     // choices so the launch options follow the reloaded draft again.
     launchTouched.povHud = false;
-    launchTouched.resolution = false;
   }
   if (!launchTouched.povHud) launch.povHud = settings.pov_hud_enabled;
-  // Resolution lives in the session debug draft, so a route switch keeps the
-  // user's pre-launch choice instead of resetting it from persisted settings.
-  // The draft was initialized from the same settings.
-  if (!launchTouched.resolution) launch.resolution = settingsDraft.value.launch_resolution;
+  // The launch arguments own the render resolution, so a reload must not pull
+  // it back from the persisted setting.
+  syncLaunchResolutionDraft();
+}
+
+/**
+ * Keep the console plan preview on the resolution the launch arguments carry.
+ * The page has no resolution selector; the backend derives the same profile
+ * from the same arguments and its result is what a live session reports.
+ */
+function syncLaunchResolutionDraft() {
+  const resolution = parseLaunchResolutionFromArguments(launchInput.value.arguments);
+  if (settingsDraft.value.launch_resolution !== resolution) {
+    patchDraft({ launch_resolution: resolution });
+  }
 }
 
 function applySessionToDraft(state: DebugSessionState) {
   launch.injectPlugin = state.inject_plugin;
   launch.povHud = state.pov_hud_enabled;
   launch.brandVpk = state.brand_enabled;
-  launch.resolution = state.launch_resolution;
   launchInput.value.arguments = state.launch_arguments ?? DEFAULT_DEBUG_LAUNCH_ARGUMENTS;
   launchInput.value.commands = (state.startup_commands ?? []).join("\n");
+  // The session's frozen resolution is the backend's own derivation from those
+  // arguments; adopting it keeps the console plan preview aligned with the live
+  // session even when the arguments text did not change.
+  if (settingsDraft.value.launch_resolution !== state.launch_resolution) {
+    patchDraft({ launch_resolution: state.launch_resolution });
+  }
 }
 
 function buildLaunchRequest(): DebugLaunchRequest {
@@ -981,7 +971,9 @@ function buildLaunchRequest(): DebugLaunchRequest {
     pov_hud_enabled: launch.povHud,
     brand_enabled: launch.brandVpk,
     pov_radar_enabled: false,
-    launch_resolution: launch.resolution,
+    // Derived from the arguments the user typed; the backend re-derives it from
+    // the same string, so a stale field can never pick the wrong stretch.
+    launch_resolution: parseLaunchResolutionFromArguments(launchInput.value.arguments),
     launch_arguments: launchInput.value.arguments,
     startup_commands: launch.injectPlugin ? parseDebugStartupCommands(launchInput.value.commands) : [],
   };

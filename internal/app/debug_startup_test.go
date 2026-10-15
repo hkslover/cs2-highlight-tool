@@ -5,24 +5,81 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cs2-highlight-tool-v2/internal/config"
 )
 
-func TestDebugLaunchArguments(t *testing.T) {
+func TestBuildHLAECommandLineFromArguments(t *testing.T) {
+	// The debug workbench's arguments are the whole command line: nothing is
+	// appended, so a session cannot end up with two conflicting -w/-h pairs.
 	for _, tc := range []struct {
-		name, resolution string
-		arguments        *string
-		want             string
+		name      string
+		arguments *string
+		want      string
 	}{
-		{"legacy", "4:3", nil, defaultHLAEArguments + " -w 1440 -h 1080"},
-		{"custom", "4:3_1280x960", stringPointer(`-insecure -console +echo "a b"`), `-insecure -console +echo "a b" -w 1280 -h 960`},
-		{"empty", "16:9", stringPointer(""), ""},
+		{"default", nil, defaultDebugLaunchArguments},
+		{"custom", stringPointer(`-insecure -console +echo "a b" -w 1920 -h 1080`), `-insecure -console +echo "a b" -w 1920 -h 1080`},
+		{"empty", stringPointer(""), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := buildHLAECommandLineWithArguments(tc.resolution, tc.arguments); got != tc.want {
+			if got := buildHLAECommandLineFromArguments(tc.arguments); got != tc.want {
 				t.Fatalf("got %q want %q", got, tc.want)
 			}
 		})
 	}
+}
+
+func TestLaunchResolutionFromArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		arguments string
+		want      string
+	}{
+		{"no resolution", "-insecure -console", config.DefaultLaunchResolution},
+		{"4:3 1440x1080", "-console -w 1440 -h 1080", config.LaunchResolution4x3},
+		{"4:3 1280x960", "-console -w 1280 -h 960", config.LaunchResolution4x3Low},
+		{"other 4:3 size", "-console -w 1024 -h 768", config.LaunchResolution4x3},
+		{"16:9", "-console -w 1920 -h 1080", config.LaunchResolution16x9},
+		{"last pair wins", "-w 1920 -h 1080 -w 1280 -h 960", config.LaunchResolution4x3Low},
+		{"long flags", "-width 1920 -height 1080", config.LaunchResolution16x9},
+		{"invalid value", "-w abc -h 960", config.DefaultLaunchResolution},
+		{"missing value", "-w", config.DefaultLaunchResolution},
+		{"quoted dimensions", `-w "1280" -h "960"`, config.LaunchResolution4x3Low},
+		{"quoted console text", `-w 1280 -h 960 +echo "test -w 1920 -h 1080 test"`, config.LaunchResolution4x3Low},
+		{"console text before dimensions", `+echo "test -w 1920 -h 1080 test" -w 1280 -h 960`, config.LaunchResolution4x3Low},
+		{"empty quoted argument", `-w 1280 -h 960 +echo ""`, config.LaunchResolution4x3Low},
+		{"unterminated console quote", `-w 1280 -h 960 +echo "test -w 1920 -h 1080`, config.LaunchResolution4x3Low},
+		{"escaped quote in console text", `-w 1280 -h 960 +echo "test \"quoted\" -w 1920 -h 1080 test"`, config.LaunchResolution4x3Low},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := launchResolutionFromArguments(tc.arguments); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDebugLaunchRequestDerivesResolutionFromArguments(t *testing.T) {
+	// A client-provided launch_resolution is ignored: the arguments own it.
+	arguments := "-console -w 1920 -h 1080"
+	req := normalizeDebugLaunchRequest(DebugLaunchRequest{
+		LaunchResolution: config.LaunchResolution4x3,
+		LaunchArguments:  &arguments,
+	})
+	if req.LaunchResolution != config.LaunchResolution16x9 {
+		t.Fatalf("launch resolution = %q, want 16:9 from the arguments", req.LaunchResolution)
+	}
+
+	legacy := normalizeDebugLaunchRequest(DebugLaunchRequest{})
+	if *legacy.LaunchArguments != defaultDebugLaunchArguments {
+		t.Fatalf("default arguments = %q, want %q", *legacy.LaunchArguments, defaultDebugLaunchArguments)
+	}
+	if legacy.LaunchResolution != config.LaunchResolution4x3Low {
+		t.Fatalf("default resolution = %q, want the 1280x960 profile", legacy.LaunchResolution)
+	}
+}
+
+func TestDebugLaunchArgumentsFreezeCallerInputs(t *testing.T) {
 	// Normalization freezes caller-owned inputs, including the command slice.
 	arguments := "-console"
 	commands := []string{" echo \"a;b\"; fps_max 120 ", " "}

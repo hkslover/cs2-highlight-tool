@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"cs2-highlight-tool-v2/internal/config"
-
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -490,10 +488,11 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 	}
 
 	cs2PID, err := a.launchHLAEGameWithOptions(cfg, hlaeLaunchOptions{
-		LaunchResolution: normalized.LaunchResolution,
-		PluginEnabled:    normalized.InjectPlugin,
-		DebugSessionID:   sessionID,
-		LaunchArguments:  normalized.LaunchArguments,
+		LaunchResolution:        normalized.LaunchResolution,
+		PluginEnabled:           normalized.InjectPlugin,
+		DebugSessionID:          sessionID,
+		LaunchArguments:         normalized.LaunchArguments,
+		ResolutionFromArguments: true,
 	})
 	if err != nil {
 		return a.failDebugLaunch(rt, err)
@@ -760,16 +759,15 @@ func (a *App) releaseDebugWorkspace(rt *debugSessionRuntime) {
 }
 
 func normalizeDebugLaunchRequest(req DebugLaunchRequest) DebugLaunchRequest {
-	resolution := strings.TrimSpace(req.LaunchResolution)
-	if resolution == "" || !config.IsSupportedLaunchResolution(resolution) {
-		resolution = config.DefaultLaunchResolution
-	}
-	req.LaunchResolution = resolution
-	arguments := defaultHLAEArguments
+	arguments := defaultDebugLaunchArguments
 	if req.LaunchArguments != nil {
 		arguments = strings.TrimSpace(*req.LaunchArguments)
 	}
 	req.LaunchArguments = &arguments
+	// The debug page has no resolution selector: the CS2 render resolution is
+	// carried by the launch arguments themselves, and that is what the recording
+	// profile has to follow. A client-provided launch_resolution is ignored.
+	req.LaunchResolution = launchResolutionFromArguments(arguments)
 	req.StartupCommands = normalizeDebugCommands(req.StartupCommands)
 	return req
 }
