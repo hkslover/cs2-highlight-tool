@@ -43,7 +43,6 @@
 
             <span class="setting-label">{{ t("main.debug.launch_arguments") }}</span>
             <n-input v-model:value="launchInput.arguments" :disabled="launchLocked" />
-            <span class="setting-hint">{{ t("main.debug.launch_arguments_hint") }}</span>
             <n-button size="tiny" :disabled="launchLocked" @click="resetLaunchArguments">
               {{ t("main.debug.launch_arguments_reset") }}
             </n-button>
@@ -55,7 +54,6 @@
               :disabled="launchLocked || !launch.injectPlugin"
               :placeholder="t('main.debug.startup_commands_placeholder')"
             />
-            <span class="setting-hint">{{ t("main.debug.startup_commands_hint") }}</span>
             <div class="action-row">
               <n-button
                 type="primary"
