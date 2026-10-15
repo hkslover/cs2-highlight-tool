@@ -44,6 +44,7 @@
 ## 设置、生成与游戏环境
 
 - 新设置核对配置默认值/兼容处理、Get/Save DTO、生成逻辑及前端类型/控件；除 `hide_player_avatars` 始终写入 `cl_teamcounter_playercount_instead_of_avatars true|false` 外，关闭命令开关时不生成命令或重置命令。运行时画面/声音与录制初始化的无副作用命令构建集中在 `clipsjson/gamesettings.go`（包括调试专用的显式恢复命令与 `RecordInitCommands`），`app/debug_settings.go` 的 `GetDebugConsolePlan` 只负责草稿归一化、`auto` 编码解析与 DTO 装配，不得把命令拼接放回 App 或前端；调试草稿不得写回配置，调试录制输出固定为 `<dataDir>/outputs/debug`，并使用按编码参数派生的 `DebugRecordSettingsName`（正式 Build 继续用实际 preset 名），因为同一游戏进程内 HLAE 不覆盖同名 settings 条目；`GetDebugConsolePlan` 必须可重复调用且同一参数派生同一名称。编码设置的 `effective_video_preset`、`effective_video_encoder`、`effective_video_status` 仅作为 Get/Save 响应的只读探测结果，不能覆盖持久化的 `video_preset` 用户策略。
+- POV HUD 内嵌资源由 `tools/hud-pov-vpk/build_vpk.py` 从模板与 CSS 构建；顶部头像血条按 `HUD--team--ct/terrorist` 当前视角阵营仅显示己方，整条敌方容器（含红色背景）透明，未知阵营默认隐藏双方。更新资源后执行 `python3 -m unittest discover -s tools/hud-pov-vpk -v`，并另行验证 CT/T、切视角和换边的游戏内显示；仍不得覆盖用户已有 `pov.vpk`。
 - `pov_radar_enabled` 不得与 `pov_hud_enabled` 的 VPK/gameinfo 生命周期联动（雷达开关不控制 POV VPK 的部署/卸载）；`sky_blackout` 不得联动关闭云层。开启时 `clipsjson` 逐 pass 在 `spec_mode`/`spec_player` 后、`mirv_streams record start` 前发一次 `csdm_radar_pov 1`，录制起点前至少两秒 Demo 预热；关闭时保持原序列分组与 tick 时序。
 - `producegame/assets/brand.vpk` 为每次录制必需的内嵌品牌资源，无配置或 UI 开关；`app/produce_brand.go` 部署至 CS2 的 `csgo/brand.vpk`，与可选 POV 同样保留用户既有 VPK，仅清理本会话创建的文件。挂载、环境 epoch 回滚、失败收尾重试和 gameinfo 残留修复须同时覆盖品牌路径。
 - `hide_chat_messages` 默认开启，旧配置缺少字段时继承默认值，显式 false 保持关闭；开启时每个 Demo 的初始化序列写入 `hidehud 128`，在片段录制前执行，关闭时不写入或重置 `hidehud`。
