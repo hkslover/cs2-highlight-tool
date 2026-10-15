@@ -111,6 +111,7 @@ func TestLaunchDebugGameNoPluginMode(t *testing.T) {
 		BrandEnabled:     false,
 		PovHudEnabled:    false,
 		LaunchResolution: config.LaunchResolution4x3,
+		LaunchArguments:  stringPointer(`-insecure -console +echo "custom args"`),
 	})
 	if err != nil {
 		t.Fatalf("LaunchDebugGame: %v", err)
@@ -129,6 +130,9 @@ func TestLaunchDebugGameNoPluginMode(t *testing.T) {
 	}
 	if captured == nil {
 		t.Fatal("HLAE launcher was not invoked")
+	}
+	if got := argValue(capturedArgs, "-cmdLine"); got != `-insecure -console +echo "custom args" -w 1440 -h 1080` {
+		t.Fatalf("custom CS2 arguments not forwarded as one value: %q", got)
 	}
 	if !hasArg(capturedArgs, "-hookDllPath") {
 		t.Fatalf("HLAE hook DLL was not passed: %v", capturedArgs)

@@ -63,13 +63,14 @@ type debugSessionRuntime struct {
 	// Interactive debug protocol state. Readiness is only true after the plugin
 	// confirms this exact session id over a connection that is still current;
 	// a connected transport is not proof of the debug protocol.
-	debugReady          bool
-	debugReadyConnID    uint64
-	debugReadySessionID string
-	debugProtocolError  string
-	debugReadyDeadline  time.Time
-	debugReadyTimer     *time.Timer
-	debugPending        map[string]*debugPendingCommand
+	debugReady           bool
+	debugReadyConnID     uint64
+	debugReadySessionID  string
+	debugProtocolError   string
+	debugReadyDeadline   time.Time
+	debugReadyTimer      *time.Timer
+	startupCommandResult *DebugCommandResponse
+	debugPending         map[string]*debugPendingCommand
 
 	// Demo playback state is only ever set from a plugin `debug_demo_state`
 	// transition (or cleared when the transport that observed it is gone).
@@ -329,23 +330,26 @@ func (a *App) buildDebugSessionSnapshot(rt *debugSessionRuntime) DebugSessionSta
 		version = floor
 	}
 	state := DebugSessionState{
-		SessionID:        rt.sessionID,
-		Status:           rt.status,
-		InjectPlugin:     rt.request.InjectPlugin,
-		PovHudEnabled:    rt.request.PovHudEnabled,
-		BrandEnabled:     rt.request.BrandEnabled,
-		PovRadarEnabled:  rt.request.PovRadarEnabled,
-		LaunchResolution: rt.request.LaunchResolution,
-		ProcessStarted:   rt.processStarted,
-		CS2PID:           rt.cs2PID,
-		DemoPath:         rt.debugDemoPath,
-		DemoPlaying:      rt.debugDemoPlaying,
-		DemoPaused:       rt.debugDemoPaused,
-		DemoPlayPending:  rt.debugDemoPlayPending,
-		Recording:        recording,
-		Recordings:       recordings,
-		Error:            rt.lastError,
-		UpdatedAtMs:      version,
+		SessionID:            rt.sessionID,
+		Status:               rt.status,
+		InjectPlugin:         rt.request.InjectPlugin,
+		PovHudEnabled:        rt.request.PovHudEnabled,
+		BrandEnabled:         rt.request.BrandEnabled,
+		PovRadarEnabled:      rt.request.PovRadarEnabled,
+		LaunchResolution:     rt.request.LaunchResolution,
+		LaunchArguments:      debugLaunchArguments(rt.request),
+		StartupCommands:      append([]string(nil), rt.request.StartupCommands...),
+		StartupCommandResult: rt.startupCommandResult,
+		ProcessStarted:       rt.processStarted,
+		CS2PID:               rt.cs2PID,
+		DemoPath:             rt.debugDemoPath,
+		DemoPlaying:          rt.debugDemoPlaying,
+		DemoPaused:           rt.debugDemoPaused,
+		DemoPlayPending:      rt.debugDemoPlayPending,
+		Recording:            recording,
+		Recordings:           recordings,
+		Error:                rt.lastError,
+		UpdatedAtMs:          version,
 	}
 	rt.mu.Unlock()
 	a.fillDebugPluginState(rt, &state)
@@ -414,6 +418,9 @@ func (a *App) fillDebugPluginState(rt *debugSessionRuntime, state *DebugSessionS
 // transport. The request is frozen into the session and never written to the
 // persisted config.
 func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error) {
+	if err := validateDebugLaunchRequest(req); err != nil {
+		return a.GetDebugSessionState(), err
+	}
 	a.produceLaunchMu.Lock()
 	defer a.produceLaunchMu.Unlock()
 
@@ -486,6 +493,7 @@ func (a *App) LaunchDebugGame(req DebugLaunchRequest) (DebugSessionState, error)
 		LaunchResolution: normalized.LaunchResolution,
 		PluginEnabled:    normalized.InjectPlugin,
 		DebugSessionID:   sessionID,
+		LaunchArguments:  normalized.LaunchArguments,
 	})
 	if err != nil {
 		return a.failDebugLaunch(rt, err)
@@ -666,10 +674,14 @@ func (a *App) runDebugSessionWatcher(ctx context.Context, rt *debugSessionRuntim
 
 	ticker := time.NewTicker(debugProcessPollInterval)
 	defer ticker.Stop()
+	startupTicker := time.NewTicker(100 * time.Millisecond)
+	defer startupTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-startupTicker.C:
+			a.executeDebugStartupCommands(rt)
 		case <-ticker.C:
 			rt.mu.Lock()
 			pid := rt.cs2PID
@@ -753,6 +765,12 @@ func normalizeDebugLaunchRequest(req DebugLaunchRequest) DebugLaunchRequest {
 		resolution = config.DefaultLaunchResolution
 	}
 	req.LaunchResolution = resolution
+	arguments := defaultHLAEArguments
+	if req.LaunchArguments != nil {
+		arguments = strings.TrimSpace(*req.LaunchArguments)
+	}
+	req.LaunchArguments = &arguments
+	req.StartupCommands = normalizeDebugCommands(req.StartupCommands)
 	return req
 }
 

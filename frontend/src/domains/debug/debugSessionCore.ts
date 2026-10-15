@@ -8,6 +8,13 @@ import type {
   DebugSessionState,
 } from "@/shared/types";
 
+export const DEFAULT_DEBUG_LAUNCH_ARGUMENTS = "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console";
+
+/** Each nonempty line is one command; semicolons and quotes stay untouched. */
+export function parseDebugStartupCommands(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
 export const DEBUG_SESSION_EVENT = "debug_session_state_changed";
 
 export type DebugSessionSource = "event" | "snapshot";

@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDebugSessionCore,
+  parseDebugStartupCommands,
   emptyDebugSessionState,
   mergeDebugSessionState,
 } from "../node_modules/.cache/cs2-highlight-tool-backend-tests/domains/debug/debugSessionCore.js";
+
+test("startup commands preserve semicolons, quotes and order across CRLF lines", () => {
+  assert.deepEqual(parseDebugStartupCommands('  sv_cheats 1\r\n\r\n echo "a;b"; fps_max 120 \n'), ['sv_cheats 1', 'echo "a;b"; fps_max 120']);
+  assert.deepEqual(parseDebugStartupCommands("  \n"), []);
+});
 
 function createCell(initial) {
   return { value: initial };

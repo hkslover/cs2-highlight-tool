@@ -20,6 +20,9 @@ type DebugLaunchRequest struct {
 	BrandEnabled     bool   `json:"brand_enabled"`
 	PovRadarEnabled  bool   `json:"pov_radar_enabled"`
 	LaunchResolution string `json:"launch_resolution"`
+	// Nil keeps legacy defaults; an explicit empty string removes them.
+	LaunchArguments *string  `json:"launch_arguments,omitempty"`
+	StartupCommands []string `json:"startup_commands,omitempty"`
 }
 
 // Debug protocol readiness and result statuses. `executed` means the plugin
@@ -156,6 +159,10 @@ type DebugSessionState struct {
 	BrandEnabled     bool   `json:"brand_enabled"`
 	PovRadarEnabled  bool   `json:"pov_radar_enabled"`
 	LaunchResolution string `json:"launch_resolution"`
+
+	LaunchArguments      string                `json:"launch_arguments"`
+	StartupCommands      []string              `json:"startup_commands"`
+	StartupCommandResult *DebugCommandResponse `json:"startup_command_result,omitempty"`
 
 	ProcessStarted  bool   `json:"process_started"`
 	CS2PID          int    `json:"cs2_pid"`

@@ -41,6 +41,21 @@
               </div>
             </div>
 
+            <span class="setting-label">{{ t("main.debug.launch_arguments") }}</span>
+            <n-input v-model:value="launchInput.arguments" :disabled="launchLocked" />
+            <span class="setting-hint">{{ t("main.debug.launch_arguments_hint") }}</span>
+            <n-button size="tiny" :disabled="launchLocked" @click="resetLaunchArguments">
+              {{ t("main.debug.launch_arguments_reset") }}
+            </n-button>
+            <span class="setting-label">{{ t("main.debug.startup_commands") }}</span>
+            <n-input
+              v-model:value="launchInput.commands"
+              type="textarea"
+              :autosize="{ minRows: 3, maxRows: 8 }"
+              :disabled="launchLocked || !launch.injectPlugin"
+              :placeholder="t('main.debug.startup_commands_placeholder')"
+            />
+            <span class="setting-hint">{{ t("main.debug.startup_commands_hint") }}</span>
             <div class="action-row">
               <n-button
                 type="primary"
@@ -95,6 +110,10 @@
               <span class="setting-label">{{ t("main.debug.session_id") }}</span>
               <span class="setting-value setting-value--path">{{ sessionState.session_id || t("main.debug.value_none") }}</span>
             </div>
+            <n-alert v-if="sessionState.startup_command_result" :type="sessionState.startup_command_result.status === 'executed' ? 'success' : 'error'" :bordered="false" size="small">
+              {{ sessionState.startup_command_result.status === "executed" ? t("main.debug.startup_commands_executed") : sessionState.startup_command_result.error }}
+            </n-alert>
+            <span v-else-if="sessionState.startup_commands?.length && launchLocked" class="setting-hint">{{ t("main.debug.startup_commands_waiting") }}</span>
             <n-alert v-if="sessionError" type="error" :bordered="false" size="small">
               {{ sessionError }}
             </n-alert>
@@ -487,6 +506,8 @@ import {
   useDebugSession,
   useDebugSettingsDraft,
 } from "@/domains/debug";
+import { useDebugLaunchInput } from "@/domains/debug/debugSessionStore";
+import { DEFAULT_DEBUG_LAUNCH_ARGUMENTS, parseDebugStartupCommands } from "@/domains/debug/debugSessionCore";
 import { demoList, selectedEntry } from "@/domains/demo/demo-state";
 import { useDebugSettings } from "@/shared/state/useDebugSettings";
 import type {
@@ -541,6 +562,9 @@ const {
   applyDebugPlan,
   patchDraft,
 } = useDebugSettingsDraft();
+
+const launchInput = useDebugLaunchInput();
+function resetLaunchArguments() { launchInput.value.arguments = DEFAULT_DEBUG_LAUNCH_ARGUMENTS; }
 
 const launch = reactive({
   injectPlugin: true,
@@ -947,6 +971,8 @@ function applySessionToDraft(state: DebugSessionState) {
   launch.povHud = state.pov_hud_enabled;
   launch.brandVpk = state.brand_enabled;
   launch.resolution = state.launch_resolution;
+  launchInput.value.arguments = state.launch_arguments ?? DEFAULT_DEBUG_LAUNCH_ARGUMENTS;
+  launchInput.value.commands = (state.startup_commands ?? []).join("\n");
 }
 
 function buildLaunchRequest(): DebugLaunchRequest {
@@ -958,6 +984,8 @@ function buildLaunchRequest(): DebugLaunchRequest {
     brand_enabled: launch.brandVpk,
     pov_radar_enabled: false,
     launch_resolution: launch.resolution,
+    launch_arguments: launchInput.value.arguments,
+    startup_commands: launch.injectPlugin ? parseDebugStartupCommands(launchInput.value.commands) : [],
   };
 }
 

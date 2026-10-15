@@ -366,7 +366,7 @@ func (a *App) sendDebugRequestOnRuntime(rt *debugSessionRuntime, readyConnID uin
 	payload := buildPayload(requestID)
 	waiter := make(chan DebugCommandResponse, 1)
 	rt.mu.Lock()
-	if debugRuntimeDone(rt) || !rt.debugReady || rt.debugReadyConnID != readyConnID || a.produceW.GameConnID() != readyConnID {
+	if debugRuntimeDone(rt) || (name == "debug_execute" && rt.status != DebugStatusRunning) || !rt.debugReady || rt.debugReadyConnID != readyConnID || a.produceW.GameConnID() != readyConnID {
 		rt.mu.Unlock()
 		return DebugCommandResponse{}, fmt.Errorf("调试会话或插件连接已更换，命令未执行")
 	}

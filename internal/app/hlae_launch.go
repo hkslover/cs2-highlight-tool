@@ -73,6 +73,7 @@ type hlaeLaunchOptions struct {
 	LaunchResolution string
 	PluginEnabled    bool
 	DebugSessionID   string
+	LaunchArguments  *string
 }
 
 func (a *App) launchHLAEGame() (int, error) {
@@ -112,7 +113,7 @@ func (a *App) launchHLAEGameWithOptions(cfg *config.Config, opts hlaeLaunchOptio
 		return 0, fmt.Errorf("枚举 cs2 进程失败: %w", err)
 	}
 
-	cmdLine := buildHLAECommandLine(opts.LaunchResolution)
+	cmdLine := buildHLAECommandLineWithArguments(opts.LaunchResolution, opts.LaunchArguments)
 	args := []string{
 		"-noGui", "-autoStart", "-noConfig",
 		"-afxDisableSteamStorage", "-customLoader",
@@ -164,8 +165,17 @@ func (a *App) launchHLAEGameWithOptions(cfg *config.Config, opts hlaeLaunchOptio
 	return pid, nil
 }
 
+const defaultHLAEArguments = "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console"
+
 func buildHLAECommandLine(launchResolution string) string {
-	cmdLine := "-insecure -novid -low -high +sv_lan 1 -coop_fullscreen -worldwide -console"
+	return buildHLAECommandLineWithArguments(launchResolution, nil)
+}
+
+func buildHLAECommandLineWithArguments(launchResolution string, arguments *string) string {
+	cmdLine := defaultHLAEArguments
+	if arguments != nil {
+		cmdLine = strings.TrimSpace(*arguments)
+	}
 	switch strings.TrimSpace(launchResolution) {
 	case config.LaunchResolution4x3:
 		cmdLine += " -w 1440 -h 1080"
