@@ -132,17 +132,25 @@ func playDebugDemoWithFakePlugin(t *testing.T, app *App, conn *websocket.Conn, d
 // answers `debug_record_start`, and returns the wire payload plus the API error.
 func startDebugRecordingWithFakePlugin(t *testing.T, app *App, conn *websocket.Conn, sendStartStatus bool) (debugRecordStartWire, error) {
 	t.Helper()
+	return startDebugRecordingWithRequestAndFakePlugin(t, app, conn, DebugRecordingRequest{
+		RecordFPS:     60,
+		RecordQuality: "high",
+		VideoPreset:   "c1",
+	}, sendStartStatus)
+}
+
+// startDebugRecordingWithRequestAndFakePlugin is the request-carrying variant
+// of startDebugRecordingWithFakePlugin for settings that are frozen per
+// segment (motion blur, for example).
+func startDebugRecordingWithRequestAndFakePlugin(t *testing.T, app *App, conn *websocket.Conn, req DebugRecordingRequest, sendStartStatus bool) (debugRecordStartWire, error) {
+	t.Helper()
 	type callResult struct {
 		state DebugSessionState
 		err   error
 	}
 	resultCh := make(chan callResult, 1)
 	go func() {
-		state, err := app.StartDebugRecording(DebugRecordingRequest{
-			RecordFPS:     60,
-			RecordQuality: "high",
-			VideoPreset:   "c1",
-		})
+		state, err := app.StartDebugRecording(req)
 		resultCh <- callResult{state: state, err: err}
 	}()
 
@@ -314,6 +322,54 @@ func TestStartDebugRecordingBuildsSharedInitCommandsAndTracksBoundary(t *testing
 	wantVideo, _ := debugRecordingTakePaths(recordDir)
 	if recording.VideoPath != wantVideo {
 		t.Fatalf("video path = %q", recording.VideoPath)
+	}
+}
+
+func TestStartDebugRecordingAppliesMotionBlurSampler(t *testing.T) {
+	app, conn := startDebugRecordingTestSession(t)
+	beginDebugPlayback(t, app, conn)
+
+	wire, err := startDebugRecordingWithRequestAndFakePlugin(t, app, conn, DebugRecordingRequest{
+		RecordFPS:         60,
+		RecordQuality:     "high",
+		VideoPreset:       "c1",
+		MotionBlurEnabled: true,
+	}, true)
+	if err != nil {
+		t.Fatalf("StartDebugRecording: %v", err)
+	}
+
+	joined := strings.Join(wire.Payload.Commands, "\n")
+	// The configured record fps stays the output rate; the capture rate is the
+	// sampler input and therefore drives the wall-clock recording cost.
+	for _, want := range []string{
+		"mirv_streams record fps 720",
+		"mirv_streams settings add ffmpeg debug_c1_high_",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("commands missing %q:\n%s", want, joined)
+		}
+	}
+	samplerName := ""
+	for _, command := range wire.Payload.Commands {
+		if strings.HasPrefix(command, "mirv_streams settings add sampler ") {
+			samplerName = strings.TrimSpace(strings.TrimPrefix(command, "mirv_streams settings add sampler "))
+			break
+		}
+	}
+	if !strings.HasPrefix(samplerName, "mblur_debug_c1_high_") {
+		t.Fatalf("sampler name = %q, want a parameter-derived mblur name:\n%s", samplerName, joined)
+	}
+	for _, want := range []string{
+		"mirv_streams settings edit " + samplerName + " fps 60",
+		"mirv_streams settings edit " + samplerName + " method trapezoid",
+		"mirv_streams settings edit " + samplerName + " exposure 0.5",
+		"mirv_streams settings edit " + samplerName + " strength 1",
+		"mirv_streams record screen settings " + samplerName,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("commands missing %q:\n%s", want, joined)
+		}
 	}
 }
 

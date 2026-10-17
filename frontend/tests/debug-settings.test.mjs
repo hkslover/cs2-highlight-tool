@@ -27,6 +27,7 @@ const confirmedSettings = {
   noflash_strength: 0.35,
   record_fps: 120,
   record_quality: "ultra",
+  motion_blur_enabled: true,
   video_preset: "n1",
   launch_resolution: "16:9",
 };
@@ -82,6 +83,7 @@ test("derives the draft from the confirmed settings subset", () => {
   assert.equal(draft.noflash_strength, 0.35);
   assert.equal(draft.record_fps, 120);
   assert.equal(draft.record_quality, "ultra");
+  assert.equal(draft.motion_blur_enabled, true);
   assert.equal(draft.video_preset, "n1");
   assert.equal(draft.launch_resolution, "16:9");
   assert.equal(Object.keys(draft).length, Object.keys(emptyDebugSettingsDraft()).length);

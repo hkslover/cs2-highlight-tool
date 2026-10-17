@@ -870,6 +870,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.NoFlashStrength != config.DefaultNoFlashStrength {
 		t.Fatalf("noflash_strength should default to %v: %+v", config.DefaultNoFlashStrength, initial)
 	}
+	if initial.MotionBlurEnabled || initial.EffectiveMotionBlurCaptureFPS != 0 {
+		t.Fatalf("motion blur should default to disabled with no capture rate: %+v", initial)
+	}
 	if initial.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("default record_output_dir mismatch: %+v", initial)
 	}
@@ -894,6 +897,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		PovKillFeedOnly:   true,
 		DisableClouds:     true,
 		NoFlashStrength:   0.45,
+		MotionBlurEnabled: true,
 	})
 	if err != nil {
 		t.Fatalf("SaveClipSettings: %v", err)
@@ -939,6 +943,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if saved.NoFlashStrength != 0.45 {
 		t.Fatalf("noflash_strength should persist 0.45: %+v", saved)
+	}
+	if !saved.MotionBlurEnabled || saved.EffectiveMotionBlurCaptureFPS != 720 {
+		t.Fatalf("motion blur should persist and derive a 720 fps capture rate: %+v", saved)
 	}
 	if saved.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("record_output_dir should be fixed under exeDir: %+v", saved)
@@ -986,6 +993,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if loaded.NoFlashStrength != 0.45 {
 		t.Fatalf("saved noflash_strength mismatch: %+v", loaded)
+	}
+	if !loaded.MotionBlurEnabled || loaded.EffectiveMotionBlurCaptureFPS != 720 {
+		t.Fatalf("saved motion blur mismatch: %+v", loaded)
 	}
 	if loaded.RecordOutputDir != filepath.Join(exeDir, "outputs") {
 		t.Fatalf("loaded record_output_dir should be fixed under exeDir: %+v", loaded)
@@ -1040,6 +1050,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if fallback.RecordQuality != config.DefaultRecordQuality {
 		t.Fatalf("invalid record_quality should fall back to default: %+v", fallback)
+	}
+	if fallback.MotionBlurEnabled || fallback.EffectiveMotionBlurCaptureFPS != 0 {
+		t.Fatalf("an omitted motion blur switch must stay disabled: %+v", fallback)
 	}
 }
 

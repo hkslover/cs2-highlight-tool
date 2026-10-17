@@ -98,6 +98,8 @@ export interface DebugSettingsDraft {
   noflash_strength: number;
   record_fps: number;
   record_quality: ClipSettings["record_quality"];
+  /** Same semantics as the persisted `motion_blur_enabled` clip setting. */
+  motion_blur_enabled: boolean;
   video_preset: ClipSettings["video_preset"];
   launch_resolution: DebugLaunchResolution;
 }
@@ -148,6 +150,8 @@ export interface DebugRecordingRequest {
   record_fps: number;
   record_quality: ClipSettings["record_quality"];
   video_preset: ClipSettings["video_preset"];
+  /** Uses the same sampler as formal production when enabled. */
+  motion_blur_enabled: boolean;
   /** Reuses the debug session option: keep this segment's raw video/audio. */
   keep_intermediate_files: boolean;
 }

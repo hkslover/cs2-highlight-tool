@@ -207,6 +207,7 @@ const clipSettings = ref<ClipSettings>({
   enable_voice: true,
   record_fps: 60,
   record_quality: "high",
+  motion_blur_enabled: false,
   edit_fps: 60,
   edit_quality: "high",
   video_preset: "auto",

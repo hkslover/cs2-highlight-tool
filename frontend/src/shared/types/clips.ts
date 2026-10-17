@@ -7,6 +7,14 @@ export interface ClipSettings {
   enable_voice: boolean;
   record_fps: number;
   record_quality: "standard" | "high" | "ultra";
+  /**
+   * Switches recording to the HLAE sampler: each output frame blends several
+   * renders at the derived capture rate, so fast turns gain motion blur while
+   * the output frame rate stays `record_fps`.
+   */
+  motion_blur_enabled: boolean;
+  /** Backend-derived sampler input FPS; 0 or absent when disabled. */
+  effective_motion_blur_capture_fps?: number;
   edit_fps: number;
   edit_quality: "standard" | "high" | "ultra";
   video_preset: "auto" | "c1" | "n1" | "a1" | "i1";

@@ -119,6 +119,7 @@ type DebugRecordingRequest struct {
 	RecordFPS             int    `json:"record_fps"`
 	RecordQuality         string `json:"record_quality"`
 	VideoPreset           string `json:"video_preset"`
+	MotionBlurEnabled     bool   `json:"motion_blur_enabled"`
 	KeepIntermediateFiles bool   `json:"keep_intermediate_files"`
 }
 

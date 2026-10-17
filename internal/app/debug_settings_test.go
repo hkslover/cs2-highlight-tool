@@ -120,6 +120,45 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 	}
 }
 
+func TestGetDebugConsolePlanAppliesMotionBlurToRecording(t *testing.T) {
+	a := newTestAppInTempDir(t)
+	plan, err := a.GetDebugConsolePlan(DebugSettingsDraft{
+		VideoPreset:       "c1",
+		RecordQuality:     "high",
+		RecordFPS:         120,
+		MotionBlurEnabled: true,
+		KillFeedLifetime:  4,
+		LaunchResolution:  "16:9",
+	})
+	if err != nil {
+		t.Fatalf("GetDebugConsolePlan: %v", err)
+	}
+	// 120fps output x 12 is above the cap, so the capture rate stops at 1080.
+	if !containsSubstring(plan.Recording, "mirv_streams record fps 1080") {
+		t.Fatalf("recording must use the sampler input rate: %#v", plan.Recording)
+	}
+	if !containsSubstring(plan.Recording, "mirv_streams settings add sampler mblur_debug_c1_high_") {
+		t.Fatalf("motion blur sampler missing from the recording plan: %#v", plan.Recording)
+	}
+	if !containsSubstring(plan.Recording, " fps 120") {
+		t.Fatalf("sampler output fps must stay the configured record fps: %#v", plan.Recording)
+	}
+
+	disabled, err := a.GetDebugConsolePlan(DebugSettingsDraft{
+		VideoPreset:      "c1",
+		RecordQuality:    "high",
+		RecordFPS:        60,
+		KillFeedLifetime: 4,
+		LaunchResolution: "16:9",
+	})
+	if err != nil {
+		t.Fatalf("GetDebugConsolePlan without motion blur: %v", err)
+	}
+	if containsSubstring(disabled.Recording, "sampler") {
+		t.Fatalf("disabled motion blur must not create a sampler: %#v", disabled.Recording)
+	}
+}
+
 func TestGetDebugConsolePlanUsesSessionLaunchResolution(t *testing.T) {
 	a := newTestAppInTempDir(t)
 	rt := &debugSessionRuntime{

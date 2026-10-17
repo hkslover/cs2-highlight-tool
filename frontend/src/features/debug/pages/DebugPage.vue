@@ -236,6 +236,16 @@
               </div>
             </div>
             <div class="setting-row">
+              <span class="setting-label">{{ t("main.settings.motion_blur_enabled") }}</span>
+              <div class="setting-control">
+                <n-switch
+                  :value="settingsDraft.motion_blur_enabled"
+                  :disabled="!settingsLoaded"
+                  @update:value="handleMotionBlurChange"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
               <span class="setting-label">{{ t("main.settings.record_quality") }}</span>
               <div class="setting-control">
                 <n-select
@@ -862,6 +872,7 @@ async function handleStartRecording() {
       record_fps: settingsDraft.value.record_fps,
       record_quality: settingsDraft.value.record_quality,
       video_preset: settingsDraft.value.video_preset,
+      motion_blur_enabled: settingsDraft.value.motion_blur_enabled,
       keep_intermediate_files: keepProduceIntermediates.value,
     });
   } catch (error: unknown) {
@@ -1043,6 +1054,10 @@ async function handleApplyRecording() {
 function handleRecordFPSChange(value: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return;
   patchDraft({ record_fps: Math.min(240, Math.max(1, Math.round(value))) });
+}
+
+function handleMotionBlurChange(value: boolean) {
+  patchDraft({ motion_blur_enabled: value });
 }
 
 function handleRecordQualityChange(value: string | number | null) {

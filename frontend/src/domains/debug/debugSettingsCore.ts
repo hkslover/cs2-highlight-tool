@@ -41,6 +41,7 @@ export function emptyDebugSettingsDraft(): DebugSettingsDraft {
     noflash_strength: 0,
     record_fps: 60,
     record_quality: "high",
+    motion_blur_enabled: false,
     video_preset: "auto",
     launch_resolution: "4:3",
   };
@@ -66,6 +67,7 @@ export function debugSettingsDraftFromClipSettings(
     noflash_strength: settings.noflash_strength,
     record_fps: settings.record_fps,
     record_quality: settings.record_quality,
+    motion_blur_enabled: settings.motion_blur_enabled,
     video_preset: settings.video_preset,
     launch_resolution: settings.launch_resolution,
   };

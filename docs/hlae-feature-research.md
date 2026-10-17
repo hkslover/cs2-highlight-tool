@@ -120,7 +120,7 @@
 
 ### 1.9 现有边界（缺口清单）
 
-以下能力当前**完全没有实现**（全仓检索确认为 0 命中）：`mirv_campath`、`mirv_camio`、`mirv_input`、`mirv_cmd`、sampler/motion blur、`host_framerate`、`mirv_panorama`、`mirv_glow`、`mirv_colors`、`mirv_fix`、`mirv_viewmodel`、`mirv_replace_name`、`mirv_cvar_unhide_all`、`mirv_listentities`、`mirv_script_*`、ReShade；以及应用层的 2D 回放、热力图、竖屏导出、音乐/节拍、字幕、自动选段打分。
+以下能力当前**完全没有实现**（全仓检索确认为 0 命中）：`mirv_campath`、`mirv_camio`、`mirv_input`、`mirv_cmd`、`host_framerate`、`mirv_panorama`、`mirv_glow`、`mirv_colors`、`mirv_fix`、`mirv_viewmodel`、`mirv_replace_name`、`mirv_cvar_unhide_all`、`mirv_listentities`、`mirv_script_*`、ReShade；以及应用层的 2D 回放、热力图、竖屏导出、音乐/节拍、字幕、自动选段打分。
 
 ---
 
@@ -151,9 +151,12 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 ```
 
 **接入要点 / 风险**：
-- 现有 `record_fps` 语义会**分裂**为"采集帧率"与"输出帧率"两个概念，必须新增字段而不是改旧字段语义（旧字段当前是 `mirv_streams record fps`）。
-- ⚠️ sampler 会把输出交给内层 ffmpeg 设置，`{AFX_STREAM_PATH}` 的展开方式与当前 `take%04d.mp4` + `take%04d/audio.wav` 的假设需要重新核对，`producemerge.WaitForTakeFilesReady` / `MergeTakeVideoAudioContext` 会受影响。
-- ⚠️ 采集 1080fps 意味着录制耗时约 18 倍（相对 60fps），需要预检与耗时提示。
+- `record_fps` 保持“成片输出帧率”语义；开启运动模糊后，`mirv_streams record fps` 改用后端派生的采集帧率（`clipsjson.MotionBlurCaptureFPS`：输出 ×12，限制 `240..1080`），sampler 的 `fps` 才是输出帧率。
+- 已按 HLAE 源码核对：`CSamplingRecordingSettings::CreateOutVideoStreamCreator` 把同一个 `pathSuffix` 和采集 `frameRate` 交给内层设置，sampler 的 `fps` 作为内层输出帧率；因此 `{AFX_STREAM_PATH}.mp4`（take 视频）与 `startmovie` 的 `<take>/audio.wav` 路径不变，`producemerge` 的等待/合并假设保持成立。⚠️ 仍需 Windows 实机确认文件落地与音画时长。
+- 参数语义：`exposure`（0-1，快门角度占比）是拖影长度，`strength`（0-1，1 表示不引入上一输出帧的交叉模糊）不是模糊强度；当前实现固定 `trapezoid` + `0.5` + `1`。
+- ⚠️ 录制耗时随采集帧率线性增长：默认 60fps 输出时为 720fps 采集（约 12 倍），120fps 输出时封顶 1080fps（约 9 倍），240fps 输出时约 4.5 倍。
+
+**当前实现**：`motion_blur_enabled` 配置开关（默认 false），正式 Build、调试控制台录制计划与调试手动录制共用 `clipsjson.RecordInitCommands` 的 sampler 分支，采集率通过 `GetClipSettings.effective_motion_blur_capture_fps` 只读回传。
 
 #### 2.1.2 多通道 / Alpha Matte（`mirv_streams add world|playersMatte|weaponsMatte|viewModelMatte|particlesBlack|particlesWhite`）📖（HLAE ≥ 2.192.2）
 
@@ -251,7 +254,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 | HLAE 能力 | CS2 | 当前工具 | 实际作用关键词 |
 | --- | --- | --- | --- |
 | screen 录制 + ffmpeg | ✅ | 已用 | 录制主体 |
-| sampler 运动模糊 | ✅ | ❌ | 电影感、不顿 |
+| sampler 运动模糊 | ✅ | 已用（`motion_blur_enabled`） | 电影感、不顿 |
 | 多通道 / matte / alpha | ✅ (≥2.192.2) | ❌ | 分层合成、抠人、换背景 |
 | depth 流 | ✅ | ❌ | 真景深、雾效 |
 | `record cam` | ✅ | ❌ | 相机轨迹给 3D 软件 |
@@ -303,13 +306,13 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 
 ### P0 — 低风险、立刻提升成片质感
 
-#### P0-1 运动模糊 / 高帧率采样（S–M）
+#### P0-1 运动模糊 / 高帧率采样（已落地）
 
-- **实际作用**：24/30fps 成片里快速甩枪、转身、跳跃不再顿挫，带自然拖影；1080fps 采集让后期慢放仍然平滑。
+- **实际作用**：24/30fps 成片里快速甩枪、转身、跳跃不再顿挫，带自然拖影；高采集帧率让后期慢放仍然平滑。
 - **用户可见效果**：同一段素材，"廉价录屏感"→"剪辑软件导出的感觉"。
-- **实现**：`RecordInitOptions` 增加 sampler 名与参数；采集帧率与输出帧率拆成两个字段；`mirv_streams record screen settings <sampler>`。
-- **代码落点**：`internal/clipsjson/gamesettings.go`、`internal/clipsjson/builder.go`、`internal/config/config.go`、`internal/app/clip_settings.go`、`frontend/src/domains/settings/`。
-- **风险**：⚠️ `{AFX_STREAM_PATH}` 展开与 take 文件路径假设需重核，会影响 `producemerge` 的等待/合并逻辑；耗时约 10–20 倍，需预检提示。
+- **已实现**：`motion_blur_enabled` 开关；`RecordInitCommands` 在开关开启时把 `record fps` 设为采集帧率（`MotionBlurCaptureFPS`：输出 ×12，`240..1080`），并依次写入 `settings add sampler <mblur_*>`、`edit ... settings <ffmpeg>`、`edit ... fps <输出帧率>`、`method trapezoid`、`exposure 0.5`、`strength 1`，最后 `record screen settings <sampler>`。
+- **代码落点**：`internal/clipsjson/gamesettings.go`（命令与派生命名/采集率）、`internal/plugingen/plan.go`、`internal/config/config.go`、`internal/app/clip_settings.go`、`internal/app/debug_settings.go`、`internal/app/debug_recording.go`、`frontend/src/features/settings/components/SettingsPanel.vue`。
+- **风险**：路径已按源码核对（sampler 透传同一 stream path），但 Windows 实机录制仍需确认 sampler 输出落地、音画时长与合并；耗时提示由设置页基于 `effective_motion_blur_capture_fps` 显示。
 
 #### P0-2 自动高光打分 + 一键选片（M）
 
@@ -414,7 +417,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 
 ## 5. 推进顺序建议
 
-1. **P0-1 运动模糊/高帧率采样** —— 收益最大、改动集中，先做它同时暴露 `AFX_STREAM_PATH`/合并流程的隐患。
+1. **P0-1 运动模糊/高帧率采样** —— 已落地（`motion_blur_enabled`）；sampler 透传 stream path 已按源码核对，剩余验收项是 Windows 实机的文件落地与音画时长。
 2. **P0-2 自动高光打分** —— 事实齐备、零外部依赖、用户最容易感知。
 3. **P0-3 + P0-4 画面风格与清理包** —— 与 1、2 并行，合成一份"画面预设"。
 4. **P1-1 自动运镜 MVP（先补逐 tick 位置采样）** —— 采样这一步同时解锁 2D 回放、热力图、竖屏跟随。

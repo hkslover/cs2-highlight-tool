@@ -259,11 +259,88 @@ type RecordInitOptions struct {
 	VideoPreset  string
 	FFmpegParams string
 	RecordName   string
+	// MotionBlur switches the screen recording to a HLAE sampler. RecordFPS
+	// stays the output FPS; the helper derives the higher capture FPS.
+	MotionBlur bool
 	// SettingsName is the HLAE ffmpeg settings entry name. An empty value keeps
 	// the produce behavior (the effective preset id); the debug workbench
 	// passes DebugRecordSettingsName because HLAE refuses to overwrite an
 	// existing settings entry inside one game process.
 	SettingsName string
+}
+
+// Motion blur sampler constants. The sampler wraps the ffmpeg setting: the
+// engine renders (`mirv_streams record fps`) at the capture FPS and the
+// sampler blends the samples into output frames at the configured record FPS,
+// so the output file keeps its frame rate and size. Capture cost grows with
+// the capture FPS, which is why the multiplier is bounded.
+const (
+	motionBlurCaptureMultiplier = 12
+	motionBlurMinCaptureFPS     = 240
+	motionBlurMaxCaptureFPS     = 1080
+	// motionBlurExposure is the HLAE sampler shutter angle fraction
+	// (0.5 = 180 degrees). motionBlurStrength 1 keeps the blend inside one
+	// output frame instead of also leaking the previous output frame.
+	motionBlurExposure = "0.5"
+	motionBlurStrength = "1"
+	motionBlurMethod   = "trapezoid"
+)
+
+// MotionBlurCaptureFPS returns the sampler input FPS for one output FPS. It is
+// exposed so the settings UI can show the effective capture rate and the
+// recording-time multiplier without duplicating the bounds.
+func MotionBlurCaptureFPS(outputFPS int) int {
+	if outputFPS <= 0 {
+		outputFPS = 60
+	}
+	capture := outputFPS * motionBlurCaptureMultiplier
+	if capture < motionBlurMinCaptureFPS {
+		capture = motionBlurMinCaptureFPS
+	}
+	if capture > motionBlurMaxCaptureFPS {
+		capture = motionBlurMaxCaptureFPS
+	}
+	return capture
+}
+
+// MotionBlurSamplerSettingsName derives the sampler entry name from every
+// parameter that shapes it. HLAE refuses a second `settings add sampler` with
+// the same name, and the same game process can rebuild the settings (for
+// example the debug workbench), so the name must change with the parameters.
+func MotionBlurSamplerSettingsName(settingsName string, outputFPS int, captureFPS int) string {
+	sanitize := func(value string) string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		var b strings.Builder
+		for _, r := range value {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+				b.WriteRune(r)
+			}
+		}
+		if b.Len() == 0 {
+			return "preset"
+		}
+		return b.String()
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(fmt.Sprintf("%s|%d|%d|%s|%s|%s", sanitize(settingsName), outputFPS, captureFPS, motionBlurMethod, motionBlurExposure, motionBlurStrength)))
+	return fmt.Sprintf("mblur_%s_%d_%08x", sanitize(settingsName), outputFPS, hash.Sum32())
+}
+
+// MotionBlurCommands returns the sampler setup for one recording. The inner
+// settings entry named settingsName must be created first; the caller points
+// `mirv_streams record screen settings` at the returned sampler afterwards.
+// `mirv_streams settings add sampler` refuses an existing name, which is why
+// the name is parameter-derived; the following edits keep an existing entry in
+// sync instead of failing the recording.
+func MotionBlurCommands(samplerName string, settingsName string, outputFPS int, captureFPS int) []string {
+	return []string{
+		fmt.Sprintf("mirv_streams settings add sampler %s", samplerName),
+		fmt.Sprintf("mirv_streams settings edit %s settings %s", samplerName, settingsName),
+		fmt.Sprintf("mirv_streams settings edit %s fps %d", samplerName, outputFPS),
+		fmt.Sprintf("mirv_streams settings edit %s method %s", samplerName, motionBlurMethod),
+		fmt.Sprintf("mirv_streams settings edit %s exposure %s", samplerName, motionBlurExposure),
+		fmt.Sprintf("mirv_streams settings edit %s strength %s", samplerName, motionBlurStrength),
+	}
 }
 
 // RecordInitCommands returns the HLAE recording initialization commands shared
@@ -275,6 +352,11 @@ type RecordInitOptions struct {
 // end-of-match animation and scoreboard scene so a demo that reaches match end
 // does not capture it. There is no settings switch; older HLAE builds only
 // report an unknown command and keep the scene visible.
+//
+// With MotionBlur enabled, `mirv_streams record fps` becomes the sampler input
+// FPS and the sampler emits the configured output FPS. The inner ffmpeg
+// setting therefore still writes the same `{AFX_STREAM_PATH}.mp4` next to the
+// startmovie `audio.wav`, so take paths are unchanged.
 func RecordInitCommands(opts RecordInitOptions) []string {
 	fps := opts.RecordFPS
 	if fps <= 0 {
@@ -284,15 +366,28 @@ func RecordInitCommands(opts RecordInitOptions) []string {
 	if settingsName == "" {
 		settingsName = opts.VideoPreset
 	}
-	return []string{
+	recordFPS := fps
+	samplerName := ""
+	if opts.MotionBlur {
+		recordFPS = MotionBlurCaptureFPS(fps)
+		samplerName = MotionBlurSamplerSettingsName(settingsName, fps, recordFPS)
+	}
+
+	commands := []string{
 		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
-		fmt.Sprintf("mirv_streams record fps %d", fps),
+		fmt.Sprintf("mirv_streams record fps %d", recordFPS),
 		"mirv_streams record startMovieWav 1",
 		fmt.Sprintf(`mirv_streams settings add ffmpeg %s "%s {QUOTE}{AFX_STREAM_PATH}.mp4{QUOTE}"`, settingsName, opts.FFmpegParams),
-		fmt.Sprintf("mirv_streams record screen settings %s", settingsName),
-		fmt.Sprintf(`mirv_streams record name "%s"`, normalizePathForCommand(opts.RecordName)),
 	}
+	if samplerName != "" {
+		commands = append(commands, MotionBlurCommands(samplerName, settingsName, fps, recordFPS)...)
+		commands = append(commands, fmt.Sprintf("mirv_streams record screen settings %s", samplerName))
+	} else {
+		commands = append(commands, fmt.Sprintf("mirv_streams record screen settings %s", settingsName))
+	}
+	commands = append(commands, fmt.Sprintf(`mirv_streams record name "%s"`, normalizePathForCommand(opts.RecordName)))
+	return commands
 }
 
 // DebugRecordSettingsName returns the settings entry name the debug workbench

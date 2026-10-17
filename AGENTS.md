@@ -96,6 +96,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | 字段 | 稳定语义 |
 | --- | --- |
 | `record_quality`、`edit_quality` | `standard | high | ultra`，默认`high`；软件编码映射 CRF，硬件编码映射 QP /`q:v` |
+| `motion_blur_enabled` | 默认 false；开启后录制改走 HLAE sampler：`record_fps` 仍是成片输出帧率，采集帧率由后端派生（`clipsjson.MotionBlurCaptureFPS`，12× 输出并限制在 `240..1080`），初始化序列创建参数名派生的 `mblur_*` sampler（`settings add sampler` → 指向内层 ffmpeg settings → `fps=输出帧率`、`method trapezoid`、`exposure 0.5`、`strength 1`）后由 `record screen settings` 使用它；take/音频路径不变，录制耗时约随采集帧率增长，`effective_motion_blur_capture_fps` 只读回该采集率 |
 | `edit_fps` | `24..240`，默认 `60` |
 | `video_preset` | `auto | c1 | n1 | a1 | i1`，默认`auto`，由后端 FFmpeg 能力探测选择 |
 | `launch_resolution` | `16:9 | 4:3 | 4:3_1280x960`，默认`4:3`；两种 4:3 为`1440x1080`、`1280x960`，录制通过 FFmpeg `-vf scale=trunc(ih*16/9/2)*2:ih` 真实拉伸为方像素 16:9（替代旧的 `-aspect 16:9` 元数据标签，兼容忽略 SAR 的播放器与异常捕获高度） |

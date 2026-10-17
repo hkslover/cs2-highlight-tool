@@ -30,6 +30,7 @@ type Config struct {
 	AutoAddVictimView      bool                `json:"auto_add_victim_view"`
 	RecordFPS              int                 `json:"record_fps"`
 	RecordQuality          string              `json:"record_quality"`
+	MotionBlurEnabled      bool                `json:"motion_blur_enabled"`
 	EditFPS                int                 `json:"edit_fps"`
 	EditQuality            string              `json:"edit_quality"`
 	VideoPreset            string              `json:"video_preset"`
@@ -105,6 +106,7 @@ func Default(dataDir string) *Config {
 		AutoAddVictimView:  true,
 		RecordFPS:          DefaultRecordFPS,
 		RecordQuality:      DefaultRecordQuality,
+		MotionBlurEnabled:  false,
 		EditFPS:            DefaultEditFPS,
 		EditQuality:        DefaultEditQuality,
 		VideoPreset:        DefaultVideoPreset,

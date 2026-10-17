@@ -449,3 +449,39 @@ test("refresh updates the effective encoder while preserving the auto choice and
   assert.equal(calls[0].video_preset, "auto");
   await store.dispose();
 });
+
+test("motion blur toggles the persisted switch and keeps the backend capture rate read-only", async () => {
+  let current = settings({ record_fps: 60 });
+  const calls = [];
+  const store = createSettingsStore({
+    backend: {
+      GetWorkspaceState: async () => workspace(),
+      GetClipSettings: async () => ({ ...current }),
+      SaveClipSettings: async (next) => {
+        calls.push({ ...next });
+        // The backend derives the sampler rate; it is response-only metadata.
+        current = {
+          ...current,
+          ...next,
+          effective_motion_blur_capture_fps: next.motion_blur_enabled ? 720 : 0,
+        };
+        return { ...current };
+      },
+    },
+    autoSaveDelayMs: 10,
+  });
+
+  await store.init();
+  assert.equal(store.draftSettings.motion_blur_enabled, false);
+
+  store.draftSettings.motion_blur_enabled = true;
+  await store.flush();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].motion_blur_enabled, true);
+  assert.equal(calls[0].effective_motion_blur_capture_fps, undefined);
+  assert.equal(store.draftSettings.motion_blur_enabled, true);
+  assert.equal(store.draftSettings.effective_motion_blur_capture_fps, 720);
+  assert.equal(store.dirty.value, false);
+  await store.dispose();
+});

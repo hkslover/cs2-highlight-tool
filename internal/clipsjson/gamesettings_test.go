@@ -309,6 +309,77 @@ func TestRecordInitCommandsUseExplicitSettingsName(t *testing.T) {
 	}
 }
 
+func TestRecordInitCommandsEnableMotionBlurSampler(t *testing.T) {
+	const recordName = "D:/clips/output/20260422_131500"
+	init := RecordInitCommands(RecordInitOptions{
+		RecordFPS:    60,
+		VideoPreset:  "n1",
+		FFmpegParams: "-c:v hevc_nvenc",
+		RecordName:   recordName,
+		MotionBlur:   true,
+	})
+	samplerName := MotionBlurSamplerSettingsName("n1", 60, 720)
+	want := []string{
+		"mirv_endofmatch 0",
+		"mirv_streams record screen enabled 1",
+		"mirv_streams record fps 720",
+		"mirv_streams record startMovieWav 1",
+		`mirv_streams settings add ffmpeg n1 "-c:v hevc_nvenc {QUOTE}{AFX_STREAM_PATH}.mp4{QUOTE}"`,
+		"mirv_streams settings add sampler " + samplerName,
+		"mirv_streams settings edit " + samplerName + " settings n1",
+		"mirv_streams settings edit " + samplerName + " fps 60",
+		"mirv_streams settings edit " + samplerName + " method trapezoid",
+		"mirv_streams settings edit " + samplerName + " exposure 0.5",
+		"mirv_streams settings edit " + samplerName + " strength 1",
+		"mirv_streams record screen settings " + samplerName,
+		`mirv_streams record name "D:/clips/output/20260422_131500"`,
+	}
+	if !reflect.DeepEqual(init, want) {
+		t.Fatalf("record init commands=%#v want %#v", init, want)
+	}
+}
+
+func TestMotionBlurCaptureFPSBounds(t *testing.T) {
+	cases := []struct {
+		outputFPS int
+		want      int
+	}{
+		{0, 720},  // unset output falls back to 60 fps
+		{20, 240}, // floor keeps a usable sampling rate
+		{30, 360},
+		{60, 720},
+		{120, 1080}, // cap keeps the recording cost bounded
+		{240, 1080},
+	}
+	for _, tc := range cases {
+		if got := MotionBlurCaptureFPS(tc.outputFPS); got != tc.want {
+			t.Fatalf("MotionBlurCaptureFPS(%d) = %d, want %d", tc.outputFPS, got, tc.want)
+		}
+	}
+}
+
+func TestMotionBlurSamplerNameTracksParameters(t *testing.T) {
+	base := MotionBlurSamplerSettingsName("n1", 60, 720)
+	if !strings.HasPrefix(base, "mblur_n1_60_") {
+		t.Fatalf("sampler name=%q want a readable parameter prefix", base)
+	}
+	if strings.HasPrefix(base, "afx") || strings.ContainsAny(base, " \t") {
+		t.Fatalf("sampler name=%q must be one safe console token", base)
+	}
+	if got := MotionBlurSamplerSettingsName("n1", 60, 720); got != base {
+		t.Fatalf("identical parameters must reuse the name: %q vs %q", got, base)
+	}
+	if got := MotionBlurSamplerSettingsName("c1", 60, 720); got == base {
+		t.Fatalf("changed inner settings must produce a new name, got %q", got)
+	}
+	if got := MotionBlurSamplerSettingsName("n1", 30, 360); got == base {
+		t.Fatalf("changed output fps must produce a new name, got %q", got)
+	}
+	if got := MotionBlurSamplerSettingsName("", 0, 0); !strings.HasPrefix(got, "mblur_preset_0_") {
+		t.Fatalf("blank values must fall back to a safe token, got %q", got)
+	}
+}
+
 func TestDebugRecordSettingsNameTracksEncodeParameters(t *testing.T) {
 	base := DebugRecordSettingsName("c1", "high", "-crf 4")
 	if !strings.HasPrefix(base, "debug_c1_high_") {
@@ -367,6 +438,57 @@ func TestBuildBootstrapUsesSharedRecordInitOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("bootstrap record init=%#v want %#v", got, want)
+	}
+}
+
+func TestBuildBootstrapAppliesMotionBlurToRecordInit(t *testing.T) {
+	item := Item{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7}}
+	result, err := Build([]Item{item}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		MotionBlurEnabled: true,
+		RecordOutputDir:   "D:/clips/output",
+		RecordBatchName:   "20260422_131500",
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) == 0 {
+		t.Fatal("Build returned no sequences")
+	}
+
+	want := RecordInitCommands(RecordInitOptions{
+		RecordFPS:    60,
+		VideoPreset:  "n1",
+		FFmpegParams: mustRecordEncodeParams(t, "n1", "high", ""),
+		RecordName:   "D:/clips/output/20260422_131500",
+		MotionBlur:   true,
+	})
+	if len(want) == 0 || !strings.Contains(strings.Join(want, "\n"), "mirv_streams settings add sampler ") {
+		t.Fatal("the shared record init helper did not emit a sampler")
+	}
+	var got []string
+	for _, action := range result.Sequences[0].Actions {
+		for _, cmd := range want {
+			if action.Cmd == cmd {
+				got = append(got, action.Cmd)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bootstrap record init=%#v want %#v", got, want)
+	}
+	// The only recording-rate command in the bootstrap must be the capture rate;
+	// the output rate lives in the sampler `fps` edit.
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "mirv_streams record fps 720") {
+		t.Fatalf("bootstrap must record at the sampler input rate:\n%s", joined)
+	}
+	if strings.Contains(joined, "mirv_streams record fps 60") {
+		t.Fatalf("bootstrap must not keep the output rate as the capture rate:\n%s", joined)
 	}
 }
 

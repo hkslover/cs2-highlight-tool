@@ -18,6 +18,7 @@ type GenerationSettings struct {
 	EnableVoice          bool
 	RecordFPS            int
 	RecordQuality        string
+	MotionBlurEnabled    bool
 	VideoPreset          string
 	EffectiveVideoPreset string
 	RecordOutputDir      string
@@ -107,6 +108,7 @@ func BuildPlan(input PlanInput) (*GenerationPlan, error) {
 		},
 		RecordFPS:                 settings.RecordFPS,
 		RecordQuality:             settings.RecordQuality,
+		MotionBlurEnabled:         settings.MotionBlurEnabled,
 		VideoPreset:               videoPreset,
 		RecordOutputDir:           settings.RecordOutputDir,
 		RecordBatchName:           recordBatchName,

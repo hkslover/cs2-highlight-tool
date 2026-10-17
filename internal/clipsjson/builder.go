@@ -88,6 +88,7 @@ type BuildOptions struct {
 	ActionSettings            ActionSettings
 	RecordFPS                 int
 	RecordQuality             string
+	MotionBlurEnabled         bool
 	VideoPreset               string
 	RecordOutputDir           string
 	RecordBatchName           string
@@ -202,6 +203,7 @@ type bootstrapOptions struct {
 	VideoPreset        string
 	FFmpegParams       string
 	RecordName         string
+	MotionBlurEnabled  bool
 }
 
 type normalizedSelectedKill struct {
@@ -307,6 +309,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		VideoPreset:        videoPreset,
 		FFmpegParams:       ffmpegParams,
 		RecordName:         recordName,
+		MotionBlurEnabled:  opts.MotionBlurEnabled,
 	}); len(bootstrap.Actions) > 0 {
 		sequences = append([]Sequence{bootstrap}, sequences...)
 	}
@@ -744,6 +747,7 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 		VideoPreset:  opts.VideoPreset,
 		FFmpegParams: opts.FFmpegParams,
 		RecordName:   opts.RecordName,
+		MotionBlur:   opts.MotionBlurEnabled,
 	}) {
 		appendCommand(cmd)
 	}

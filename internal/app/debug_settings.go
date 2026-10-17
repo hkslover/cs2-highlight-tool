@@ -28,6 +28,7 @@ type DebugSettingsDraft struct {
 	NoFlashStrength    float64 `json:"noflash_strength"`
 	RecordFPS          int     `json:"record_fps"`
 	RecordQuality      string  `json:"record_quality"`
+	MotionBlurEnabled  bool    `json:"motion_blur_enabled"`
 	VideoPreset        string  `json:"video_preset"`
 	LaunchResolution   string  `json:"launch_resolution"`
 }
@@ -136,6 +137,7 @@ func (a *App) GetDebugConsolePlan(draft DebugSettingsDraft) (*DebugConsolePlan, 
 			VideoPreset:  videoPreset,
 			FFmpegParams: ffmpegParams,
 			RecordName:   outputDir,
+			MotionBlur:   normalized.MotionBlurEnabled,
 			// A repeat apply in the same game must create a new HLAE settings
 			// entry, otherwise the old encode parameters stay in effect.
 			SettingsName: clipsjson.DebugRecordSettingsName(videoPreset, normalized.RecordQuality, ffmpegParams),
