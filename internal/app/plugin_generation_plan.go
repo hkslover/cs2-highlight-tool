@@ -56,6 +56,7 @@ func (a *App) captureGenerationSnapshot() (*generationSnapshot, error) {
 		EnableVoice:          clipSettings.EnableVoice,
 		RecordFPS:            clipSettings.RecordFPS,
 		RecordQuality:        clipSettings.RecordQuality,
+		MotionBlurEnabled:    clipSettings.MotionBlurEnabled,
 		VideoPreset:          clipSettings.VideoPreset,
 		EffectiveVideoPreset: plugingen.ResolvePluginVideoPreset(clipSettings.VideoPreset, cfg),
 		RecordOutputDir:      clipSettings.RecordOutputDir,
@@ -68,7 +69,9 @@ func (a *App) captureGenerationSnapshot() (*generationSnapshot, error) {
 		SkyBlackout:          clipSettings.SkyBlackout,
 		DisableClouds:        clipSettings.DisableClouds,
 		KillFeedLifetime:     clipSettings.KillFeedLifetime,
+		PovKillFeedOnly:      clipSettings.PovKillFeedOnly,
 		BlockKillFeed:        clipSettings.BlockKillFeed,
+		NoFlashStrength:      clipSettings.NoFlashStrength,
 		LaunchResolution:     clipSettings.LaunchResolution,
 	}
 	return &generationSnapshot{cfg: cfg, clipSettings: clipSettings, planner: planner}, nil
@@ -88,6 +91,7 @@ func clipSettingsFromConfig(cfg *config.Config, recordOutputDir string) ClipSett
 		EnableVoice:        actionSettings.EnableVoiceIndices && actionSettings.EnableVoiceIndicesH,
 		RecordFPS:          cfg.RecordFPS,
 		RecordQuality:      cfg.RecordQuality,
+		MotionBlurEnabled:  cfg.MotionBlurEnabled,
 		EditFPS:            cfg.EditFPS,
 		EditQuality:        cfg.EditQuality,
 		VideoPreset:        cfg.VideoPreset,
@@ -103,7 +107,9 @@ func clipSettingsFromConfig(cfg *config.Config, recordOutputDir string) ClipSett
 		SkyBlackout:        cfg.SkyBlackout,
 		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
+		PovKillFeedOnly:    cfg.PovKillFeedOnly,
 		BlockKillFeed:      cfg.BlockKillFeed,
+		NoFlashStrength:    cfg.NoFlashStrength,
 	})
 }
 

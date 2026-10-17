@@ -30,8 +30,10 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 		EnableVoice:        true,
 		UseShoulderCamera:  false,
 		PovRadarEnabled:    true,
+		PovKillFeedOnly:    true,
 		BlockKillFeed:      false,
 		KillFeedLifetime:   6,
+		NoFlashStrength:    0.35,
 	})
 
 	cases := []struct {
@@ -83,10 +85,30 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 			want: []string{"spec_show_xray -1"},
 		},
 		{
+			key:  GameSettingKeyNoFlashStrength,
+			on:   []string{"mirv_noflash 0.35"},
+			off:  []string{"mirv_noflash 0.00"},
+			want: []string{"mirv_noflash 0.35"},
+		},
+		{
 			key:  GameSettingKeyEnableVoice,
 			on:   []string{"tv_listen_voice_indices -1", "tv_listen_voice_indices_h -1"},
 			off:  []string{"tv_listen_voice_indices 0", "tv_listen_voice_indices_h 0"},
 			want: []string{"tv_listen_voice_indices -1", "tv_listen_voice_indices_h -1"},
+		},
+		{
+			key: GameSettingKeyPovKillFeedOnly,
+			on: []string{
+				"mirv_deathmsg clear",
+				"mirv_deathmsg filter clear",
+				"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+			},
+			off: []string{"mirv_deathmsg filter clear"},
+			want: []string{
+				"mirv_deathmsg clear",
+				"mirv_deathmsg filter clear",
+				"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+			},
 		},
 		{
 			key:  GameSettingKeyBlockKillFeed,
@@ -170,7 +192,9 @@ func TestDebugGameSettingPlanKeepsSkyAndCloudsIndependent(t *testing.T) {
 		GameSettingKeySkyBlackout,
 		GameSettingKeyPovRadarEnabled,
 		GameSettingKeyKillFeedLifetime,
+		GameSettingKeyNoFlashStrength,
 		GameSettingKeyBlockKillFeed,
+		GameSettingKeyPovKillFeedOnly,
 		GameSettingKeySpecShowXray,
 		GameSettingKeyHideAllUI,
 		GameSettingKeyHidePlayerAvatars,
@@ -188,6 +212,48 @@ func sumPlanCommands(plans []DebugGameSettingPlan) int {
 		total += len(plan.Commands)
 	}
 	return total
+}
+
+func TestNoFlashCommandFormatsStrengthAndKeepsRestoreExplicit(t *testing.T) {
+	cases := []struct {
+		strength float64
+		want     string
+	}{
+		{strength: 0, want: "mirv_noflash 0.00"},
+		{strength: 0.3, want: "mirv_noflash 0.30"},
+		{strength: 0.355, want: "mirv_noflash 0.36"},
+		{strength: 1, want: "mirv_noflash 1.00"},
+		{strength: 2, want: "mirv_noflash 1.00"},
+		{strength: -1, want: "mirv_noflash 0.00"},
+	}
+	for _, tt := range cases {
+		if got := NoFlashCommand(tt.strength); got != tt.want {
+			t.Fatalf("NoFlashCommand(%v)=%q want %q", tt.strength, got, tt.want)
+		}
+	}
+}
+
+func TestDebugGameSettingPlanZeroNoFlashStrengthKeepsRestoreOnly(t *testing.T) {
+	plans, applyAll := BuildDebugGameSettingPlan(GameSettings{KillFeedLifetime: 4})
+
+	noFlash := findDebugSettingPlan(t, plans, GameSettingKeyNoFlashStrength)
+	if !reflect.DeepEqual(noFlash.Commands, []string{"mirv_noflash 0.00"}) {
+		t.Fatalf("current commands=%#v want the explicit zero restore", noFlash.Commands)
+	}
+	if !reflect.DeepEqual(noFlash.Off, noFlash.On) {
+		t.Fatalf("a zero strength must not invent a different on variant: %#v", noFlash)
+	}
+	if !reflect.DeepEqual(applyAll, concatPlanCommands(plans)) {
+		t.Fatalf("apply all=%#v want plan order", applyAll)
+	}
+}
+
+func concatPlanCommands(plans []DebugGameSettingPlan) []string {
+	commands := make([]string, 0, sumPlanCommands(plans))
+	for _, plan := range plans {
+		commands = append(commands, plan.Commands...)
+	}
+	return commands
 }
 
 func TestKillFeedLifetimeCommandFallsBackForUnsetValue(t *testing.T) {
@@ -208,6 +274,7 @@ func TestRecordInitCommandsMatchProduceBootstrap(t *testing.T) {
 		RecordName:   recordName,
 	})
 	want := []string{
+		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
 		"mirv_streams record fps 60",
 		"mirv_streams record startMovieWav 1",
@@ -229,6 +296,7 @@ func TestRecordInitCommandsUseExplicitSettingsName(t *testing.T) {
 		SettingsName: "debug_c1_ultra_1a2b3c4d",
 	})
 	want := []string{
+		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
 		"mirv_streams record fps 60",
 		"mirv_streams record startMovieWav 1",
@@ -238,6 +306,77 @@ func TestRecordInitCommandsUseExplicitSettingsName(t *testing.T) {
 	}
 	if !reflect.DeepEqual(init, want) {
 		t.Fatalf("record init commands=%#v want %#v", init, want)
+	}
+}
+
+func TestRecordInitCommandsEnableMotionBlurSampler(t *testing.T) {
+	const recordName = "D:/clips/output/20260422_131500"
+	init := RecordInitCommands(RecordInitOptions{
+		RecordFPS:    60,
+		VideoPreset:  "n1",
+		FFmpegParams: "-c:v hevc_nvenc",
+		RecordName:   recordName,
+		MotionBlur:   true,
+	})
+	samplerName := MotionBlurSamplerSettingsName("n1", 60, 720)
+	want := []string{
+		"mirv_endofmatch 0",
+		"mirv_streams record screen enabled 1",
+		"mirv_streams record fps 720",
+		"mirv_streams record startMovieWav 1",
+		`mirv_streams settings add ffmpeg n1 "-c:v hevc_nvenc {QUOTE}{AFX_STREAM_PATH}.mp4{QUOTE}"`,
+		"mirv_streams settings add sampler " + samplerName,
+		"mirv_streams settings edit " + samplerName + " settings n1",
+		"mirv_streams settings edit " + samplerName + " fps 60",
+		"mirv_streams settings edit " + samplerName + " method trapezoid",
+		"mirv_streams settings edit " + samplerName + " exposure 0.5",
+		"mirv_streams settings edit " + samplerName + " strength 1",
+		"mirv_streams record screen settings " + samplerName,
+		`mirv_streams record name "D:/clips/output/20260422_131500"`,
+	}
+	if !reflect.DeepEqual(init, want) {
+		t.Fatalf("record init commands=%#v want %#v", init, want)
+	}
+}
+
+func TestMotionBlurCaptureFPSBounds(t *testing.T) {
+	cases := []struct {
+		outputFPS int
+		want      int
+	}{
+		{0, 720},  // unset output falls back to 60 fps
+		{20, 240}, // floor keeps a usable sampling rate
+		{30, 360},
+		{60, 720},
+		{120, 1080}, // cap keeps the recording cost bounded
+		{240, 1080},
+	}
+	for _, tc := range cases {
+		if got := MotionBlurCaptureFPS(tc.outputFPS); got != tc.want {
+			t.Fatalf("MotionBlurCaptureFPS(%d) = %d, want %d", tc.outputFPS, got, tc.want)
+		}
+	}
+}
+
+func TestMotionBlurSamplerNameTracksParameters(t *testing.T) {
+	base := MotionBlurSamplerSettingsName("n1", 60, 720)
+	if !strings.HasPrefix(base, "mblur_n1_60_") {
+		t.Fatalf("sampler name=%q want a readable parameter prefix", base)
+	}
+	if strings.HasPrefix(base, "afx") || strings.ContainsAny(base, " \t") {
+		t.Fatalf("sampler name=%q must be one safe console token", base)
+	}
+	if got := MotionBlurSamplerSettingsName("n1", 60, 720); got != base {
+		t.Fatalf("identical parameters must reuse the name: %q vs %q", got, base)
+	}
+	if got := MotionBlurSamplerSettingsName("c1", 60, 720); got == base {
+		t.Fatalf("changed inner settings must produce a new name, got %q", got)
+	}
+	if got := MotionBlurSamplerSettingsName("n1", 30, 360); got == base {
+		t.Fatalf("changed output fps must produce a new name, got %q", got)
+	}
+	if got := MotionBlurSamplerSettingsName("", 0, 0); !strings.HasPrefix(got, "mblur_preset_0_") {
+		t.Fatalf("blank values must fall back to a safe token, got %q", got)
 	}
 }
 
@@ -299,6 +438,106 @@ func TestBuildBootstrapUsesSharedRecordInitOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("bootstrap record init=%#v want %#v", got, want)
+	}
+}
+
+func TestBuildBootstrapAppliesMotionBlurToRecordInit(t *testing.T) {
+	item := Item{Kill: demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7}}
+	result, err := Build([]Item{item}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		MotionBlurEnabled: true,
+		RecordOutputDir:   "D:/clips/output",
+		RecordBatchName:   "20260422_131500",
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) == 0 {
+		t.Fatal("Build returned no sequences")
+	}
+
+	want := RecordInitCommands(RecordInitOptions{
+		RecordFPS:    60,
+		VideoPreset:  "n1",
+		FFmpegParams: mustRecordEncodeParams(t, "n1", "high", ""),
+		RecordName:   "D:/clips/output/20260422_131500",
+		MotionBlur:   true,
+	})
+	if len(want) == 0 || !strings.Contains(strings.Join(want, "\n"), "mirv_streams settings add sampler ") {
+		t.Fatal("the shared record init helper did not emit a sampler")
+	}
+	var got []string
+	for _, action := range result.Sequences[0].Actions {
+		for _, cmd := range want {
+			if action.Cmd == cmd {
+				got = append(got, action.Cmd)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bootstrap record init=%#v want %#v", got, want)
+	}
+	// The only recording-rate command in the bootstrap must be the capture rate;
+	// the output rate lives in the sampler `fps` edit.
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "mirv_streams record fps 720") {
+		t.Fatalf("bootstrap must record at the sampler input rate:\n%s", joined)
+	}
+	if strings.Contains(joined, "mirv_streams record fps 60") {
+		t.Fatalf("bootstrap must not keep the output rate as the capture rate:\n%s", joined)
+	}
+}
+
+func TestPovKillFeedCommandsUseTheExplicitSpectatedXuid(t *testing.T) {
+	commands := PovKillFeedCommands(" 76561190000000001 ")
+	want := []string{
+		"mirv_deathmsg clear",
+		"mirv_deathmsg filter clear",
+		"mirv_deathmsg filter add attackerMatch=!x76561190000000001 victimMatch=!x76561190000000001 assisterMatch=!x76561190000000001 block=1 lastRule=1",
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands=%#v want %#v", commands, want)
+	}
+}
+
+func TestPovKillFeedCommandsStillClearRulesWithoutAUsableXuid(t *testing.T) {
+	for _, steamID := range []string{"", "   ", "0", "abc", "-1", "x76561190000000001"} {
+		commands := PovKillFeedCommands(steamID)
+		want := []string{"mirv_deathmsg clear", "mirv_deathmsg filter clear"}
+		if !reflect.DeepEqual(commands, want) {
+			t.Fatalf("steamID=%q commands=%#v want %#v", steamID, commands, want)
+		}
+	}
+}
+
+func TestDebugPlanLetsBlockKillFeedWinOverPovOnly(t *testing.T) {
+	plans, applyAll := BuildDebugGameSettingPlan(GameSettings{
+		PovKillFeedOnly:  true,
+		BlockKillFeed:    true,
+		KillFeedLifetime: 4,
+	})
+	pov := findDebugSettingPlan(t, plans, GameSettingKeyPovKillFeedOnly)
+	if len(pov.Commands) != 0 {
+		t.Fatalf("current POV commands=%#v want none when block-all wins", pov.Commands)
+	}
+
+	// Apply-all must not clear the block rule: the suppressed POV row cannot
+	// emit its `filter clear` fallback after the block row.
+	blockIndex := -1
+	for i, command := range applyAll {
+		switch command {
+		case "mirv_deathmsg filter add block 1":
+			blockIndex = i
+		case "mirv_deathmsg filter clear":
+			t.Fatalf("apply-all=%#v clears the block rule at index %d", applyAll, i)
+		}
+	}
+	if blockIndex < 0 {
+		t.Fatalf("apply-all=%#v missing the block rule", applyAll)
 	}
 }
 

@@ -34,6 +34,26 @@ function createPlan(overrides = {}) {
       },
       { key: "kill_feed_lifetime", commands: ["mirv_deathmsg lifetime 7"] },
       {
+        key: "noflash_strength",
+        commands: ["mirv_noflash 0.30"],
+        on: ["mirv_noflash 0.30"],
+        off: ["mirv_noflash 0.00"],
+      },
+      {
+        key: "pov_kill_feed_only",
+        commands: [
+          "mirv_deathmsg clear",
+          "mirv_deathmsg filter clear",
+          "mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+        ],
+        on: [
+          "mirv_deathmsg clear",
+          "mirv_deathmsg filter clear",
+          "mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+        ],
+        off: ["mirv_deathmsg filter clear"],
+      },
+      {
         key: "block_kill_feed",
         commands: ["mirv_deathmsg filter clear"],
         on: ["mirv_deathmsg filter add block 1"],
@@ -107,6 +127,13 @@ test("every switch option takes its command from the backend on/off variant", ()
   assert.equal(findOption(options, "pov_radar_enabled:off").command, "csdm_radar_pov 0");
   assert.equal(findOption(options, "block_kill_feed:on").command, "mirv_deathmsg filter add block 1");
   assert.equal(findOption(options, "block_kill_feed:off").command, "mirv_deathmsg filter clear");
+  assert.equal(
+    findOption(options, "pov_kill_feed_only:on").command,
+    "mirv_deathmsg clear; mirv_deathmsg filter clear; mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+  );
+  assert.equal(findOption(options, "pov_kill_feed_only:off").command, "mirv_deathmsg filter clear");
+  assert.equal(findOption(options, "noflash_strength:on").command, "mirv_noflash 0.30");
+  assert.equal(findOption(options, "noflash_strength:off").command, "mirv_noflash 0.00");
 });
 
 test("the lifetime option uses the current plan value and apply-all is not a quick command", () => {

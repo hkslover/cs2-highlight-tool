@@ -64,6 +64,7 @@ export const DEFAULT_CLIP_SETTINGS: Readonly<ClipSettings> = Object.freeze({
   enable_voice: true,
   record_fps: 60,
   record_quality: "high",
+  motion_blur_enabled: false,
   edit_fps: 60,
   edit_quality: "high",
   video_preset: "auto",
@@ -79,7 +80,9 @@ export const DEFAULT_CLIP_SETTINGS: Readonly<ClipSettings> = Object.freeze({
   sky_blackout: true,
   disable_clouds: false,
   kill_feed_lifetime: 4,
+  pov_kill_feed_only: false,
   block_kill_feed: false,
+  noflash_strength: 0,
 });
 
 export function createDefaultClipSettings(): ClipSettings {

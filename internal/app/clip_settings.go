@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 
+	"cs2-highlight-tool-v2/internal/clipsjson"
 	"cs2-highlight-tool-v2/internal/config"
 	"cs2-highlight-tool-v2/internal/demo"
 	"cs2-highlight-tool-v2/internal/ffmpegprofile"
@@ -20,6 +21,7 @@ type ClipSettings struct {
 	EnableVoice           bool    `json:"enable_voice"`
 	RecordFPS             int     `json:"record_fps"`
 	RecordQuality         string  `json:"record_quality"`
+	MotionBlurEnabled     bool    `json:"motion_blur_enabled"`
 	EditFPS               int     `json:"edit_fps"`
 	EditQuality           string  `json:"edit_quality"`
 	VideoPreset           string  `json:"video_preset"`
@@ -38,7 +40,13 @@ type ClipSettings struct {
 	SkyBlackout           bool    `json:"sky_blackout"`
 	DisableClouds         bool    `json:"disable_clouds"`
 	KillFeedLifetime      int     `json:"kill_feed_lifetime"`
+	PovKillFeedOnly       bool    `json:"pov_kill_feed_only"`
 	BlockKillFeed         bool    `json:"block_kill_feed"`
+	NoFlashStrength       float64 `json:"noflash_strength"`
+
+	// EffectiveMotionBlurCaptureFPS is the read-only sampler input FPS the
+	// backend derives from RecordFPS. Zero means motion blur is disabled.
+	EffectiveMotionBlurCaptureFPS int `json:"effective_motion_blur_capture_fps,omitempty"`
 }
 
 type ClipActionSettings struct {
@@ -116,6 +124,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.AutoAddVictimView = settings.AutoAddVictimView
 		cfg.RecordFPS = settings.RecordFPS
 		cfg.RecordQuality = settings.RecordQuality
+		cfg.MotionBlurEnabled = settings.MotionBlurEnabled
 		cfg.EditFPS = settings.EditFPS
 		cfg.EditQuality = settings.EditQuality
 		cfg.VideoPreset = settings.VideoPreset
@@ -131,7 +140,9 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.SkyBlackout = settings.SkyBlackout
 		cfg.DisableClouds = settings.DisableClouds
 		cfg.KillFeedLifetime = settings.KillFeedLifetime
+		cfg.PovKillFeedOnly = settings.PovKillFeedOnly
 		cfg.BlockKillFeed = settings.BlockKillFeed
+		cfg.NoFlashStrength = settings.NoFlashStrength
 		actionSettings := config.ResolveClipActionSettings(cfg)
 		actionSettings.EnableVoiceIndices = settings.EnableVoice
 		actionSettings.EnableVoiceIndicesH = settings.EnableVoice
@@ -260,6 +271,8 @@ func normalizeClipSettings(input ClipSettings) ClipSettings {
 	if settings.KillFeedLifetime > config.MaxKillFeedLifetime {
 		settings.KillFeedLifetime = config.MaxKillFeedLifetime
 	}
+	settings.NoFlashStrength = config.NormalizeNoFlashStrength(settings.NoFlashStrength)
+	settings.EffectiveMotionBlurCaptureFPS = 0
 	return settings
 }
 
@@ -278,6 +291,10 @@ func decorateEffectiveVideoSettings(settings *ClipSettings, cfg *config.Config) 
 	settings.EffectiveVideoPreset = resolved.EffectivePreset
 	settings.EffectiveVideoEncoder = resolved.Encoder
 	settings.EffectiveVideoStatus = resolved.Status
+	settings.EffectiveMotionBlurCaptureFPS = 0
+	if settings.MotionBlurEnabled {
+		settings.EffectiveMotionBlurCaptureFPS = clipsjson.MotionBlurCaptureFPS(settings.RecordFPS)
+	}
 }
 
 func normalizeClipActionSettings(input ClipActionSettings) ClipActionSettings {

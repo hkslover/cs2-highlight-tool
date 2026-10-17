@@ -92,9 +92,14 @@ export interface DebugSettingsDraft {
   enable_voice: boolean;
   use_shoulder_camera: boolean;
   kill_feed_lifetime: number;
+  pov_kill_feed_only: boolean;
   block_kill_feed: boolean;
+  /** HLAE `mirv_noflash` strength in [0, 1]; `0` writes no command at all. */
+  noflash_strength: number;
   record_fps: number;
   record_quality: ClipSettings["record_quality"];
+  /** Same semantics as the persisted `motion_blur_enabled` clip setting. */
+  motion_blur_enabled: boolean;
   video_preset: ClipSettings["video_preset"];
   launch_resolution: DebugLaunchResolution;
 }
@@ -145,6 +150,8 @@ export interface DebugRecordingRequest {
   record_fps: number;
   record_quality: ClipSettings["record_quality"];
   video_preset: ClipSettings["video_preset"];
+  /** Uses the same sampler as formal production when enabled. */
+  motion_blur_enabled: boolean;
   /** Reuses the debug session option: keep this segment's raw video/audio. */
   keep_intermediate_files: boolean;
 }

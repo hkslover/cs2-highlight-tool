@@ -541,6 +541,9 @@ func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) 
 	if cfg.BlockKillFeed {
 		t.Fatalf("block_kill_feed should default to false")
 	}
+	if cfg.PovKillFeedOnly {
+		t.Fatalf("pov_kill_feed_only should default to false")
+	}
 	if cfg.DisableClouds {
 		t.Fatalf("legacy config should default disable_clouds to false")
 	}
@@ -549,7 +552,7 @@ func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "disable_clouds") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") {
+	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "disable_clouds") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") || !strings.Contains(string(saved), "pov_kill_feed_only") {
 		t.Fatalf("saved config should contain new recording fields, got: %s", string(saved))
 	}
 }
@@ -574,6 +577,32 @@ func TestLoadOrCreate_ExplicitFalseSkyBlackoutIsPreserved(t *testing.T) {
 	}
 	if cfg.KillFeedLifetime != 7 {
 		t.Fatalf("explicit kill_feed_lifetime=7 should be preserved, got %d", cfg.KillFeedLifetime)
+	}
+}
+
+func TestLoadOrCreate_NoFlashStrengthDefaultsAndClamps(t *testing.T) {
+	cfg := &Config{}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != DefaultNoFlashStrength {
+		t.Fatalf("noflash_strength should default to %v, got %v", DefaultNoFlashStrength, cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: 0.355}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != 0.36 {
+		t.Fatalf("noflash_strength should round to the persisted precision, got %v", cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: -2}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != MinNoFlashStrength {
+		t.Fatalf("negative noflash_strength should clamp to %v, got %v", MinNoFlashStrength, cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: 3}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != MaxNoFlashStrength {
+		t.Fatalf("large noflash_strength should clamp to %v, got %v", MaxNoFlashStrength, cfg.NoFlashStrength)
 	}
 }
 

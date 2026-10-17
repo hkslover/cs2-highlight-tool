@@ -105,6 +105,18 @@ const QUICK_COMMAND_DESCRIPTORS: QuickCommandDescriptor[] = [
     variant: "off",
   },
   {
+    key: "pov_kill_feed_only",
+    labelKey: "main.debug.quick_pov_kill_feed_only",
+    group: "picture",
+    variant: "on",
+  },
+  {
+    key: "pov_kill_feed_only",
+    labelKey: "main.debug.quick_pov_kill_feed_restore",
+    group: "picture",
+    variant: "off",
+  },
+  {
     key: "block_kill_feed",
     labelKey: "main.debug.quick_kill_feed_block",
     group: "picture",
@@ -121,6 +133,18 @@ const QUICK_COMMAND_DESCRIPTORS: QuickCommandDescriptor[] = [
     labelKey: "main.debug.quick_kill_feed_lifetime",
     group: "picture",
     variant: "current",
+  },
+  {
+    key: "noflash_strength",
+    labelKey: "main.debug.quick_noflash_on",
+    group: "picture",
+    variant: "on",
+  },
+  {
+    key: "noflash_strength",
+    labelKey: "main.debug.quick_noflash_restore",
+    group: "picture",
+    variant: "off",
   },
   { key: "enable_voice", labelKey: "main.debug.quick_voice_on", group: "sound", variant: "on" },
   { key: "enable_voice", labelKey: "main.debug.quick_voice_off", group: "sound", variant: "off" },

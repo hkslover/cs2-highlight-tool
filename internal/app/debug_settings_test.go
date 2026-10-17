@@ -38,11 +38,13 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 		RecordQuality:    "",
 		RecordFPS:        0,
 		KillFeedLifetime: 99,
+		NoFlashStrength:  2.5,
 		LaunchResolution: "bogus",
 		SkyBlackout:      false,
 		DisableClouds:    true,
 		PovRadarEnabled:  true,
 		EnableVoice:      true,
+		PovKillFeedOnly:  true,
 	})
 	if err != nil {
 		t.Fatalf("GetDebugConsolePlan: %v", err)
@@ -74,6 +76,13 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 	if !reflect.DeepEqual(lifetime.Commands, []string{"mirv_deathmsg lifetime 10"}) {
 		t.Fatalf("lifetime commands=%#v want the clamped maximum", lifetime.Commands)
 	}
+	noFlash := planItemByKey(t, plan, "noflash_strength")
+	if !reflect.DeepEqual(noFlash.Commands, []string{"mirv_noflash 1.00"}) {
+		t.Fatalf("noflash commands=%#v want the clamped maximum strength", noFlash.Commands)
+	}
+	if !reflect.DeepEqual(noFlash.Off, []string{"mirv_noflash 0.00"}) {
+		t.Fatalf("noflash restore=%#v want an explicit zero strength", noFlash.Off)
+	}
 	sky := planItemByKey(t, plan, "sky_blackout")
 	if !reflect.DeepEqual(sky.Commands, []string{"r_drawskybox 1"}) {
 		t.Fatalf("sky commands=%#v want the explicit restore", sky.Commands)
@@ -88,6 +97,19 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 		t.Fatalf("voice commands=%#v want %#v", voice.Commands, wantVoice)
 	}
 
+	povKillFeed := planItemByKey(t, plan, "pov_kill_feed_only")
+	wantPovKillFeed := []string{
+		"mirv_deathmsg clear",
+		"mirv_deathmsg filter clear",
+		"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+	}
+	if !reflect.DeepEqual(povKillFeed.Commands, wantPovKillFeed) {
+		t.Fatalf("pov kill-feed commands=%#v want %#v", povKillFeed.Commands, wantPovKillFeed)
+	}
+	if !reflect.DeepEqual(povKillFeed.Off, []string{"mirv_deathmsg filter clear"}) {
+		t.Fatalf("pov kill-feed restore=%#v", povKillFeed.Off)
+	}
+
 	if len(plan.ApplyAll) == 0 {
 		t.Fatal("apply-all must contain the runtime settings")
 	}
@@ -95,6 +117,45 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 		if strings.TrimSpace(command) == "" {
 			t.Fatalf("apply-all contains an empty command: %#v", plan.ApplyAll)
 		}
+	}
+}
+
+func TestGetDebugConsolePlanAppliesMotionBlurToRecording(t *testing.T) {
+	a := newTestAppInTempDir(t)
+	plan, err := a.GetDebugConsolePlan(DebugSettingsDraft{
+		VideoPreset:       "c1",
+		RecordQuality:     "high",
+		RecordFPS:         120,
+		MotionBlurEnabled: true,
+		KillFeedLifetime:  4,
+		LaunchResolution:  "16:9",
+	})
+	if err != nil {
+		t.Fatalf("GetDebugConsolePlan: %v", err)
+	}
+	// 120fps output x 12 is above the cap, so the capture rate stops at 1080.
+	if !containsSubstring(plan.Recording, "mirv_streams record fps 1080") {
+		t.Fatalf("recording must use the sampler input rate: %#v", plan.Recording)
+	}
+	if !containsSubstring(plan.Recording, "mirv_streams settings add sampler mblur_debug_c1_high_") {
+		t.Fatalf("motion blur sampler missing from the recording plan: %#v", plan.Recording)
+	}
+	if !containsSubstring(plan.Recording, " fps 120") {
+		t.Fatalf("sampler output fps must stay the configured record fps: %#v", plan.Recording)
+	}
+
+	disabled, err := a.GetDebugConsolePlan(DebugSettingsDraft{
+		VideoPreset:      "c1",
+		RecordQuality:    "high",
+		RecordFPS:        60,
+		KillFeedLifetime: 4,
+		LaunchResolution: "16:9",
+	})
+	if err != nil {
+		t.Fatalf("GetDebugConsolePlan without motion blur: %v", err)
+	}
+	if containsSubstring(disabled.Recording, "sampler") {
+		t.Fatalf("disabled motion blur must not create a sampler: %#v", disabled.Recording)
 	}
 }
 

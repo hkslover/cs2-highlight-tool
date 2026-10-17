@@ -367,6 +367,7 @@ func (a *App) StartDebugRecording(req DebugRecordingRequest) (DebugSessionState,
 		VideoPreset:  encoding.videoPreset,
 		FFmpegParams: encoding.ffmpegParams,
 		RecordName:   directory,
+		MotionBlur:   req.MotionBlurEnabled,
 		// A repeated start in one game process must create a fresh HLAE settings
 		// entry: `mirv_streams settings add ffmpeg` refuses an existing name.
 		SettingsName: clipsjson.DebugRecordSettingsName(encoding.videoPreset, encoding.quality, encoding.ffmpegParams),

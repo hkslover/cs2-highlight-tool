@@ -18,6 +18,7 @@ type GenerationSettings struct {
 	EnableVoice          bool
 	RecordFPS            int
 	RecordQuality        string
+	MotionBlurEnabled    bool
 	VideoPreset          string
 	EffectiveVideoPreset string
 	RecordOutputDir      string
@@ -30,7 +31,9 @@ type GenerationSettings struct {
 	SkyBlackout          bool
 	DisableClouds        bool
 	KillFeedLifetime     int
+	PovKillFeedOnly      bool
 	BlockKillFeed        bool
+	NoFlashStrength      float64
 	LaunchResolution     string
 }
 
@@ -105,6 +108,7 @@ func BuildPlan(input PlanInput) (*GenerationPlan, error) {
 		},
 		RecordFPS:                 settings.RecordFPS,
 		RecordQuality:             settings.RecordQuality,
+		MotionBlurEnabled:         settings.MotionBlurEnabled,
 		VideoPreset:               videoPreset,
 		RecordOutputDir:           settings.RecordOutputDir,
 		RecordBatchName:           recordBatchName,
@@ -117,7 +121,9 @@ func BuildPlan(input PlanInput) (*GenerationPlan, error) {
 		SkyBlackout:               settings.SkyBlackout,
 		DisableClouds:             settings.DisableClouds,
 		KillFeedLifetime:          settings.KillFeedLifetime,
+		PovKillFeedOnly:           settings.PovKillFeedOnly,
 		BlockKillFeed:             settings.BlockKillFeed,
+		NoFlashStrength:           settings.NoFlashStrength,
 		ForcePerPassVoiceCommands: hasVoiceOverride(items),
 		ForcePerPassXrayCommands:  hasSpecShowXrayOverride(items),
 		LaunchResolution:          settings.LaunchResolution,

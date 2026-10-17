@@ -13,21 +13,24 @@ import (
 // GetClipSettings and may reload it, but it is only ever sent back to
 // GetDebugConsolePlan: it is never written to the persisted config.
 type DebugSettingsDraft struct {
-	PovRadarEnabled    bool   `json:"pov_radar_enabled"`
-	SkyBlackout        bool   `json:"sky_blackout"`
-	DisableClouds      bool   `json:"disable_clouds"`
-	HideAllUI          bool   `json:"hide_all_ui"`
-	HidePlayerAvatars  bool   `json:"hide_player_avatars"`
-	HideChatMessages   bool   `json:"hide_chat_messages"`
-	EnableSpecShowXray bool   `json:"enable_spec_show_xray_zero"`
-	EnableVoice        bool   `json:"enable_voice"`
-	UseShoulderCamera  bool   `json:"use_shoulder_camera"`
-	KillFeedLifetime   int    `json:"kill_feed_lifetime"`
-	BlockKillFeed      bool   `json:"block_kill_feed"`
-	RecordFPS          int    `json:"record_fps"`
-	RecordQuality      string `json:"record_quality"`
-	VideoPreset        string `json:"video_preset"`
-	LaunchResolution   string `json:"launch_resolution"`
+	PovRadarEnabled    bool    `json:"pov_radar_enabled"`
+	SkyBlackout        bool    `json:"sky_blackout"`
+	DisableClouds      bool    `json:"disable_clouds"`
+	HideAllUI          bool    `json:"hide_all_ui"`
+	HidePlayerAvatars  bool    `json:"hide_player_avatars"`
+	HideChatMessages   bool    `json:"hide_chat_messages"`
+	EnableSpecShowXray bool    `json:"enable_spec_show_xray_zero"`
+	EnableVoice        bool    `json:"enable_voice"`
+	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
+	KillFeedLifetime   int     `json:"kill_feed_lifetime"`
+	PovKillFeedOnly    bool    `json:"pov_kill_feed_only"`
+	BlockKillFeed      bool    `json:"block_kill_feed"`
+	NoFlashStrength    float64 `json:"noflash_strength"`
+	RecordFPS          int     `json:"record_fps"`
+	RecordQuality      string  `json:"record_quality"`
+	MotionBlurEnabled  bool    `json:"motion_blur_enabled"`
+	VideoPreset        string  `json:"video_preset"`
+	LaunchResolution   string  `json:"launch_resolution"`
 }
 
 // DebugSettingPlan is one row of the built console commands. Commands always
@@ -110,7 +113,9 @@ func (a *App) GetDebugConsolePlan(draft DebugSettingsDraft) (*DebugConsolePlan, 
 		EnableVoice:        normalized.EnableVoice,
 		UseShoulderCamera:  normalized.UseShoulderCamera,
 		KillFeedLifetime:   normalized.KillFeedLifetime,
+		PovKillFeedOnly:    normalized.PovKillFeedOnly,
 		BlockKillFeed:      normalized.BlockKillFeed,
+		NoFlashStrength:    normalized.NoFlashStrength,
 	}
 	settingsPlan, applyAll := clipsjson.BuildDebugGameSettingPlan(settings)
 	planItems := make([]DebugSettingPlan, 0, len(settingsPlan))
@@ -132,6 +137,7 @@ func (a *App) GetDebugConsolePlan(draft DebugSettingsDraft) (*DebugConsolePlan, 
 			VideoPreset:  videoPreset,
 			FFmpegParams: ffmpegParams,
 			RecordName:   outputDir,
+			MotionBlur:   normalized.MotionBlurEnabled,
 			// A repeat apply in the same game must create a new HLAE settings
 			// entry, otherwise the old encode parameters stay in effect.
 			SettingsName: clipsjson.DebugRecordSettingsName(videoPreset, normalized.RecordQuality, ffmpegParams),
@@ -176,6 +182,7 @@ func normalizeDebugSettingsDraft(draft DebugSettingsDraft) DebugSettingsDraft {
 	if normalized.KillFeedLifetime > config.MaxKillFeedLifetime {
 		normalized.KillFeedLifetime = config.MaxKillFeedLifetime
 	}
+	normalized.NoFlashStrength = config.NormalizeNoFlashStrength(normalized.NoFlashStrength)
 	return normalized
 }
 

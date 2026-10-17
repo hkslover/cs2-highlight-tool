@@ -88,6 +88,7 @@ type BuildOptions struct {
 	ActionSettings            ActionSettings
 	RecordFPS                 int
 	RecordQuality             string
+	MotionBlurEnabled         bool
 	VideoPreset               string
 	RecordOutputDir           string
 	RecordBatchName           string
@@ -100,7 +101,9 @@ type BuildOptions struct {
 	SkyBlackout               bool
 	DisableClouds             bool
 	KillFeedLifetime          int
+	PovKillFeedOnly           bool
 	BlockKillFeed             bool
+	NoFlashStrength           float64
 	ForcePerPassVoiceCommands bool
 	ForcePerPassXrayCommands  bool
 	LaunchResolution          string
@@ -135,10 +138,14 @@ type TakePlan struct {
 }
 
 type killSegment struct {
-	StartTick          int
-	EndTick            int
-	Round              int
-	Target             string
+	StartTick int
+	EndTick   int
+	Round     int
+	Target    string
+	// PlayerSteamID is the Steam64 of the player this pass spectates. The POV
+	// kill-feed filter needs it because HLAE's xTrace is resolved when a filter
+	// command runs, not per death notice.
+	PlayerSteamID      string
 	SpecMode           int
 	KillIDs            []string
 	KillTicks          []int
@@ -191,10 +198,12 @@ type bootstrapOptions struct {
 	DisableClouds      bool
 	KillFeedLifetime   int
 	BlockKillFeed      bool
+	NoFlashStrength    float64
 	RecordFPS          int
 	VideoPreset        string
 	FFmpegParams       string
 	RecordName         string
+	MotionBlurEnabled  bool
 }
 
 type normalizedSelectedKill struct {
@@ -274,6 +283,10 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		ForceVoice:      opts.ForcePerPassVoiceCommands,
 		ForceXray:       opts.ForcePerPassXrayCommands,
 		PovRadarEnabled: opts.PovRadarEnabled,
+		// Both switches rewrite the same HLAE rule list. Blocking everything is
+		// the stronger, explicit choice, so it wins without silently clearing
+		// the user's persisted preference.
+		PovKillFeedOnly: opts.PovKillFeedOnly && !opts.BlockKillFeed,
 	})
 	if err != nil {
 		return nil, err
@@ -291,10 +304,12 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
 		BlockKillFeed:      opts.BlockKillFeed,
+		NoFlashStrength:    opts.NoFlashStrength,
 		RecordFPS:          recordFPS,
 		VideoPreset:        videoPreset,
 		FFmpegParams:       ffmpegParams,
 		RecordName:         recordName,
+		MotionBlurEnabled:  opts.MotionBlurEnabled,
 	}); len(bootstrap.Actions) > 0 {
 		sequences = append([]Sequence{bootstrap}, sequences...)
 	}
@@ -437,6 +452,7 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 				EndTick:            endTick,
 				Round:              item.Kill.Round,
 				Target:             target,
+				PlayerSteamID:      strings.TrimSpace(item.Kill.KillerSteamID),
 				SpecMode:           item.KillerSpecMode,
 				KillIDs:            []string{item.Kill.ID},
 				KillTicks:          []int{item.Kill.Tick},
@@ -460,6 +476,9 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 			}
 			last.KillIDs = append(last.KillIDs, item.Kill.ID)
 			last.KillTicks = append(last.KillTicks, item.Kill.Tick)
+			if last.PlayerSteamID == "" {
+				last.PlayerSteamID = strings.TrimSpace(item.Kill.KillerSteamID)
+			}
 			if last.Round != item.Kill.Round {
 				// A merged killer take may span round boundaries. Keep the
 				// history round unset rather than attributing the whole take to
@@ -473,6 +492,7 @@ func buildKillerSegments(items []normalizedSelectedKill, tickRate float64, defau
 			EndTick:            endTick,
 			Round:              item.Kill.Round,
 			Target:             target,
+			PlayerSteamID:      strings.TrimSpace(item.Kill.KillerSteamID),
 			SpecMode:           item.KillerSpecMode,
 			KillIDs:            []string{item.Kill.ID},
 			KillTicks:          []int{item.Kill.Tick},
@@ -518,6 +538,7 @@ func buildVictimSegments(items []normalizedSelectedKill, tickRate float64, defau
 			EndTick:            endTick,
 			Round:              item.Kill.Round,
 			Target:             target,
+			PlayerSteamID:      strings.TrimSpace(item.Kill.VictimSteamID),
 			SpecMode:           item.VictimSpecMode,
 			KillIDs:            []string{item.Kill.ID},
 			KillTicks:          []int{item.Kill.Tick},
@@ -534,6 +555,7 @@ type buildPassCommandOptions struct {
 	ForceVoice      bool
 	ForceXray       bool
 	PovRadarEnabled bool
+	PovKillFeedOnly bool
 }
 
 func buildMaterialSequences(
@@ -586,6 +608,7 @@ func buildMaterialSequences(
 			StartTick:          seg.StartTick,
 			EndTick:            seg.EndTick,
 			Target:             seg.Target,
+			PlayerSteamID:      seg.PlayerSteamID,
 			SpecMode:           seg.SpecMode,
 			View:               "killer",
 			KillIDs:            append([]string(nil), seg.KillIDs...),
@@ -602,6 +625,7 @@ func buildMaterialSequences(
 			StartTick:          seg.StartTick,
 			EndTick:            seg.EndTick,
 			Target:             seg.Target,
+			PlayerSteamID:      seg.PlayerSteamID,
 			SpecMode:           seg.SpecMode,
 			View:               "victim",
 			KillIDs:            append([]string(nil), seg.KillIDs...),
@@ -695,6 +719,11 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	if opts.SkyBlackout {
 		appendCommand(SkyBlackoutCommand(true))
 	}
+	// Zero strength keeps the historical output: the command is not written at
+	// all, so the demo keeps the engine's normal flash effect.
+	if opts.NoFlashStrength > 0 {
+		appendCommand(NoFlashCommand(opts.NoFlashStrength))
+	}
 	appendCommand(KillFeedLifetimeCommand(opts.KillFeedLifetime))
 	if opts.BlockKillFeed {
 		for _, cmd := range BlockKillFeedCommands(true) {
@@ -718,6 +747,7 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 		VideoPreset:  opts.VideoPreset,
 		FFmpegParams: opts.FFmpegParams,
 		RecordName:   opts.RecordName,
+		MotionBlur:   opts.MotionBlurEnabled,
 	}) {
 		appendCommand(cmd)
 	}
@@ -843,6 +873,14 @@ func buildActionsFromPasses(
 		}
 		actions = append(actions, Action{Cmd: fmt.Sprintf("spec_mode %d", normalizeSpecMode(pass.SpecMode)), Tick: specModeTick})
 		actions = append(actions, Action{Cmd: "spec_player " + pass.Target, Tick: specPlayerTick})
+		if passCommandOptions.PovKillFeedOnly {
+			// The filter is per perspective and must be in place before the
+			// recorder starts. Clearing the old rule also drops displayed notices
+			// from the previous pass, so the take never shows them.
+			for _, cmd := range PovKillFeedCommands(pass.PlayerSteamID) {
+				actions = append(actions, Action{Cmd: cmd, Tick: specPlayerTick})
+			}
+		}
 		if radarTick > 0 {
 			actions = append(actions, Action{Cmd: PovRadarCommand(true), Tick: radarTick})
 		}
