@@ -69,6 +69,18 @@
                   :value="switchSettingValue(item)"
                   @update:value="updateSwitchSetting(item, $event)"
                 />
+                <div v-else-if="item.kind === 'slider'" class="slider-setting-control">
+                  <n-slider
+                    class="slider-setting-track"
+                    :value="sliderSettingValue(item)"
+                    :min="item.min"
+                    :max="item.max"
+                    :step="item.step"
+                    :format-tooltip="formatSliderPercent"
+                    @update:value="updateSliderSetting(item, $event)"
+                  />
+                  <span class="slider-setting-value">{{ sliderSettingValue(item) }}%</span>
+                </div>
                 <n-input-number
                   v-else
                   :value="numberSettingValue(item)"
@@ -230,9 +242,11 @@ import { useSettingsStore } from "@/domains/settings/settings-state";
 import {
   SEARCHABLE_CLIP_SETTINGS,
   getSearchableNumberValue,
+  getSearchableSliderPercent,
   getSearchableSwitchValue,
   normalizeSettingSearch,
   settingMatchesSearch,
+  sliderPercentToStrength,
   type SearchableClipSettingItem,
 } from "@/domains/settings/settings-schema";
 import { useSettingsDebug } from "@/features/settings/composables/useSettingsDebug";
@@ -484,6 +498,14 @@ function numberSettingValue(item: SearchableClipSettingItem): number {
   return getSearchableNumberValue(settings, item);
 }
 
+function sliderSettingValue(item: SearchableClipSettingItem): number {
+  return getSearchableSliderPercent(settings, item);
+}
+
+function formatSliderPercent(value: number): string {
+  return `${value}%`;
+}
+
 function updateSwitchSetting(item: SearchableClipSettingItem, value: boolean): void {
   if (item.kind !== "switch") {
     return;
@@ -496,6 +518,17 @@ function updateNumberSetting(item: SearchableClipSettingItem, value: number | nu
     return;
   }
   settings[item.key] = value;
+}
+
+function updateSliderSetting(item: SearchableClipSettingItem, value: number | [number, number]): void {
+  if (item.kind !== "slider") {
+    return;
+  }
+  const percent = Array.isArray(value) ? value[0] : value;
+  if (typeof percent !== "number" || !Number.isFinite(percent)) {
+    return;
+  }
+  settings[item.key] = sliderPercentToStrength(percent);
 }
 
 function formatBytes(bytes: number): string {
@@ -574,6 +607,28 @@ function formatBytes(bytes: number): string {
 
 .preset-select {
   width: 220px;
+}
+
+.slider-setting-control {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  width: 220px;
+}
+
+.slider-setting-track {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.slider-setting-value {
+  color: #9cb8a8;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
 }
 
 .setting-list-panel {
@@ -675,7 +730,8 @@ function formatBytes(bytes: number): string {
 
   .debug-file-path,
   .preset-select,
-  .setting-search {
+  .setting-search,
+  .slider-setting-control {
     max-width: 100%;
     width: 100%;
   }

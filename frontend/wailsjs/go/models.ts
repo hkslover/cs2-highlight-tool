@@ -68,6 +68,7 @@ export namespace app {
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
 	    block_kill_feed: boolean;
+	    noflash_strength: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClipSettings(source);
@@ -102,6 +103,7 @@ export namespace app {
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
 	        this.block_kill_feed = source["block_kill_feed"];
+	        this.noflash_strength = source["noflash_strength"];
 	    }
 	}
 	export class DebugCommandRequest {
@@ -409,6 +411,7 @@ export namespace app {
 	    use_shoulder_camera: boolean;
 	    kill_feed_lifetime: number;
 	    block_kill_feed: boolean;
+	    noflash_strength: number;
 	    record_fps: number;
 	    record_quality: string;
 	    video_preset: string;
@@ -431,6 +434,7 @@ export namespace app {
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
 	        this.block_kill_feed = source["block_kill_feed"];
+	        this.noflash_strength = source["noflash_strength"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
 	        this.video_preset = source["video_preset"];
@@ -1214,6 +1218,7 @@ export namespace config {
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
 	    block_kill_feed: boolean;
+	    noflash_strength: number;
 	    last_changelog_version?: string;
 	    clip_action_settings?: ClipActionSettings;
 	
@@ -1258,6 +1263,7 @@ export namespace config {
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
 	        this.block_kill_feed = source["block_kill_feed"];
+	        this.noflash_strength = source["noflash_strength"];
 	        this.last_changelog_version = source["last_changelog_version"];
 	        this.clip_action_settings = this.convertValues(source["clip_action_settings"], ClipActionSettings);
 	    }

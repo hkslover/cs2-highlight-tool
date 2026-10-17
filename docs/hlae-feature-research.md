@@ -120,7 +120,7 @@
 
 ### 1.9 现有边界（缺口清单）
 
-以下能力当前**完全没有实现**（全仓检索确认为 0 命中）：`mirv_campath`、`mirv_camio`、`mirv_input`、`mirv_cmd`、sampler/motion blur、`host_framerate`、`mirv_noflash`、`mirv_panorama`、`mirv_glow`、`mirv_colors`、`mirv_fix`、`mirv_viewmodel`、`mirv_replace_name`、`mirv_cvar_unhide_all`、`mirv_listentities`、`mirv_script_*`、ReShade；以及应用层的 2D 回放、热力图、竖屏导出、音乐/节拍、字幕、自动选段打分。
+以下能力当前**完全没有实现**（全仓检索确认为 0 命中）：`mirv_campath`、`mirv_camio`、`mirv_input`、`mirv_cmd`、sampler/motion blur、`host_framerate`、`mirv_panorama`、`mirv_glow`、`mirv_colors`、`mirv_fix`、`mirv_viewmodel`、`mirv_replace_name`、`mirv_cvar_unhide_all`、`mirv_listentities`、`mirv_script_*`、ReShade；以及应用层的 2D 回放、热力图、竖屏导出、音乐/节拍、字幕、自动选段打分。
 
 ---
 
@@ -219,7 +219,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 
 | 命令 | 实际作用 | 备注 |
 | --- | --- | --- |
-| `mirv_noflash 0\|1`（新版支持 `0.0–1.0` 强度）📖 | 柔化/移除闪光白屏。被闪是集锦里最"毁观感"的元素，压到 30% 既保留信息又不刺眼 | ⚠️ 浮点强度需较新版本，旧版只支持 0/1 |
+| `mirv_noflash 0\|1`（新版支持 `0.0–1.0` 强度）📖 | 柔化/移除闪光白屏。被闪是集锦里最"毁观感"的元素，压到 30% 既保留信息又不刺眼 | 现已接入：`noflash_strength`（0–1，两位小数），0 不写命令；需 HLAE ≥ 2.176.0 的浮点强度 |
 | `mirv_endofmatch 0` 📖 | 隐藏比赛结束动画/结算场景。比现在的 `match_end_tick` 截断更彻底（连过渡动画一起处理） | 默认值为 1；现已接入：`RecordInitCommands` 无条件写入 0 |
 | `mirv_viewmodel enabled 1` + `set X Y Z FOV 0\|1` 📖 | 固定左右手、自定义视角模型位置与 FOV。多段素材"一会儿左手一会儿右手"是最常见的廉价感来源 | 支持 `*` 保留引擎默认值 |
 | `mirv_panorama panelStyle panelId=… opacity=0` 📖 | 精确隐藏单个 HUD 元素，如 `panelId=trueview_row`（TrueView 遥测字）、`panelClassName=CSGOHudHintText`（下包提示） | 比 `cl_draw_only_deathnotices` 粒度细得多；重载 Demo 需重发 |
@@ -260,7 +260,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 | `mirv_input camera` + smooth | ✅ | ❌ | 手持运镜、平滑 |
 | `mirv_cmd` 曲线 + `mirv_time` | ✅ | ❌ | 子弹时间 |
 | `mirv_skip` | ✅ | ❌（用 `demo_gototick`） | 精确定位 |
-| `mirv_noflash` | ✅ | ❌ | 压闪光 |
+| `mirv_noflash` | ✅ | 已用（`noflash_strength` 强度） | 压闪光 |
 | `mirv_endofmatch` | ✅ | 已用（无条件写入） | 去结算画面 |
 | `mirv_viewmodel` | ✅ | ❌ | 固定左右手 |
 | `mirv_panorama` | ✅ | ❌ | 精确隐藏 HUD 元素 |
@@ -335,7 +335,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 - **实际作用**：`mirv_noflash` 压闪光白屏；`mirv_endofmatch 0` 彻底去掉结算动画；`mirv_deathmsg localPlayer xTrace` + `filter add attackerMatch=!xTrace …` 只保留本人击杀提示；再加上 `snd_setmixer Dialog vol 0`、`cl_drawhud_force_teamid_overhead -1`、`cl_player_ping_mute 2`、`cl_show_observer_crosshair 0`、`mp_display_kill_assists false`、`cl_demo_predict 2`（TrueView）。
 - **用户可见效果**：画面里只剩"人 + 枪 + 击杀提示"。
 - **代码落点**：同 P0-3。
-- **风险**：⚠️ `mirv_noflash` 浮点强度依赖较新 HLAE，需要版本判定 + 回退到 0/1。
+- **风险**：⚠️ `mirv_noflash` 浮点强度依赖较新 HLAE（≥ 2.176.0）；当前安装版本已满足，故未做版本判定与 0/1 回退，旧版输出会报未知参数。
 
 #### P0-5 转场扩展（S–M）
 

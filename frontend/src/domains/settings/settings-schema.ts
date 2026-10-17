@@ -15,6 +15,8 @@ export type SearchableSwitchSettingKey =
 
 export type SearchableNumberSettingKey = "kill_feed_lifetime";
 
+export type SearchableSliderSettingKey = "noflash_strength";
+
 export type SearchableClipSettingItem =
   | {
       key: SearchableSwitchSettingKey;
@@ -33,6 +35,20 @@ export type SearchableClipSettingItem =
       max: number;
       step: number;
       precision: number;
+    }
+  | {
+      key: SearchableSliderSettingKey;
+      labelKey: string;
+      kind: "slider";
+      aliases: string[];
+      hintKey?: string;
+      /**
+       * Slider domain in whole percent. The persisted value stays the HLAE
+       * `mirv_noflash` strength in [0, 1]; the UI only converts for display.
+       */
+      min: number;
+      max: number;
+      step: number;
     };
 
 export const SEARCHABLE_CLIP_SETTINGS: readonly SearchableClipSettingItem[] = [
@@ -113,6 +129,16 @@ export const SEARCHABLE_CLIP_SETTINGS: readonly SearchableClipSettingItem[] = [
     kind: "switch",
     aliases: ["屏蔽击杀信息", "block kill feed", "kill feed"],
   },
+  {
+    key: "noflash_strength",
+    labelKey: "main.settings.noflash_strength",
+    kind: "slider",
+    aliases: ["闪光弱化", "闪光", "闪光白屏", "noflash", "flash", "mirv_noflash"],
+    hintKey: "main.settings.noflash_strength_hint",
+    min: 0,
+    max: 100,
+    step: 5,
+  },
 ];
 
 export function normalizeSettingSearch(value: string): string {
@@ -154,6 +180,47 @@ export function isSearchableNumberSetting(
   item: SearchableClipSettingItem,
 ): item is Extract<SearchableClipSettingItem, { kind: "number" }> {
   return item.kind === "number";
+}
+
+export function isSearchableSliderSetting(
+  item: SearchableClipSettingItem,
+): item is Extract<SearchableClipSettingItem, { kind: "slider" }> {
+  return item.kind === "slider";
+}
+
+/**
+ * Read a slider setting as whole percent. A missing or out-of-range stored
+ * value is clamped so the slider can never render outside its own domain.
+ */
+export function getSearchableSliderPercent(
+  settings: ClipSettings,
+  item: SearchableClipSettingItem,
+): number {
+  if (!isSearchableSliderSetting(item)) {
+    return 0;
+  }
+  return strengthToSliderPercent(settings[item.key]);
+}
+
+export function strengthToSliderPercent(strength: number): number {
+  if (!Number.isFinite(strength)) {
+    return 0;
+  }
+  const clamped = Math.min(Math.max(strength, 0), 1);
+  const step = Math.round(clamped * 100);
+  return Math.min(Math.max(step, 0), 100);
+}
+
+/**
+ * Convert the slider percent back into the persisted strength. Rounding to the
+ * hundredth keeps the value identical to what the backend normalizes.
+ */
+export function sliderPercentToStrength(percent: number): number {
+  if (!Number.isFinite(percent)) {
+    return 0;
+  }
+  const clamped = Math.min(Math.max(percent, 0), 100);
+  return Math.round(clamped) / 100;
 }
 
 export function getSearchableSwitchValue(settings: ClipSettings, item: SearchableClipSettingItem): boolean {

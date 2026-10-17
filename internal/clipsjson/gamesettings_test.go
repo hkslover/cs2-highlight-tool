@@ -32,6 +32,7 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 		PovRadarEnabled:    true,
 		BlockKillFeed:      false,
 		KillFeedLifetime:   6,
+		NoFlashStrength:    0.35,
 	})
 
 	cases := []struct {
@@ -81,6 +82,12 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 			on:   []string{"spec_show_xray 0"},
 			off:  []string{"spec_show_xray -1"},
 			want: []string{"spec_show_xray -1"},
+		},
+		{
+			key:  GameSettingKeyNoFlashStrength,
+			on:   []string{"mirv_noflash 0.35"},
+			off:  []string{"mirv_noflash 0.00"},
+			want: []string{"mirv_noflash 0.35"},
 		},
 		{
 			key:  GameSettingKeyEnableVoice,
@@ -170,6 +177,7 @@ func TestDebugGameSettingPlanKeepsSkyAndCloudsIndependent(t *testing.T) {
 		GameSettingKeySkyBlackout,
 		GameSettingKeyPovRadarEnabled,
 		GameSettingKeyKillFeedLifetime,
+		GameSettingKeyNoFlashStrength,
 		GameSettingKeyBlockKillFeed,
 		GameSettingKeySpecShowXray,
 		GameSettingKeyHideAllUI,
@@ -188,6 +196,48 @@ func sumPlanCommands(plans []DebugGameSettingPlan) int {
 		total += len(plan.Commands)
 	}
 	return total
+}
+
+func TestNoFlashCommandFormatsStrengthAndKeepsRestoreExplicit(t *testing.T) {
+	cases := []struct {
+		strength float64
+		want     string
+	}{
+		{strength: 0, want: "mirv_noflash 0.00"},
+		{strength: 0.3, want: "mirv_noflash 0.30"},
+		{strength: 0.355, want: "mirv_noflash 0.36"},
+		{strength: 1, want: "mirv_noflash 1.00"},
+		{strength: 2, want: "mirv_noflash 1.00"},
+		{strength: -1, want: "mirv_noflash 0.00"},
+	}
+	for _, tt := range cases {
+		if got := NoFlashCommand(tt.strength); got != tt.want {
+			t.Fatalf("NoFlashCommand(%v)=%q want %q", tt.strength, got, tt.want)
+		}
+	}
+}
+
+func TestDebugGameSettingPlanZeroNoFlashStrengthKeepsRestoreOnly(t *testing.T) {
+	plans, applyAll := BuildDebugGameSettingPlan(GameSettings{KillFeedLifetime: 4})
+
+	noFlash := findDebugSettingPlan(t, plans, GameSettingKeyNoFlashStrength)
+	if !reflect.DeepEqual(noFlash.Commands, []string{"mirv_noflash 0.00"}) {
+		t.Fatalf("current commands=%#v want the explicit zero restore", noFlash.Commands)
+	}
+	if !reflect.DeepEqual(noFlash.Off, noFlash.On) {
+		t.Fatalf("a zero strength must not invent a different on variant: %#v", noFlash)
+	}
+	if !reflect.DeepEqual(applyAll, concatPlanCommands(plans)) {
+		t.Fatalf("apply all=%#v want plan order", applyAll)
+	}
+}
+
+func concatPlanCommands(plans []DebugGameSettingPlan) []string {
+	commands := make([]string, 0, sumPlanCommands(plans))
+	for _, plan := range plans {
+		commands = append(commands, plan.Commands...)
+	}
+	return commands
 }
 
 func TestKillFeedLifetimeCommandFallsBackForUnsetValue(t *testing.T) {

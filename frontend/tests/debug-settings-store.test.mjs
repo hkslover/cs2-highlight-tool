@@ -49,6 +49,7 @@ function createClipSettings() {
     disable_clouds: false,
     kill_feed_lifetime: 4,
     block_kill_feed: false,
+    noflash_strength: 0,
   };
 }
 

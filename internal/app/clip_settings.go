@@ -39,6 +39,7 @@ type ClipSettings struct {
 	DisableClouds         bool    `json:"disable_clouds"`
 	KillFeedLifetime      int     `json:"kill_feed_lifetime"`
 	BlockKillFeed         bool    `json:"block_kill_feed"`
+	NoFlashStrength       float64 `json:"noflash_strength"`
 }
 
 type ClipActionSettings struct {
@@ -132,6 +133,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.DisableClouds = settings.DisableClouds
 		cfg.KillFeedLifetime = settings.KillFeedLifetime
 		cfg.BlockKillFeed = settings.BlockKillFeed
+		cfg.NoFlashStrength = settings.NoFlashStrength
 		actionSettings := config.ResolveClipActionSettings(cfg)
 		actionSettings.EnableVoiceIndices = settings.EnableVoice
 		actionSettings.EnableVoiceIndicesH = settings.EnableVoice
@@ -260,6 +262,7 @@ func normalizeClipSettings(input ClipSettings) ClipSettings {
 	if settings.KillFeedLifetime > config.MaxKillFeedLifetime {
 		settings.KillFeedLifetime = config.MaxKillFeedLifetime
 	}
+	settings.NoFlashStrength = config.NormalizeNoFlashStrength(settings.NoFlashStrength)
 	return settings
 }
 

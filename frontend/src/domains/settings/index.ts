@@ -11,12 +11,17 @@ export {
 export {
   SEARCHABLE_CLIP_SETTINGS,
   getSearchableNumberValue,
+  getSearchableSliderPercent,
   getSearchableSwitchValue,
   isSearchableNumberSetting,
+  isSearchableSliderSetting,
   isSearchableSwitchSetting,
   normalizeSettingSearch,
   settingMatchesSearch,
+  sliderPercentToStrength,
+  strengthToSliderPercent,
   type SearchableClipSettingItem,
   type SearchableNumberSettingKey,
+  type SearchableSliderSettingKey,
   type SearchableSwitchSettingKey,
 } from "./settings-schema";

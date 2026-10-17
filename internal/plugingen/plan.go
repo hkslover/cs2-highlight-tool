@@ -31,6 +31,7 @@ type GenerationSettings struct {
 	DisableClouds        bool
 	KillFeedLifetime     int
 	BlockKillFeed        bool
+	NoFlashStrength      float64
 	LaunchResolution     string
 }
 
@@ -118,6 +119,7 @@ func BuildPlan(input PlanInput) (*GenerationPlan, error) {
 		DisableClouds:             settings.DisableClouds,
 		KillFeedLifetime:          settings.KillFeedLifetime,
 		BlockKillFeed:             settings.BlockKillFeed,
+		NoFlashStrength:           settings.NoFlashStrength,
 		ForcePerPassVoiceCommands: hasVoiceOverride(items),
 		ForcePerPassXrayCommands:  hasSpecShowXrayOverride(items),
 		LaunchResolution:          settings.LaunchResolution,

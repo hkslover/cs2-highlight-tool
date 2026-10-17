@@ -80,6 +80,7 @@ export const DEFAULT_CLIP_SETTINGS: Readonly<ClipSettings> = Object.freeze({
   disable_clouds: false,
   kill_feed_lifetime: 4,
   block_kill_feed: false,
+  noflash_strength: 0,
 });
 
 export function createDefaultClipSettings(): ClipSettings {

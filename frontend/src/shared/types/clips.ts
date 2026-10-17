@@ -27,6 +27,11 @@ export interface ClipSettings {
   disable_clouds: boolean;
   kill_feed_lifetime: number;
   block_kill_feed: boolean;
+  /**
+   * HLAE `mirv_noflash` strength in [0, 1]. `0` writes no command at all, so
+   * the demo keeps the engine's normal flash effect.
+   */
+  noflash_strength: number;
 }
 
 export interface OutputsStorageStats {

@@ -3,6 +3,7 @@ package clipsjson
 import (
 	"fmt"
 	"hash/fnv"
+	"math"
 	"strings"
 )
 
@@ -21,6 +22,12 @@ const (
 	GameSettingKeyUseShoulderCamera = "use_shoulder_camera"
 	GameSettingKeyKillFeedLifetime  = "kill_feed_lifetime"
 	GameSettingKeyBlockKillFeed     = "block_kill_feed"
+	GameSettingKeyNoFlashStrength   = "noflash_strength"
+
+	// noFlashStrengthDecimals mirrors the persisted precision (0..1 with two
+	// decimals) so the command never carries more digits than the config
+	// round-trips.
+	noFlashStrengthDecimals = 2
 
 	// shoulderCameraRestoreCommand returns the third-person camera to first
 	// person. `cam_command 2` is CAM_COMMAND_TOFIRSTPERSON (hl2sdk
@@ -52,6 +59,9 @@ type GameSettings struct {
 	UseShoulderCamera  bool
 	KillFeedLifetime   int
 	BlockKillFeed      bool
+	// NoFlashStrength is the `mirv_noflash` strength in [0, 1]. Zero means the
+	// command is never written, so the demo keeps the normal flash effect.
+	NoFlashStrength float64
 }
 
 // ShoulderCameraStartCommand is the produce-bootstrap shoulder camera setup.
@@ -140,6 +150,30 @@ func KillFeedLifetimeCommand(seconds int) string {
 		seconds = 4
 	}
 	return fmt.Sprintf("mirv_deathmsg lifetime %d", seconds)
+}
+
+// NoFlashCommand returns the `mirv_noflash` command with a float strength.
+// HLAE >= 2.176.0 accepts the 0.0-1.0 strength; the value is clamped and
+// formatted with two decimals so the command and the persisted setting agree.
+// The caller decides whether a zero strength is written at all: the produce
+// bootstrap skips it, while the debug workbench uses `mirv_noflash 0.00` as
+// its explicit restore command.
+func NoFlashCommand(strength float64) string {
+	return fmt.Sprintf("mirv_noflash %.*f", noFlashStrengthDecimals, clampNoFlashStrength(strength))
+}
+
+func clampNoFlashStrength(strength float64) float64 {
+	if strength != strength { // NaN
+		return 0
+	}
+	if strength < 0 {
+		return 0
+	}
+	if strength > 1 {
+		strength = 1
+	}
+	scale := math.Pow10(noFlashStrengthDecimals)
+	return math.Round(strength*scale) / scale
 }
 
 // BlockKillFeedCommands returns the command for the requested state. Enabling
@@ -275,6 +309,16 @@ func BuildDebugGameSettingPlan(settings GameSettings) ([]DebugGameSettingPlan, [
 		{
 			Key:      GameSettingKeyKillFeedLifetime,
 			Commands: []string{KillFeedLifetimeCommand(settings.KillFeedLifetime)},
+		},
+		// `mirv_noflash` takes a float strength, so this row is not a boolean
+		// switch: `on` applies the configured strength and `off` restores the
+		// normal flash effect with an explicit zero. A zero draft strength makes
+		// both variants identical on purpose instead of inventing a value.
+		{
+			Key:      GameSettingKeyNoFlashStrength,
+			Commands: []string{NoFlashCommand(settings.NoFlashStrength)},
+			On:       []string{NoFlashCommand(settings.NoFlashStrength)},
+			Off:      []string{NoFlashCommand(0)},
 		},
 		toggle(GameSettingKeyBlockKillFeed, BlockKillFeedCommands, settings.BlockKillFeed),
 		toggle(GameSettingKeySpecShowXray, func(enabled bool) []string {

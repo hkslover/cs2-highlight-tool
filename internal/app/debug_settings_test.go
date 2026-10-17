@@ -38,6 +38,7 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 		RecordQuality:    "",
 		RecordFPS:        0,
 		KillFeedLifetime: 99,
+		NoFlashStrength:  2.5,
 		LaunchResolution: "bogus",
 		SkyBlackout:      false,
 		DisableClouds:    true,
@@ -73,6 +74,13 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 	lifetime := planItemByKey(t, plan, "kill_feed_lifetime")
 	if !reflect.DeepEqual(lifetime.Commands, []string{"mirv_deathmsg lifetime 10"}) {
 		t.Fatalf("lifetime commands=%#v want the clamped maximum", lifetime.Commands)
+	}
+	noFlash := planItemByKey(t, plan, "noflash_strength")
+	if !reflect.DeepEqual(noFlash.Commands, []string{"mirv_noflash 1.00"}) {
+		t.Fatalf("noflash commands=%#v want the clamped maximum strength", noFlash.Commands)
+	}
+	if !reflect.DeepEqual(noFlash.Off, []string{"mirv_noflash 0.00"}) {
+		t.Fatalf("noflash restore=%#v want an explicit zero strength", noFlash.Off)
 	}
 	sky := planItemByKey(t, plan, "sky_blackout")
 	if !reflect.DeepEqual(sky.Commands, []string{"r_drawskybox 1"}) {

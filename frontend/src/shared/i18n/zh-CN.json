@@ -165,6 +165,8 @@
       "quick_kill_feed_block": "击杀信息：屏蔽",
       "quick_kill_feed_clear": "击杀信息：清除过滤",
       "quick_kill_feed_lifetime": "击杀信息显示时长",
+      "quick_noflash_on": "闪光：弱化(按设置强度)",
+      "quick_noflash_restore": "闪光：恢复",
       "quick_group_picture": "画面",
       "quick_group_sound": "声音",
       "recording_reload": "重载"
@@ -531,6 +533,8 @@
       "disable_clouds": "关闭云层",
       "kill_feed_lifetime": "击杀信息留存时间(秒)",
       "block_kill_feed": "屏蔽所有击杀信息",
+      "noflash_strength": "闪光弱化强度",
+      "noflash_strength_hint": "按比例削弱闪光白屏（0%-100%）。0% 不写入命令，保持游戏默认闪光。",
       "recording_options_list_title": "配置",
       "recording_options_search_placeholder": "搜索",
       "recording_options_empty": "没有匹配的设置",

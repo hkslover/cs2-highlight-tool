@@ -93,6 +93,8 @@ export interface DebugSettingsDraft {
   use_shoulder_camera: boolean;
   kill_feed_lifetime: number;
   block_kill_feed: boolean;
+  /** HLAE `mirv_noflash` strength in [0, 1]; `0` writes no command at all. */
+  noflash_strength: number;
   record_fps: number;
   record_quality: ClipSettings["record_quality"];
   video_preset: ClipSettings["video_preset"];

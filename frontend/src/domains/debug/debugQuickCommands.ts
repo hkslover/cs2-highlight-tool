@@ -122,6 +122,18 @@ const QUICK_COMMAND_DESCRIPTORS: QuickCommandDescriptor[] = [
     group: "picture",
     variant: "current",
   },
+  {
+    key: "noflash_strength",
+    labelKey: "main.debug.quick_noflash_on",
+    group: "picture",
+    variant: "on",
+  },
+  {
+    key: "noflash_strength",
+    labelKey: "main.debug.quick_noflash_restore",
+    group: "picture",
+    variant: "off",
+  },
   { key: "enable_voice", labelKey: "main.debug.quick_voice_on", group: "sound", variant: "on" },
   { key: "enable_voice", labelKey: "main.debug.quick_voice_off", group: "sound", variant: "off" },
 ];

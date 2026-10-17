@@ -858,6 +858,44 @@ func TestBuild_KillFeedLifetimeFollowsOption(t *testing.T) {
 	assertHasAction(t, result.Sequences[0].Actions, "mirv_deathmsg lifetime 7")
 }
 
+func TestBuild_NoFlashEmitsStrengthOnlyWhenEnabled(t *testing.T) {
+	enabled, err := Build([]Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		NoFlashStrength:   0.35,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build noflash=0.35: %v", err)
+	}
+	assertHasAction(t, enabled.Sequences[0].Actions, "mirv_noflash 0.35")
+
+	disabled, err := Build([]Item{{
+		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		NoFlashStrength:   0,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build noflash=0: %v", err)
+	}
+	assertNoPrefixAction(t, disabled.Sequences[0].Actions, "mirv_noflash")
+}
+
 func TestBuild_BlockKillFeedEmitsFilterOnlyWhenEnabled(t *testing.T) {
 	enabled, err := Build([]Item{{
 		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},

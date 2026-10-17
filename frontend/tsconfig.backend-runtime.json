@@ -20,6 +20,7 @@
     "src/shared/backend/adapter.ts",
     "src/app/startup-state.ts",
     "src/domains/settings/settings-state.ts",
+    "src/domains/settings/settings-schema.ts",
     "src/domains/clip-selection/selection-logic.ts",
     "src/domains/production/jobs.ts",
     "src/domains/production/snapshot.ts",

@@ -49,6 +49,7 @@ type Config struct {
 	DisableClouds          bool                `json:"disable_clouds"`
 	KillFeedLifetime       int                 `json:"kill_feed_lifetime"`
 	BlockKillFeed          bool                `json:"block_kill_feed"`
+	NoFlashStrength        float64             `json:"noflash_strength"`
 	LastChangelogVersion   string              `json:"last_changelog_version,omitempty"`
 	ClipActionSettings     *ClipActionSettings `json:"clip_action_settings,omitempty"`
 }
@@ -81,6 +82,13 @@ const (
 	DefaultKillFeedLifetime  = 4
 	MinKillFeedLifetime      = 1
 	MaxKillFeedLifetime      = 10
+	// NoFlashStrength is the HLAE `mirv_noflash` strength in [0, 1]. Zero is
+	// the default and means no command is written at all, so a demo keeps the
+	// engine's normal flash effect.
+	DefaultNoFlashStrength  = 0.0
+	MinNoFlashStrength      = 0.0
+	MaxNoFlashStrength      = 1.0
+	NoFlashStrengthDecimals = 2
 )
 
 func Default(dataDir string) *Config {
@@ -112,6 +120,7 @@ func Default(dataDir string) *Config {
 		DisableClouds:      false,
 		KillFeedLifetime:   DefaultKillFeedLifetime,
 		BlockKillFeed:      false,
+		NoFlashStrength:    DefaultNoFlashStrength,
 		ClipActionSettings: Ptr(DefaultClipActionSettings()),
 	}
 }
@@ -289,6 +298,7 @@ func ApplyDefaults(cfg *Config, dataDir string) {
 	if cfg.KillFeedLifetime > MaxKillFeedLifetime {
 		cfg.KillFeedLifetime = MaxKillFeedLifetime
 	}
+	cfg.NoFlashStrength = NormalizeNoFlashStrength(cfg.NoFlashStrength)
 	if cfg.ClipActionSettings == nil {
 		cfg.ClipActionSettings = Ptr(DefaultClipActionSettings())
 	}
@@ -305,6 +315,23 @@ func NormalizeClipWindowSeconds(value float64, fallback float64) float64 {
 		value = MaxClipWindowSeconds
 	}
 	return math.Round(value*2) / 2
+}
+
+// NormalizeNoFlashStrength clamps the HLAE flash suppression strength into
+// [0, 1] and rounds it to the persisted precision. A NaN or infinite input
+// falls back to the default so a hand-edited config cannot poison the command.
+func NormalizeNoFlashStrength(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return DefaultNoFlashStrength
+	}
+	if value < MinNoFlashStrength {
+		value = MinNoFlashStrength
+	}
+	if value > MaxNoFlashStrength {
+		value = MaxNoFlashStrength
+	}
+	scale := math.Pow10(NoFlashStrengthDecimals)
+	return math.Round(value*scale) / scale
 }
 
 func DefaultClipActionSettings() ClipActionSettings {

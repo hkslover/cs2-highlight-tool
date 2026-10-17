@@ -577,6 +577,32 @@ func TestLoadOrCreate_ExplicitFalseSkyBlackoutIsPreserved(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreate_NoFlashStrengthDefaultsAndClamps(t *testing.T) {
+	cfg := &Config{}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != DefaultNoFlashStrength {
+		t.Fatalf("noflash_strength should default to %v, got %v", DefaultNoFlashStrength, cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: 0.355}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != 0.36 {
+		t.Fatalf("noflash_strength should round to the persisted precision, got %v", cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: -2}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != MinNoFlashStrength {
+		t.Fatalf("negative noflash_strength should clamp to %v, got %v", MinNoFlashStrength, cfg.NoFlashStrength)
+	}
+
+	cfg = &Config{NoFlashStrength: 3}
+	ApplyDefaults(cfg, "/tmp/data")
+	if cfg.NoFlashStrength != MaxNoFlashStrength {
+		t.Fatalf("large noflash_strength should clamp to %v, got %v", MaxNoFlashStrength, cfg.NoFlashStrength)
+	}
+}
+
 func TestApplyDefaults_KillFeedLifetimeClamp(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{KillFeedLifetime: 0}

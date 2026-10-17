@@ -101,6 +101,7 @@ type BuildOptions struct {
 	DisableClouds             bool
 	KillFeedLifetime          int
 	BlockKillFeed             bool
+	NoFlashStrength           float64
 	ForcePerPassVoiceCommands bool
 	ForcePerPassXrayCommands  bool
 	LaunchResolution          string
@@ -191,6 +192,7 @@ type bootstrapOptions struct {
 	DisableClouds      bool
 	KillFeedLifetime   int
 	BlockKillFeed      bool
+	NoFlashStrength    float64
 	RecordFPS          int
 	VideoPreset        string
 	FFmpegParams       string
@@ -291,6 +293,7 @@ func Build(items []Item, opts BuildOptions) (*BuildResult, error) {
 		DisableClouds:      opts.DisableClouds,
 		KillFeedLifetime:   opts.KillFeedLifetime,
 		BlockKillFeed:      opts.BlockKillFeed,
+		NoFlashStrength:    opts.NoFlashStrength,
 		RecordFPS:          recordFPS,
 		VideoPreset:        videoPreset,
 		FFmpegParams:       ffmpegParams,
@@ -694,6 +697,11 @@ func buildBootstrapSequence(opts bootstrapOptions) Sequence {
 	}
 	if opts.SkyBlackout {
 		appendCommand(SkyBlackoutCommand(true))
+	}
+	// Zero strength keeps the historical output: the command is not written at
+	// all, so the demo keeps the engine's normal flash effect.
+	if opts.NoFlashStrength > 0 {
+		appendCommand(NoFlashCommand(opts.NoFlashStrength))
 	}
 	appendCommand(KillFeedLifetimeCommand(opts.KillFeedLifetime))
 	if opts.BlockKillFeed {

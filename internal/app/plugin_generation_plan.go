@@ -69,6 +69,7 @@ func (a *App) captureGenerationSnapshot() (*generationSnapshot, error) {
 		DisableClouds:        clipSettings.DisableClouds,
 		KillFeedLifetime:     clipSettings.KillFeedLifetime,
 		BlockKillFeed:        clipSettings.BlockKillFeed,
+		NoFlashStrength:      clipSettings.NoFlashStrength,
 		LaunchResolution:     clipSettings.LaunchResolution,
 	}
 	return &generationSnapshot{cfg: cfg, clipSettings: clipSettings, planner: planner}, nil
@@ -104,6 +105,7 @@ func clipSettingsFromConfig(cfg *config.Config, recordOutputDir string) ClipSett
 		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
 		BlockKillFeed:      cfg.BlockKillFeed,
+		NoFlashStrength:    cfg.NoFlashStrength,
 	})
 }
 
