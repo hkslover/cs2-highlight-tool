@@ -131,9 +131,6 @@
           </span>
           <n-switch v-model:value="settings.motion_blur_enabled" />
         </div>
-        <span v-if="motionBlurEffectiveHint" class="setting-hint-line">
-          {{ motionBlurEffectiveHint }}
-        </span>
         <div class="setting-row">
           <span class="setting-label">{{ t("main.settings.record_quality") }}</span>
           <n-select v-model:value="settings.record_quality" :options="recordQualityOptions" class="preset-select" />
@@ -374,17 +371,6 @@ const editQualityOptions = computed(() => [
   { label: t("main.settings.edit_quality_high"), value: "high" },
   { label: t("main.settings.edit_quality_ultra"), value: "ultra" },
 ]);
-// The backend derives the sampler capture rate; the page only formats it so
-// the recording-time warning cannot drift from the commands actually sent.
-const motionBlurEffectiveHint = computed(() => {
-  if (!settings.motion_blur_enabled) return "";
-  const capture = Math.round(settings.effective_motion_blur_capture_fps || 0);
-  const output = Math.max(1, Math.round(settings.record_fps));
-  if (capture <= 0) return "";
-  const multiplier = capture / output;
-  const multiplierText = Number.isInteger(multiplier) ? String(multiplier) : multiplier.toFixed(1);
-  return t("main.settings.motion_blur_effective", { capture, output, multiplier: multiplierText });
-});
 const filteredSearchableClipSettings = computed(() => {
   const query = normalizeSettingSearch(settingSearchQuery.value);
   if (!query) return SEARCHABLE_CLIP_SETTINGS;
@@ -658,13 +644,6 @@ function formatBytes(bytes: number): string {
   font-variant-numeric: tabular-nums;
   min-width: 36px;
   text-align: right;
-}
-
-.setting-hint-line {
-  color: #9cb8a8;
-  font-size: 12px;
-  line-height: 1.5;
-  margin-top: -6px;
 }
 
 .setting-list-panel {
