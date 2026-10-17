@@ -507,7 +507,7 @@
       "record_fps": "录制 FPS",
       "record_quality": "录制质量",
       "motion_blur_enabled": "运动模糊",
-      "motion_blur_hint": "快速甩枪、转身时产生自然拖影，录制耗时明显增加。",
+      "motion_blur_hint": "每帧由多次高帧率采样混合而成，运动画面呈现连续拖影；录制耗时明显增加。",
       "edit_fps": "剪辑 FPS",
       "edit_quality": "剪辑质量",
       "edit_quality_standard": "标准",
