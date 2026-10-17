@@ -534,7 +534,7 @@
       "kill_feed_lifetime": "击杀信息留存时间(秒)",
       "block_kill_feed": "屏蔽所有击杀信息",
       "noflash_strength": "闪光弱化强度",
-      "noflash_strength_hint": "按比例削弱闪光白屏（0%-100%）。0% 不写入命令，保持游戏默认闪光。",
+      "noflash_strength_hint": "按比例削弱闪光白屏（0%-100%）效果。",
       "recording_options_list_title": "配置",
       "recording_options_search_placeholder": "搜索",
       "recording_options_empty": "没有匹配的设置",
