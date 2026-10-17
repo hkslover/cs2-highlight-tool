@@ -22,6 +22,7 @@ const confirmedSettings = {
   enable_voice: false,
   use_shoulder_camera: true,
   kill_feed_lifetime: 7,
+  pov_kill_feed_only: true,
   block_kill_feed: true,
   noflash_strength: 0.35,
   record_fps: 120,
@@ -77,6 +78,7 @@ test("derives the draft from the confirmed settings subset", () => {
   assert.equal(draft.enable_spec_show_xray_zero, false);
   assert.equal(draft.enable_voice, false);
   assert.equal(draft.kill_feed_lifetime, 7);
+  assert.equal(draft.pov_kill_feed_only, true);
   assert.equal(draft.noflash_strength, 0.35);
   assert.equal(draft.record_fps, 120);
   assert.equal(draft.record_quality, "ultra");

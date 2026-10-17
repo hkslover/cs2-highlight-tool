@@ -92,6 +92,7 @@ export interface DebugSettingsDraft {
   enable_voice: boolean;
   use_shoulder_camera: boolean;
   kill_feed_lifetime: number;
+  pov_kill_feed_only: boolean;
   block_kill_feed: boolean;
   /** HLAE `mirv_noflash` strength in [0, 1]; `0` writes no command at all. */
   noflash_strength: number;

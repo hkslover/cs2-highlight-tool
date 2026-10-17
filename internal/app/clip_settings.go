@@ -38,6 +38,7 @@ type ClipSettings struct {
 	SkyBlackout           bool    `json:"sky_blackout"`
 	DisableClouds         bool    `json:"disable_clouds"`
 	KillFeedLifetime      int     `json:"kill_feed_lifetime"`
+	PovKillFeedOnly       bool    `json:"pov_kill_feed_only"`
 	BlockKillFeed         bool    `json:"block_kill_feed"`
 	NoFlashStrength       float64 `json:"noflash_strength"`
 }
@@ -132,6 +133,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.SkyBlackout = settings.SkyBlackout
 		cfg.DisableClouds = settings.DisableClouds
 		cfg.KillFeedLifetime = settings.KillFeedLifetime
+		cfg.PovKillFeedOnly = settings.PovKillFeedOnly
 		cfg.BlockKillFeed = settings.BlockKillFeed
 		cfg.NoFlashStrength = settings.NoFlashStrength
 		actionSettings := config.ResolveClipActionSettings(cfg)

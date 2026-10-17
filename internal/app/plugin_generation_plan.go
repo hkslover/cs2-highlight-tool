@@ -68,6 +68,7 @@ func (a *App) captureGenerationSnapshot() (*generationSnapshot, error) {
 		SkyBlackout:          clipSettings.SkyBlackout,
 		DisableClouds:        clipSettings.DisableClouds,
 		KillFeedLifetime:     clipSettings.KillFeedLifetime,
+		PovKillFeedOnly:      clipSettings.PovKillFeedOnly,
 		BlockKillFeed:        clipSettings.BlockKillFeed,
 		NoFlashStrength:      clipSettings.NoFlashStrength,
 		LaunchResolution:     clipSettings.LaunchResolution,
@@ -104,6 +105,7 @@ func clipSettingsFromConfig(cfg *config.Config, recordOutputDir string) ClipSett
 		SkyBlackout:        cfg.SkyBlackout,
 		DisableClouds:      cfg.DisableClouds,
 		KillFeedLifetime:   cfg.KillFeedLifetime,
+		PovKillFeedOnly:    cfg.PovKillFeedOnly,
 		BlockKillFeed:      cfg.BlockKillFeed,
 		NoFlashStrength:    cfg.NoFlashStrength,
 	})

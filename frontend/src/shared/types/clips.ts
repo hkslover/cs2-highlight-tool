@@ -26,6 +26,7 @@ export interface ClipSettings {
   sky_blackout: boolean;
   disable_clouds: boolean;
   kill_feed_lifetime: number;
+  pov_kill_feed_only: boolean;
   block_kill_feed: boolean;
   /**
    * HLAE `mirv_noflash` strength in [0, 1]. `0` writes no command at all, so

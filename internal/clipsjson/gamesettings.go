@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -21,6 +22,7 @@ const (
 	GameSettingKeyEnableVoice       = "enable_voice"
 	GameSettingKeyUseShoulderCamera = "use_shoulder_camera"
 	GameSettingKeyKillFeedLifetime  = "kill_feed_lifetime"
+	GameSettingKeyPovKillFeedOnly   = "pov_kill_feed_only"
 	GameSettingKeyBlockKillFeed     = "block_kill_feed"
 	GameSettingKeyNoFlashStrength   = "noflash_strength"
 
@@ -37,11 +39,17 @@ const (
 	// documented engine values.
 	shoulderCameraRestoreCommand = "c_thirdpersonshoulder 0;cam_command 2"
 
-	// blockKillFeedClearCommand is HLAE's only way to undo the block filter
-	// without knowing its list index: `mirv_deathmsg filter clear` clears the
-	// whole filter list (MirvDeathMsgFilter.cpp). The UI must state that it
-	// also drops the user's own filters.
-	blockKillFeedClearCommand = "mirv_deathmsg filter clear"
+	// deathMsgFilterClearCommand is HLAE's only way to undo a death notice
+	// filter without knowing its list index: `mirv_deathmsg filter clear`
+	// clears the whole filter list (MirvDeathMsgFilter.cpp). The UI must state
+	// that it also drops the user's own filters.
+	deathMsgFilterClearCommand = "mirv_deathmsg filter clear"
+
+	// deathMsgClearCommand removes death notices that are already on screen.
+	// `filter clear` only edits the rule list, so a POV switch also needs this
+	// command when the previous perspective's notice must not leak into the
+	// next take.
+	deathMsgClearCommand = "mirv_deathmsg clear"
 )
 
 // GameSettings carries the hot-updatable runtime settings shared by the
@@ -58,6 +66,7 @@ type GameSettings struct {
 	EnableVoice        bool
 	UseShoulderCamera  bool
 	KillFeedLifetime   int
+	PovKillFeedOnly    bool
 	BlockKillFeed      bool
 	// NoFlashStrength is the `mirv_noflash` strength in [0, 1]. Zero means the
 	// command is never written, so the demo keeps the normal flash effect.
@@ -182,7 +191,54 @@ func BlockKillFeedCommands(enabled bool) []string {
 	if enabled {
 		return []string{"mirv_deathmsg filter add block 1"}
 	}
-	return []string{blockKillFeedClearCommand}
+	return []string{deathMsgFilterClearCommand}
+}
+
+// PovKillFeedCommands returns the death notice commands that keep only the
+// notices the given player took part in (as killer, victim or assister). HLAE
+// resolves `xTrace` when the command is parsed, not when each notice is
+// created, so the produce planner must repeat this per recording pass with the
+// pass's explicit Steam64 instead of relying on a single bootstrap filter.
+//
+// A missing or unusable SteamID still clears the rule list: leaving the
+// previous pass's rule active would hide the new perspective's notices.
+func PovKillFeedCommands(steamID string) []string {
+	commands := []string{deathMsgClearCommand, deathMsgFilterClearCommand}
+	xuid, ok := normalizeDeathMsgXuid(steamID)
+	if !ok {
+		return commands
+	}
+	match := "!x" + xuid
+	return append(commands, fmt.Sprintf(
+		"mirv_deathmsg filter add attackerMatch=%s victimMatch=%s assisterMatch=%s block=1 lastRule=1",
+		match, match, match,
+	))
+}
+
+// PovKillFeedTraceCommands is the debug workbench variant. `xTrace` resolves to
+// the player that is spectated when the command runs, so the interactive
+// session has to re-send it after switching perspective. The produce pipeline
+// never uses this variant because its passes must stay deterministic.
+func PovKillFeedTraceCommands(enabled bool) []string {
+	if !enabled {
+		return []string{deathMsgFilterClearCommand}
+	}
+	return []string{
+		deathMsgClearCommand,
+		deathMsgFilterClearCommand,
+		"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+	}
+}
+
+// normalizeDeathMsgXuid keeps only a real, non-zero Steam64. The value is
+// round-tripped through ParseUint so the console command never carries signs,
+// quotes or leading zeros coming from a malformed demo field.
+func normalizeDeathMsgXuid(steamID string) (string, bool) {
+	value, err := strconv.ParseUint(strings.TrimSpace(steamID), 10, 64)
+	if err != nil || value == 0 {
+		return "", false
+	}
+	return strconv.FormatUint(value, 10), true
 }
 
 // VoiceIndicesCommands returns both voice index commands for the requested
@@ -295,6 +351,16 @@ func BuildDebugGameSettingPlan(settings GameSettings) ([]DebugGameSettingPlan, [
 		}
 	}
 
+	// The POV filter and the block-all filter edit the same HLAE rule list, so
+	// the block row comes first and a settled block-all suppresses the POV
+	// row's current command entirely. Emitting `filter clear` for the POV row
+	// would undo the block rule during apply-all.
+	blockKillFeed := toggle(GameSettingKeyBlockKillFeed, BlockKillFeedCommands, settings.BlockKillFeed)
+	povKillFeedOnly := toggle(GameSettingKeyPovKillFeedOnly, PovKillFeedTraceCommands, settings.PovKillFeedOnly)
+	if settings.BlockKillFeed {
+		povKillFeedOnly.Commands = []string{}
+	}
+
 	items := []DebugGameSettingPlan{
 		toggle(GameSettingKeyUseShoulderCamera, ShoulderCameraCommands, settings.UseShoulderCamera),
 		toggle(GameSettingKeyDisableClouds, func(enabled bool) []string {
@@ -320,7 +386,8 @@ func BuildDebugGameSettingPlan(settings GameSettings) ([]DebugGameSettingPlan, [
 			On:       []string{NoFlashCommand(settings.NoFlashStrength)},
 			Off:      []string{NoFlashCommand(0)},
 		},
-		toggle(GameSettingKeyBlockKillFeed, BlockKillFeedCommands, settings.BlockKillFeed),
+		blockKillFeed,
+		povKillFeedOnly,
 		toggle(GameSettingKeySpecShowXray, func(enabled bool) []string {
 			return []string{SpecShowXrayCommand(enabled)}
 		}, settings.EnableSpecShowXray),

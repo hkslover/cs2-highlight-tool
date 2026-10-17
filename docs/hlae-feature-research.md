@@ -227,7 +227,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 | `mirv_colors glow/trails/smokes/teamid <color>` 📖 | 统一 CT/T 配色（默认粒子颜色在不同 Demo 里不一致），让整条片子视觉统一 | 部分值需切视角/切回合才刷新 |
 | `mirv_sky color/material` + `clouds color/draw` 📖 | 换天空颜色/材质、云层颜色。用于风格化（黑天、黄昏、替换成其他地图天空） | 换地图后需重发 |
 | `mirv_deathmsg lifetimeMod N\|default` 📖 | 让"本人击杀"的提示在屏幕上停留更久，其余正常 | 集锦里常用 |
-| `mirv_deathmsg localPlayer xTrace` + `filter add attackerMatch=!xTrace victimMatch=!xTrace block=1 lastRule=1` 📖 | **只显示本人参与的击杀**，屏蔽其他玩家的击杀提示 | 比当前"全屏蔽"更符合集锦需求 |
+| `mirv_deathmsg localPlayer xTrace` + `filter add attackerMatch=!xTrace victimMatch=!xTrace block=1 lastRule=1` 📖 | **只显示本人参与的击杀**，屏蔽其他玩家的击杀提示 | 比当前"全屏蔽"更符合集锦需求；现已接入 `pov_kill_feed_only`。HLAE 在命令执行时解析 `xTrace`，正式录制需逐 pass 用该视角玩家 Steam64 重发过滤，调试工作台才用 `xTrace` 变体 |
 | `mirv_deathmsg colors ct/t/border/background[Local]` 📖 | 击杀提示配色统一 | |
 | `mirv_replace_name filter add x<XUID> "名字"` 📖 | 把死亡提示/底栏里的游戏内昵称替换成真名/统一代号（也可用于匿名化） | 不影响左侧 GOTV 头像栏 |
 | `mirv_deathmsg help players` / `mirv_listentities isPlayer=1` 📖 | 打印玩家 userID/XUID 表，供上面几条命令使用 | |
@@ -266,7 +266,7 @@ mirv_streams record screen settings blur              // 让屏幕录制走这�
 | `mirv_panorama` | ✅ | ❌ | 精确隐藏 HUD 元素 |
 | `mirv_glow` / `mirv_colors` | ✅ | ❌ | 配色统一、突出目标 |
 | `mirv_sky color/material` | ✅ | 部分（仅 clouds draw） | 天空风格化 |
-| `mirv_deathmsg` | ✅ | 部分（lifetime / block） | 只显示本人击杀 |
+| `mirv_deathmsg` | ✅ | 部分（lifetime / block / 仅当前视角） | 只显示本人击杀 |
 | `mirv_replace_name` | ✅ | ❌ | 昵称替换/匿名 |
 | `mirv_fov` / `mirv_fix` | ✅ | ❌ | FOV 控制、动画平滑 |
 | `mirv_listentities` / `mirv_cvar_unhide_all` | ✅ | ❌ | 取 ID、解锁隐藏 cvar |

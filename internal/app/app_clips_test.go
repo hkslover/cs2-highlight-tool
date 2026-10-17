@@ -861,6 +861,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if initial.PovRadarEnabled {
 		t.Fatalf("pov_radar_enabled should default to false: %+v", initial)
 	}
+	if initial.PovKillFeedOnly {
+		t.Fatalf("pov_kill_feed_only should default to false: %+v", initial)
+	}
 	if initial.DisableClouds {
 		t.Fatalf("disable_clouds should default to false: %+v", initial)
 	}
@@ -888,6 +891,7 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 		HideChatMessages:  true,
 		UseShoulderCamera: true,
 		PovRadarEnabled:   true,
+		PovKillFeedOnly:   true,
 		DisableClouds:     true,
 		NoFlashStrength:   0.45,
 	})
@@ -926,6 +930,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !saved.PovRadarEnabled {
 		t.Fatalf("pov_radar_enabled should persist true: %+v", saved)
+	}
+	if !saved.PovKillFeedOnly {
+		t.Fatalf("pov_kill_feed_only should persist true: %+v", saved)
 	}
 	if !saved.DisableClouds {
 		t.Fatalf("disable_clouds should persist true: %+v", saved)
@@ -970,6 +977,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.PovRadarEnabled {
 		t.Fatalf("saved pov_radar_enabled mismatch: %+v", loaded)
+	}
+	if !loaded.PovKillFeedOnly {
+		t.Fatalf("saved pov_kill_feed_only mismatch: %+v", loaded)
 	}
 	if !loaded.DisableClouds {
 		t.Fatalf("saved disable_clouds mismatch: %+v", loaded)
@@ -1550,6 +1560,69 @@ func TestGeneratePluginJSON_PovRadarEnabledProducesPerPassSequences(t *testing.T
 		if warmup := start.Tick - radar.Tick; warmup < 128 {
 			t.Fatalf("pass %d warmup=%d ticks want >= 128", i, warmup)
 		}
+	}
+}
+
+func TestGeneratePluginJSON_PovKillFeedOnlyEmitsPerPassFilter(t *testing.T) {
+	exeDir := t.TempDir()
+	app := newTestApp(t, exeDir)
+
+	if _, err := app.SaveClipSettings(ClipSettings{KillerPreSeconds: 1, KillerPostSeconds: 1, PovKillFeedOnly: true}); err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+
+	demoPath := writeDemoFile(t)
+	result, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, KillerSteamID: "76561190000000001", VictimSlot: 11, VictimSteamID: "76561190000000002"}, IncludeVictim: false},
+			{Kill: demo.ClipKill{ID: "k2", Tick: 900, KillerSlot: 9, KillerSteamID: "76561190000000003", VictimSlot: 12, VictimSteamID: "76561190000000004"}, IncludeVictim: false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GeneratePluginJSON: %v", err)
+	}
+	if result.SequenceCount != 2 {
+		t.Fatalf("sequence_count=%d want bootstrap + killer group", result.SequenceCount)
+	}
+	sequences := readGeneratedSequences(t, demoPath+".json")
+	if len(sequences) != 2 {
+		t.Fatalf("sequence len=%d want 2", len(sequences))
+	}
+	assertNoPrefixAction(t, sequences[0].Actions, "mirv_deathmsg filter add attackerMatch=")
+	assertHasAction(t, sequences[1].Actions, "mirv_deathmsg filter add attackerMatch=!x76561190000000001 victimMatch=!x76561190000000001 assisterMatch=!x76561190000000001 block=1 lastRule=1")
+	assertHasAction(t, sequences[1].Actions, "mirv_deathmsg filter add attackerMatch=!x76561190000000003 victimMatch=!x76561190000000003 assisterMatch=!x76561190000000003 block=1 lastRule=1")
+}
+
+func TestGeneratePluginJSON_BlockKillFeedSuppressesPovKillFeedOnly(t *testing.T) {
+	exeDir := t.TempDir()
+	app := newTestApp(t, exeDir)
+
+	if _, err := app.SaveClipSettings(ClipSettings{
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		PovKillFeedOnly:   true,
+		BlockKillFeed:     true,
+	}); err != nil {
+		t.Fatalf("SaveClipSettings: %v", err)
+	}
+
+	demoPath := writeDemoFile(t)
+	if _, err := app.GeneratePluginJSON(GeneratePluginJSONRequest{
+		DemoPath: demoPath,
+		TickRate: 64,
+		SelectedItems: []SelectedClipItem{
+			{Kill: demo.ClipKill{ID: "k1", Tick: 500, KillerSlot: 7, KillerSteamID: "76561190000000001"}, IncludeVictim: false},
+		},
+	}); err != nil {
+		t.Fatalf("GeneratePluginJSON: %v", err)
+	}
+	sequences := readGeneratedSequences(t, demoPath+".json")
+	assertHasAction(t, sequences[0].Actions, "mirv_deathmsg filter add block 1")
+	for _, sequence := range sequences[1:] {
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg clear")
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg filter add attackerMatch=")
 	}
 }
 

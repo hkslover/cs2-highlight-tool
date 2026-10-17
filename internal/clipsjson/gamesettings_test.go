@@ -30,6 +30,7 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 		EnableVoice:        true,
 		UseShoulderCamera:  false,
 		PovRadarEnabled:    true,
+		PovKillFeedOnly:    true,
 		BlockKillFeed:      false,
 		KillFeedLifetime:   6,
 		NoFlashStrength:    0.35,
@@ -94,6 +95,20 @@ func TestDebugGameSettingPlanSwitchVariants(t *testing.T) {
 			on:   []string{"tv_listen_voice_indices -1", "tv_listen_voice_indices_h -1"},
 			off:  []string{"tv_listen_voice_indices 0", "tv_listen_voice_indices_h 0"},
 			want: []string{"tv_listen_voice_indices -1", "tv_listen_voice_indices_h -1"},
+		},
+		{
+			key: GameSettingKeyPovKillFeedOnly,
+			on: []string{
+				"mirv_deathmsg clear",
+				"mirv_deathmsg filter clear",
+				"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+			},
+			off: []string{"mirv_deathmsg filter clear"},
+			want: []string{
+				"mirv_deathmsg clear",
+				"mirv_deathmsg filter clear",
+				"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+			},
 		},
 		{
 			key:  GameSettingKeyBlockKillFeed,
@@ -179,6 +194,7 @@ func TestDebugGameSettingPlanKeepsSkyAndCloudsIndependent(t *testing.T) {
 		GameSettingKeyKillFeedLifetime,
 		GameSettingKeyNoFlashStrength,
 		GameSettingKeyBlockKillFeed,
+		GameSettingKeyPovKillFeedOnly,
 		GameSettingKeySpecShowXray,
 		GameSettingKeyHideAllUI,
 		GameSettingKeyHidePlayerAvatars,
@@ -351,6 +367,55 @@ func TestBuildBootstrapUsesSharedRecordInitOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("bootstrap record init=%#v want %#v", got, want)
+	}
+}
+
+func TestPovKillFeedCommandsUseTheExplicitSpectatedXuid(t *testing.T) {
+	commands := PovKillFeedCommands(" 76561190000000001 ")
+	want := []string{
+		"mirv_deathmsg clear",
+		"mirv_deathmsg filter clear",
+		"mirv_deathmsg filter add attackerMatch=!x76561190000000001 victimMatch=!x76561190000000001 assisterMatch=!x76561190000000001 block=1 lastRule=1",
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands=%#v want %#v", commands, want)
+	}
+}
+
+func TestPovKillFeedCommandsStillClearRulesWithoutAUsableXuid(t *testing.T) {
+	for _, steamID := range []string{"", "   ", "0", "abc", "-1", "x76561190000000001"} {
+		commands := PovKillFeedCommands(steamID)
+		want := []string{"mirv_deathmsg clear", "mirv_deathmsg filter clear"}
+		if !reflect.DeepEqual(commands, want) {
+			t.Fatalf("steamID=%q commands=%#v want %#v", steamID, commands, want)
+		}
+	}
+}
+
+func TestDebugPlanLetsBlockKillFeedWinOverPovOnly(t *testing.T) {
+	plans, applyAll := BuildDebugGameSettingPlan(GameSettings{
+		PovKillFeedOnly:  true,
+		BlockKillFeed:    true,
+		KillFeedLifetime: 4,
+	})
+	pov := findDebugSettingPlan(t, plans, GameSettingKeyPovKillFeedOnly)
+	if len(pov.Commands) != 0 {
+		t.Fatalf("current POV commands=%#v want none when block-all wins", pov.Commands)
+	}
+
+	// Apply-all must not clear the block rule: the suppressed POV row cannot
+	// emit its `filter clear` fallback after the block row.
+	blockIndex := -1
+	for i, command := range applyAll {
+		switch command {
+		case "mirv_deathmsg filter add block 1":
+			blockIndex = i
+		case "mirv_deathmsg filter clear":
+			t.Fatalf("apply-all=%#v clears the block rule at index %d", applyAll, i)
+		}
+	}
+	if blockIndex < 0 {
+		t.Fatalf("apply-all=%#v missing the block rule", applyAll)
 	}
 }
 

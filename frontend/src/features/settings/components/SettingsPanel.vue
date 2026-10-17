@@ -241,6 +241,7 @@ import { useWorkActivity } from "@/shared/state/useWorkActivity";
 import { useSettingsStore } from "@/domains/settings/settings-state";
 import {
   SEARCHABLE_CLIP_SETTINGS,
+  applySwitchSettingValue,
   getSearchableNumberValue,
   getSearchableSliderPercent,
   getSearchableSwitchValue,
@@ -510,7 +511,7 @@ function updateSwitchSetting(item: SearchableClipSettingItem, value: boolean): v
   if (item.kind !== "switch") {
     return;
   }
-  settings[item.key] = value;
+  applySwitchSettingValue(settings, item.key, value);
 }
 
 function updateNumberSetting(item: SearchableClipSettingItem, value: number | null): void {

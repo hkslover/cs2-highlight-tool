@@ -41,6 +41,7 @@
 - ClipSettings 的允许值、默认值、命令开关语义遵循根文件“设置与插件计划”；前端不得自行决定编码能力或绕过后端归一化。编码器自动探测完成后展示后端返回的 `effective_video_preset/effective_video_encoder`，但提交时仍保留 `video_preset=auto` 用户策略，不把只读结果写回草稿。
 - “隐藏聊天信息”使用共享设置字段 `hide_chat_messages`，默认开启，设置页与片段设置入口共用可搜索开关和草稿保存流程；后端返回的显式关闭值优先于前端默认值。
 - “闪光弱化强度”使用共享设置字段 `noflash_strength`（HLAE `mirv_noflash` 强度 `0–1`，`0` 表示不写入命令）：设置页在可搜索设置列表中用百分比滑动条呈现（`settings-schema.ts` 的 `slider` 条目，0–100%、5% 步进），换算只发生在展示层（`sliderPercentToStrength`/`strengthToSliderPercent`），提交给后端的仍是 0–1 强度；命令文本、归一化与启用判定由后端决定，前端不拼命令、不设默认强度。
+- “仅显示当前视角下的击杀信息”使用共享设置字段 `pov_kill_feed_only`，与 `block_kill_feed` 在设置页互斥（开启一个会关闭另一个），但互斥只是 UI 约束：过滤命令、逐 pass 时序与 block 优先级均由后端决定，前端不拼 `mirv_deathmsg` 命令。
 - 精确 SteamID 使用 `steam_id_text` 或对应字符串字段；不得将 number 形式的 `steam_id` 作为请求值。
 - 主视角/对方视角通过 `primary_view` 映射，复用 `src/shared/clip-views.ts`；死亡模式的主视角是 victim，录制角色仍是 killer/victim。
 - 整局 POV 是 Demo 级独立状态，不伪装成普通击杀片段。请求通过 `full_round_pov.player_steam_id` 传递，普通片段通过 `selected_items[]` 传递；victim-only 项传 `include_killer=false`。

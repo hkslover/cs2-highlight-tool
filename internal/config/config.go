@@ -48,6 +48,7 @@ type Config struct {
 	SkyBlackout            bool                `json:"sky_blackout"`
 	DisableClouds          bool                `json:"disable_clouds"`
 	KillFeedLifetime       int                 `json:"kill_feed_lifetime"`
+	PovKillFeedOnly        bool                `json:"pov_kill_feed_only"`
 	BlockKillFeed          bool                `json:"block_kill_feed"`
 	NoFlashStrength        float64             `json:"noflash_strength"`
 	LastChangelogVersion   string              `json:"last_changelog_version,omitempty"`
@@ -119,6 +120,7 @@ func Default(dataDir string) *Config {
 		SkyBlackout:        true,
 		DisableClouds:      false,
 		KillFeedLifetime:   DefaultKillFeedLifetime,
+		PovKillFeedOnly:    false,
 		BlockKillFeed:      false,
 		NoFlashStrength:    DefaultNoFlashStrength,
 		ClipActionSettings: Ptr(DefaultClipActionSettings()),

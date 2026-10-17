@@ -11,6 +11,7 @@ export type SearchableSwitchSettingKey =
   | "pov_radar_enabled"
   | "sky_blackout"
   | "disable_clouds"
+  | "pov_kill_feed_only"
   | "block_kill_feed";
 
 export type SearchableNumberSettingKey = "kill_feed_lifetime";
@@ -124,6 +125,21 @@ export const SEARCHABLE_CLIP_SETTINGS: readonly SearchableClipSettingItem[] = [
     precision: 0,
   },
   {
+    key: "pov_kill_feed_only",
+    labelKey: "main.settings.pov_kill_feed_only",
+    kind: "switch",
+    aliases: [
+      "仅显示当前视角击杀",
+      "当前视角",
+      "击杀信息过滤",
+      "deathmsg",
+      "death notice",
+      "kill feed pov",
+      "localplayer",
+    ],
+    hintKey: "main.settings.pov_kill_feed_only_hint",
+  },
+  {
     key: "block_kill_feed",
     labelKey: "main.settings.block_kill_feed",
     kind: "switch",
@@ -225,6 +241,30 @@ export function sliderPercentToStrength(percent: number): number {
 
 export function getSearchableSwitchValue(settings: ClipSettings, item: SearchableClipSettingItem): boolean {
   return isSearchableSwitchSetting(item) ? settings[item.key] : false;
+}
+
+/**
+ * Apply a switch value while keeping the two death-notice filter switches
+ * mutually exclusive. Both rewrite the same HLAE filter list; the backend
+ * still treats `block_kill_feed` as the winner, this helper only prevents the
+ * settings draft from persisting the conflicting pair in the first place.
+ * Turning a switch off never touches the other one.
+ */
+export function applySwitchSettingValue(
+  settings: ClipSettings,
+  key: SearchableSwitchSettingKey,
+  value: boolean,
+): void {
+  settings[key] = value;
+  if (!value) {
+    return;
+  }
+  if (key === "block_kill_feed") {
+    settings.pov_kill_feed_only = false;
+  }
+  if (key === "pov_kill_feed_only") {
+    settings.block_kill_feed = false;
+  }
 }
 
 export function getSearchableNumberValue(settings: ClipSettings, item: SearchableClipSettingItem): number {

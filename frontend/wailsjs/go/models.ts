@@ -67,6 +67,7 @@ export namespace app {
 	    sky_blackout: boolean;
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
+	    pov_kill_feed_only: boolean;
 	    block_kill_feed: boolean;
 	    noflash_strength: number;
 	
@@ -102,6 +103,7 @@ export namespace app {
 	        this.sky_blackout = source["sky_blackout"];
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
+	        this.pov_kill_feed_only = source["pov_kill_feed_only"];
 	        this.block_kill_feed = source["block_kill_feed"];
 	        this.noflash_strength = source["noflash_strength"];
 	    }
@@ -410,6 +412,7 @@ export namespace app {
 	    enable_voice: boolean;
 	    use_shoulder_camera: boolean;
 	    kill_feed_lifetime: number;
+	    pov_kill_feed_only: boolean;
 	    block_kill_feed: boolean;
 	    noflash_strength: number;
 	    record_fps: number;
@@ -433,6 +436,7 @@ export namespace app {
 	        this.enable_voice = source["enable_voice"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
+	        this.pov_kill_feed_only = source["pov_kill_feed_only"];
 	        this.block_kill_feed = source["block_kill_feed"];
 	        this.noflash_strength = source["noflash_strength"];
 	        this.record_fps = source["record_fps"];
@@ -1217,6 +1221,7 @@ export namespace config {
 	    sky_blackout: boolean;
 	    disable_clouds: boolean;
 	    kill_feed_lifetime: number;
+	    pov_kill_feed_only: boolean;
 	    block_kill_feed: boolean;
 	    noflash_strength: number;
 	    last_changelog_version?: string;
@@ -1262,6 +1267,7 @@ export namespace config {
 	        this.sky_blackout = source["sky_blackout"];
 	        this.disable_clouds = source["disable_clouds"];
 	        this.kill_feed_lifetime = source["kill_feed_lifetime"];
+	        this.pov_kill_feed_only = source["pov_kill_feed_only"];
 	        this.block_kill_feed = source["block_kill_feed"];
 	        this.noflash_strength = source["noflash_strength"];
 	        this.last_changelog_version = source["last_changelog_version"];

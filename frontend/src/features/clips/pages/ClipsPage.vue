@@ -222,6 +222,7 @@ const clipSettings = ref<ClipSettings>({
   sky_blackout: true,
   disable_clouds: false,
   kill_feed_lifetime: 4,
+  pov_kill_feed_only: false,
   block_kill_feed: false,
   noflash_strength: 0,
 });

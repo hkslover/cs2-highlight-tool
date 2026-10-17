@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SEARCHABLE_CLIP_SETTINGS,
+  applySwitchSettingValue,
   getSearchableSliderPercent,
   isSearchableSliderSetting,
   sliderPercentToStrength,
@@ -51,4 +52,29 @@ test("every searchable setting key exists on the clip settings contract", () => 
     );
   }
   assert.equal(defaults.noflash_strength, 0);
+});
+
+test("the kill-feed block and POV switches stay mutually exclusive", () => {
+  const settings = createDefaultClipSettings();
+  settings.block_kill_feed = true;
+  settings.pov_kill_feed_only = true;
+
+  applySwitchSettingValue(settings, "pov_kill_feed_only", true);
+  assert.equal(settings.pov_kill_feed_only, true);
+  assert.equal(settings.block_kill_feed, false);
+
+  applySwitchSettingValue(settings, "block_kill_feed", true);
+  assert.equal(settings.block_kill_feed, true);
+  assert.equal(settings.pov_kill_feed_only, false);
+
+  // Turning a switch off never flips the other one.
+  settings.pov_kill_feed_only = true;
+  applySwitchSettingValue(settings, "block_kill_feed", false);
+  assert.equal(settings.block_kill_feed, false);
+  assert.equal(settings.pov_kill_feed_only, true);
+
+  // Unrelated switches pass through untouched.
+  applySwitchSettingValue(settings, "sky_blackout", true);
+  assert.equal(settings.sky_blackout, true);
+  assert.equal(settings.pov_kill_feed_only, true);
 });

@@ -44,6 +44,7 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 		DisableClouds:    true,
 		PovRadarEnabled:  true,
 		EnableVoice:      true,
+		PovKillFeedOnly:  true,
 	})
 	if err != nil {
 		t.Fatalf("GetDebugConsolePlan: %v", err)
@@ -94,6 +95,19 @@ func TestGetDebugConsolePlanNormalizesDraftAndResolvesAuto(t *testing.T) {
 	wantVoice := []string{"tv_listen_voice_indices -1", "tv_listen_voice_indices_h -1"}
 	if !reflect.DeepEqual(voice.Commands, wantVoice) {
 		t.Fatalf("voice commands=%#v want %#v", voice.Commands, wantVoice)
+	}
+
+	povKillFeed := planItemByKey(t, plan, "pov_kill_feed_only")
+	wantPovKillFeed := []string{
+		"mirv_deathmsg clear",
+		"mirv_deathmsg filter clear",
+		"mirv_deathmsg filter add attackerMatch=!xTrace victimMatch=!xTrace assisterMatch=!xTrace block=1 lastRule=1",
+	}
+	if !reflect.DeepEqual(povKillFeed.Commands, wantPovKillFeed) {
+		t.Fatalf("pov kill-feed commands=%#v want %#v", povKillFeed.Commands, wantPovKillFeed)
+	}
+	if !reflect.DeepEqual(povKillFeed.Off, []string{"mirv_deathmsg filter clear"}) {
+		t.Fatalf("pov kill-feed restore=%#v", povKillFeed.Off)
 	}
 
 	if len(plan.ApplyAll) == 0 {

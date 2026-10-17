@@ -934,6 +934,206 @@ func TestBuild_BlockKillFeedEmitsFilterOnlyWhenEnabled(t *testing.T) {
 	assertNoAction(t, disabled.Sequences[0].Actions, "mirv_deathmsg filter add block 1")
 }
 
+func TestBuild_PovKillFeedOnlyFiltersEachPassBySpectatedPlayer(t *testing.T) {
+	result, err := Build([]Item{
+		{
+			Kill: demo.ClipKill{
+				ID: "k1", Tick: 200,
+				KillerSlot: 7, KillerSteamID: "76561190000000001",
+				VictimSlot: 11, VictimSteamID: "76561190000000002",
+			},
+			IncludeVictim: true,
+		},
+		{
+			Kill: demo.ClipKill{
+				ID: "k2", Tick: 400,
+				KillerSlot: 9, KillerSteamID: "76561190000000003",
+				VictimSlot: 12, VictimSteamID: "76561190000000004",
+			},
+			IncludeVictim: false,
+		},
+	}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		VictimPreSeconds:  1,
+		VictimPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovKillFeedOnly:   true,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 3 {
+		t.Fatalf("sequence len=%d want bootstrap + killer group + one victim sequence", len(result.Sequences))
+	}
+
+	bootstrap := result.Sequences[0].Actions
+	assertNoPrefixAction(t, bootstrap, "mirv_deathmsg clear")
+	assertNoPrefixAction(t, bootstrap, "mirv_deathmsg filter add attackerMatch=")
+
+	killerActions := result.Sequences[1].Actions
+	assertHasAction(t, killerActions, "mirv_deathmsg filter add attackerMatch=!x76561190000000001 victimMatch=!x76561190000000001 assisterMatch=!x76561190000000001 block=1 lastRule=1")
+	assertHasAction(t, killerActions, "mirv_deathmsg filter add attackerMatch=!x76561190000000003 victimMatch=!x76561190000000003 assisterMatch=!x76561190000000003 block=1 lastRule=1")
+	assertNoActionContaining(t, killerActions, "!x76561190000000002")
+	assertNoActionContaining(t, killerActions, "!x76561190000000004")
+	if clears := countActions(killerActions, "mirv_deathmsg filter clear"); clears != 2 {
+		t.Fatalf("killer group filter clears=%d want one per pass", clears)
+	}
+
+	victimActions := result.Sequences[2].Actions
+	assertHasAction(t, victimActions, "mirv_deathmsg filter add attackerMatch=!x76561190000000002 victimMatch=!x76561190000000002 assisterMatch=!x76561190000000002 block=1 lastRule=1")
+
+	// The filter has to be in place before the recorder starts and after the
+	// camera switch, otherwise the take can still show other players' notices
+	// or keep the previous pass's rule.
+	spec := mustFindAction(t, killerActions, "spec_player 7")
+	filter := mustFindAction(t, killerActions, "mirv_deathmsg filter add attackerMatch=!x76561190000000001 victimMatch=!x76561190000000001 assisterMatch=!x76561190000000001 block=1 lastRule=1")
+	if filter.Tick != spec.Tick {
+		t.Fatalf("filter tick=%d want spec_player tick=%d", filter.Tick, spec.Tick)
+	}
+	if actionIndex(killerActions, "spec_player 7") > actionIndex(killerActions, "mirv_deathmsg filter clear") {
+		t.Fatalf("filter must be applied after spec_player: %#v", killerActions)
+	}
+	start := mustFindAction(t, killerActions, "mirv_streams record start")
+	if filter.Tick >= start.Tick {
+		t.Fatalf("filter tick=%d must precede record start=%d", filter.Tick, start.Tick)
+	}
+}
+
+func TestBuild_PovKillFeedOnlyUsesFullRoundPOVPlayer(t *testing.T) {
+	result, err := Build(nil, BuildOptions{
+		TickRate:         64,
+		RecordFPS:        60,
+		VideoPreset:      "n1",
+		RecordOutputDir:  `D:/clips/output`,
+		PovKillFeedOnly:  true,
+		KillFeedLifetime: 4,
+		FullRoundPOVSegments: []FullRoundPOVSegment{{
+			Round:         1,
+			StartTick:     200,
+			EndTick:       400,
+			Target:        "12",
+			SpecMode:      1,
+			SourceID:      "full_round_pov:r1:p76561190000000009",
+			PlayerSteamID: "76561190000000009",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(result.Sequences) != 2 {
+		t.Fatalf("sequence len=%d want bootstrap + full-round POV", len(result.Sequences))
+	}
+	assertHasAction(t, result.Sequences[1].Actions, "mirv_deathmsg filter add attackerMatch=!x76561190000000009 victimMatch=!x76561190000000009 assisterMatch=!x76561190000000009 block=1 lastRule=1")
+}
+
+func TestBuild_BlockKillFeedWinsOverPovKillFeedOnly(t *testing.T) {
+	result, err := Build([]Item{{
+		Kill: demo.ClipKill{
+			ID: "k1", Tick: 200,
+			KillerSlot: 7, KillerSteamID: "76561190000000001",
+			VictimSlot: 11, VictimSteamID: "76561190000000002",
+		},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovKillFeedOnly:   true,
+		BlockKillFeed:     true,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	assertHasAction(t, result.Sequences[0].Actions, "mirv_deathmsg filter add block 1")
+	// A per-pass clear would wipe the bootstrap block rule, so the stronger
+	// switch must suppress the POV filter entirely.
+	for _, sequence := range result.Sequences[1:] {
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg clear")
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg filter ")
+	}
+}
+
+func TestBuild_PovKillFeedOnlyClearsRulesWithoutAnXuid(t *testing.T) {
+	result, err := Build([]Item{{
+		Kill: demo.ClipKill{
+			ID: "k1", Tick: 200, KillerSlot: 7,
+			// A bot/synthetic entity has no Steam64; the pass must not keep the
+			// previous rule and hide the new perspective's notices.
+			VictimSlot: 11, VictimSteamID: "0",
+		},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovKillFeedOnly:   true,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	assertHasAction(t, result.Sequences[1].Actions, "mirv_deathmsg filter clear")
+	assertNoPrefixAction(t, result.Sequences[1].Actions, "mirv_deathmsg filter add attackerMatch=")
+}
+
+func TestBuild_PovKillFeedOnlyOffEmitsNoDeathNoticeCommands(t *testing.T) {
+	result, err := Build([]Item{{
+		Kill: demo.ClipKill{
+			ID: "k1", Tick: 200,
+			KillerSlot: 7, KillerSteamID: "76561190000000001",
+			VictimSlot: 11, VictimSteamID: "76561190000000002",
+		},
+		IncludeVictim: false,
+	}}, BuildOptions{
+		TickRate:          64,
+		KillerPreSeconds:  1,
+		KillerPostSeconds: 1,
+		RecordFPS:         60,
+		VideoPreset:       "n1",
+		RecordOutputDir:   `D:/clips/output`,
+		PovKillFeedOnly:   false,
+		KillFeedLifetime:  4,
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for _, sequence := range result.Sequences {
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg clear")
+		assertNoPrefixAction(t, sequence.Actions, "mirv_deathmsg filter ")
+	}
+}
+
+func countActions(actions []Action, cmd string) int {
+	count := 0
+	for _, action := range actions {
+		if action.Cmd == cmd {
+			count++
+		}
+	}
+	return count
+}
+
+func actionIndex(actions []Action, cmd string) int {
+	for i, action := range actions {
+		if action.Cmd == cmd {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestBuild_VoiceIndicesValueFollowsEnableSwitch(t *testing.T) {
 	enabled, err := Build([]Item{{
 		Kill:          demo.ClipKill{ID: "k1", Tick: 200, KillerSlot: 7},

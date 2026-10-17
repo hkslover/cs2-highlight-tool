@@ -541,6 +541,9 @@ func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) 
 	if cfg.BlockKillFeed {
 		t.Fatalf("block_kill_feed should default to false")
 	}
+	if cfg.PovKillFeedOnly {
+		t.Fatalf("pov_kill_feed_only should default to false")
+	}
 	if cfg.DisableClouds {
 		t.Fatalf("legacy config should default disable_clouds to false")
 	}
@@ -549,7 +552,7 @@ func TestLoadOrCreate_LegacyConfigBackfillsRecordingFieldDefaults(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "disable_clouds") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") {
+	if !strings.Contains(string(saved), "sky_blackout") || !strings.Contains(string(saved), "disable_clouds") || !strings.Contains(string(saved), "kill_feed_lifetime") || !strings.Contains(string(saved), "block_kill_feed") || !strings.Contains(string(saved), "pov_kill_feed_only") {
 		t.Fatalf("saved config should contain new recording fields, got: %s", string(saved))
 	}
 }

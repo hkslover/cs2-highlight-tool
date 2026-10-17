@@ -23,6 +23,7 @@ type DebugSettingsDraft struct {
 	EnableVoice        bool    `json:"enable_voice"`
 	UseShoulderCamera  bool    `json:"use_shoulder_camera"`
 	KillFeedLifetime   int     `json:"kill_feed_lifetime"`
+	PovKillFeedOnly    bool    `json:"pov_kill_feed_only"`
 	BlockKillFeed      bool    `json:"block_kill_feed"`
 	NoFlashStrength    float64 `json:"noflash_strength"`
 	RecordFPS          int     `json:"record_fps"`
@@ -111,6 +112,7 @@ func (a *App) GetDebugConsolePlan(draft DebugSettingsDraft) (*DebugConsolePlan, 
 		EnableVoice:        normalized.EnableVoice,
 		UseShoulderCamera:  normalized.UseShoulderCamera,
 		KillFeedLifetime:   normalized.KillFeedLifetime,
+		PovKillFeedOnly:    normalized.PovKillFeedOnly,
 		BlockKillFeed:      normalized.BlockKillFeed,
 		NoFlashStrength:    normalized.NoFlashStrength,
 	}
