@@ -47,6 +47,9 @@ func TestBuild_AddsHLAEBootstrapCommands(t *testing.T) {
 	assertHasAction(t, bootstrap, "spec_show_xray 0")
 	assertHasAction(t, bootstrap, "tv_listen_voice_indices -1")
 	assertHasAction(t, bootstrap, "tv_listen_voice_indices_h -1")
+	// Suppressing the end-of-match scene is unconditional: there is no settings
+	// switch, so every demo bootstrap must carry the command.
+	assertHasAction(t, bootstrap, "mirv_endofmatch 0")
 	assertHasAction(t, bootstrap, "mirv_streams record screen enabled 1")
 	assertHasAction(t, bootstrap, "mirv_streams record fps 60")
 	assertHasAction(t, bootstrap, "mirv_streams record startMovieWav 1")

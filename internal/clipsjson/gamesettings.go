@@ -180,6 +180,11 @@ type RecordInitOptions struct {
 // by the produce bootstrap and the debug workbench. It never starts or ends a
 // recording: take boundaries, ticks, sequence control and the final
 // `mirv_streams record start` stay with the caller.
+//
+// `mirv_endofmatch 0` is unconditional (HLAE >= 2.181.1): it hides the
+// end-of-match animation and scoreboard scene so a demo that reaches match end
+// does not capture it. There is no settings switch; older HLAE builds only
+// report an unknown command and keep the scene visible.
 func RecordInitCommands(opts RecordInitOptions) []string {
 	fps := opts.RecordFPS
 	if fps <= 0 {
@@ -190,6 +195,7 @@ func RecordInitCommands(opts RecordInitOptions) []string {
 		settingsName = opts.VideoPreset
 	}
 	return []string{
+		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
 		fmt.Sprintf("mirv_streams record fps %d", fps),
 		"mirv_streams record startMovieWav 1",

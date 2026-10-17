@@ -208,6 +208,7 @@ func TestRecordInitCommandsMatchProduceBootstrap(t *testing.T) {
 		RecordName:   recordName,
 	})
 	want := []string{
+		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
 		"mirv_streams record fps 60",
 		"mirv_streams record startMovieWav 1",
@@ -229,6 +230,7 @@ func TestRecordInitCommandsUseExplicitSettingsName(t *testing.T) {
 		SettingsName: "debug_c1_ultra_1a2b3c4d",
 	})
 	want := []string{
+		"mirv_endofmatch 0",
 		"mirv_streams record screen enabled 1",
 		"mirv_streams record fps 60",
 		"mirv_streams record startMovieWav 1",
