@@ -8,6 +8,7 @@ require (
 	github.com/markus-wa/demoinfocs-golang/v5 v5.2.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/sys v0.30.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -53,7 +54,6 @@ require (
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => /Users/snow/go/pkg/mod
