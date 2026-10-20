@@ -18,6 +18,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/release/`、`internal/endpoints/`、`internal/download/` | Release 快照、下载地址策略、下载与解压 |
 | `internal/demo/` | Demo 解析、击杀事实、整局 POV 计划 |
 | `internal/wanmei/`、`internal/fivee/` | 对战平台查询与 Demo 下载 |
+| `internal/steam/` | Steam 官方匹配查询与 Demo 下载：Game Coordinator 绑定（仅 Windows）、分享码编解码、GC protobuf 子集解码、`.dem.bz2` 下载与原子提交；本地 `steam_api64.dll` 只在运行时从用户 CS2 安装目录加载，不内嵌/释放/执行任何 Valve 二进制 |
 | `internal/plugingen/`、`internal/clipsjson/` | 无副作用的片段归一化/历史过滤/生成规划与插件 JSON 动作构建 |
 | `internal/producews/` | 制作 WebSocket、队列、take 状态与诊断 |
 | `internal/producegame/`、`internal/producemerge/` | 游戏环境准备与恢复、录制产物合并 |

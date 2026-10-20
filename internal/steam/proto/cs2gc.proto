@@ -1,0 +1,87 @@
+// Trimmed subset of Valve's Counter-Strike Game Coordinator messages
+// (cstrike15_gcmessages.proto, https://github.com/SteamDatabase/Protobufs).
+//
+// Only the fields this tool reads are declared. Every message keeps Valve's
+// original field numbers, so undeclared fields arrive as unknown fields and are
+// skipped by the protobuf runtime instead of breaking decoding.
+//
+// Regenerate with:
+//   protoc --go_out=. --go_opt=module=cs2-highlight-tool-v2 internal/steam/proto/cs2gc.proto
+// (run from the repository root; requires protoc + protoc-gen-go)
+syntax = "proto2";
+
+package cs2gc;
+
+option go_package = "cs2-highlight-tool-v2/internal/steam;steam";
+
+// k_EMsgGCCStrike15_v2_MatchList (9139)
+message CMsgGCCStrike15_v2_MatchList {
+  optional uint32 msgrequestid = 1;
+  optional uint32 accountid = 2;
+  optional uint32 servertime = 3;
+  repeated CDataGCCStrike15_v2_MatchInfo matches = 4;
+}
+
+// k_EMsgGCCStrike15_v2_MatchListRequestRecentUserGames (9141)
+message CMsgGCCStrike15_v2_MatchListRequestRecentUserGames {
+  optional uint32 accountid = 1;
+}
+
+// k_EMsgGCCStrike15_v2_MatchListRequestFullGameInfo (9147)
+message CMsgGCCStrike15_v2_MatchListRequestFullGameInfo {
+  optional uint64 matchid = 1;
+  optional uint64 outcomeid = 2;
+  optional uint32 token = 3;
+}
+
+message CDataGCCStrike15_v2_MatchInfo {
+  optional uint64 matchid = 1;
+  optional uint32 matchtime = 2;
+  optional WatchableMatchInfo watchablematchinfo = 3;
+  optional CMsgGCCStrike15_v2_MatchmakingServerRoundStats roundstats_legacy = 4;
+  repeated CMsgGCCStrike15_v2_MatchmakingServerRoundStats roundstatsall = 5;
+}
+
+message WatchableMatchInfo {
+  optional uint32 server_ip = 1;
+  optional uint32 tv_port = 2;
+  optional uint32 tv_spectators = 3;
+  optional uint32 tv_time = 4;
+  optional uint64 cl_decryptdata_key = 6;
+  optional uint64 cl_decryptdata_key_pub = 7;
+  optional uint32 game_type = 8;
+  optional string game_mapgroup = 9;
+  optional string game_map = 10;
+  optional uint64 server_id = 11;
+  optional uint64 match_id = 12;
+  optional uint64 reservation_id = 13;
+}
+
+message CMsgGCCStrike15_v2_MatchmakingServerRoundStats {
+  optional uint64 reservationid = 1;
+  optional CMsgGCCStrike15_v2_MatchmakingGC2ServerReserve reservation = 2;
+  // Valve reuses this field as the demo download URL for official matches.
+  optional string map = 3;
+  optional int32 round = 4;
+  repeated int32 kills = 5;
+  repeated int32 assists = 6;
+  repeated int32 deaths = 7;
+  repeated int32 scores = 8;
+  optional int32 match_result = 11;
+  repeated int32 team_scores = 12;
+  optional int32 match_duration = 15;
+  repeated int32 enemy_headshots = 17;
+  repeated int32 mvps = 21;
+  optional bool b_switched_teams = 27;
+  optional uint32 max_rounds = 31;
+}
+
+message CMsgGCCStrike15_v2_MatchmakingGC2ServerReserve {
+  // SteamID3 values, index 0-4 = players that started as CT, 5-9 as T.
+  repeated uint32 account_ids = 1;
+  optional uint32 game_type = 2;
+  optional uint64 match_id = 3;
+  optional uint64 encryption_key = 6;
+  optional uint64 encryption_key_pub = 7;
+  optional uint64 tv_master_steamid = 10;
+}
