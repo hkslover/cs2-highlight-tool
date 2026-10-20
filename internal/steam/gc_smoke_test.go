@@ -2,6 +2,8 @@ package steam
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -171,4 +173,66 @@ func TestSmokeShareCodeImport(t *testing.T) {
 	}
 	t.Logf("match=%s sharecode=%s demo=%s map=%s available=%v url=%s",
 		item.MatchID, item.ShareCode, item.DemoName(), item.MapName, item.DemoAvailable, item.DemoURL())
+}
+
+// TestSmokeShareCodeDownload exercises the whole pipeline: share code -> Game
+// Coordinator -> demo URL -> .dem.bz2 download -> extracted demo on disk.
+//
+// Valve only keeps official replays downloadable for about a month, so an older
+// share code (the public examples are years old) usually fails at the download
+// step with ErrDemoLinkExpired. That outcome is reported as a diagnostic rather
+// than a failure: everything before the download has still been verified.
+func TestSmokeShareCodeDownload(t *testing.T) {
+	if os.Getenv("CS2_GC_SMOKE") == "" {
+		t.Skip("CS2_GC_SMOKE is not set")
+	}
+	raw := os.Getenv("CS2_GC_SHARE_CODE")
+	if raw == "" {
+		t.Skip("CS2_GC_SHARE_CODE is not set")
+	}
+	dirs := smokeSteamAPIDirs(t)
+
+	shareCode, err := ParseShareCode(raw)
+	if err != nil {
+		t.Fatalf("ParseShareCode(%q) returned error: %v", raw, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), gCSmokeTimeout)
+	defer cancel()
+
+	item, err := FetchMatch(ctx, ListOptions{SteamAPIDirs: dirs}, shareCode)
+	if err != nil {
+		t.Fatalf("FetchMatch returned error: %v", err)
+	}
+
+	var lastPercent float64
+	cacheRoot := t.TempDir()
+	path, err := ImportDemoContext(ctx, item.DemoURL(), item.MatchID, cacheRoot,
+		func(active bool, percent float64, indeterminate bool) {
+			if active && !indeterminate {
+				lastPercent = percent
+			}
+		})
+	if errors.Is(err, ErrDemoLinkExpired) || errors.Is(err, ErrDemoLinkUnavailable) {
+		t.Logf("demo is not downloadable any more (normal for a match older than ~30 days): %v", err)
+		return
+	}
+	if err != nil {
+		t.Fatalf("ImportDemoContext returned error: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat imported demo: %v", err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open imported demo: %v", err)
+	}
+	defer file.Close()
+	stamp := make([]byte, 8)
+	if _, err := io.ReadFull(file, stamp); err != nil {
+		t.Fatalf("read demo stamp: %v", err)
+	}
+	t.Logf("downloaded demo: %s (%d bytes, stamp=%q, last progress %.0f%%)", path, info.Size(), stamp, lastPercent)
 }
