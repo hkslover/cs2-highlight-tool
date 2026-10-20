@@ -54,6 +54,10 @@ export type {
   WanmeiMatchListResult,
   FiveEMatchItem,
   FiveEMatchListResult,
+  SteamClientStatus,
+  SteamMatchItem,
+  SteamMatchListResult,
+  SteamImportRequest,
 } from "./import";
 
 export type {

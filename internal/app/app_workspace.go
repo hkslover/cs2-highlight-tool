@@ -221,6 +221,7 @@ func (a *App) ResetWorkspace() error {
 	a.workspace = nil
 	a.workspaceGeneration++
 	a.platformImports = nil
+	a.steamMatches = nil
 	a.workspaceResetPendingPath = ""
 	a.workspaceResetRegistryPending = false
 	a.workspaceResetCompleted = true
@@ -244,6 +245,7 @@ func (a *App) detachWorkspaceForReset(dataDir string) {
 	a.workspace = nil
 	a.workspaceGeneration++
 	a.platformImports = nil
+	a.steamMatches = nil
 	a.workspaceResetPendingPath = dataDir
 	a.workspaceResetRegistryPending = runtime.GOOS == "windows"
 	a.serviceMu.Unlock()

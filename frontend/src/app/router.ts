@@ -26,6 +26,11 @@ const routes: RouteRecordRaw[] = [
         name: "import-5e",
         component: () => import("@/features/import/pages/FiveEImport.vue"),
       },
+      {
+        path: "steam",
+        name: "import-steam",
+        component: () => import("@/features/import/pages/SteamImport.vue"),
+      },
     ],
   },
   {

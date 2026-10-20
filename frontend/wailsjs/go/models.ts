@@ -49,6 +49,7 @@ export namespace app {
 	    enable_voice: boolean;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
@@ -70,6 +71,7 @@ export namespace app {
 	    pov_kill_feed_only: boolean;
 	    block_kill_feed: boolean;
 	    noflash_strength: number;
+	    effective_motion_blur_capture_fps?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClipSettings(source);
@@ -85,6 +87,7 @@ export namespace app {
 	        this.enable_voice = source["enable_voice"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
@@ -106,6 +109,7 @@ export namespace app {
 	        this.pov_kill_feed_only = source["pov_kill_feed_only"];
 	        this.block_kill_feed = source["block_kill_feed"];
 	        this.noflash_strength = source["noflash_strength"];
+	        this.effective_motion_blur_capture_fps = source["effective_motion_blur_capture_fps"];
 	    }
 	}
 	export class DebugCommandRequest {
@@ -272,6 +276,7 @@ export namespace app {
 	    record_fps: number;
 	    record_quality: string;
 	    video_preset: string;
+	    motion_blur_enabled: boolean;
 	    keep_intermediate_files: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -283,6 +288,7 @@ export namespace app {
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
 	        this.video_preset = source["video_preset"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.keep_intermediate_files = source["keep_intermediate_files"];
 	    }
 	}
@@ -417,6 +423,7 @@ export namespace app {
 	    noflash_strength: number;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    video_preset: string;
 	    launch_resolution: string;
 	
@@ -441,6 +448,7 @@ export namespace app {
 	        this.noflash_strength = source["noflash_strength"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.video_preset = source["video_preset"];
 	        this.launch_resolution = source["launch_resolution"];
 	    }
@@ -1119,6 +1127,20 @@ export namespace app {
 	}
 	
 	
+	export class SteamImportRequest {
+	    match_id: string;
+	    share_code: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SteamImportRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.match_id = source["match_id"];
+	        this.share_code = source["share_code"];
+	    }
+	}
 	export class WorkActivity {
 	    produce_busy: boolean;
 	    storage_busy: boolean;
@@ -1203,6 +1225,7 @@ export namespace config {
 	    auto_add_victim_view: boolean;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
@@ -1249,6 +1272,7 @@ export namespace config {
 	        this.auto_add_victim_view = source["auto_add_victim_view"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
@@ -1941,6 +1965,91 @@ export namespace producews {
 	        this.last_error = source["last_error"];
 	        this.updated_at_ms = source["updated_at_ms"];
 	    }
+	}
+
+}
+
+export namespace steam {
+	
+	export class MatchItem {
+	    match_id: string;
+	    reservation_id: string;
+	    share_code: string;
+	    map_name: string;
+	    game_mode: string;
+	    score1: number;
+	    score2: number;
+	    kill: number;
+	    death: number;
+	    assist: number;
+	    rating: number;
+	    end_time: string;
+	    duration_seconds: number;
+	    demo_available: boolean;
+	    player_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MatchItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.match_id = source["match_id"];
+	        this.reservation_id = source["reservation_id"];
+	        this.share_code = source["share_code"];
+	        this.map_name = source["map_name"];
+	        this.game_mode = source["game_mode"];
+	        this.score1 = source["score1"];
+	        this.score2 = source["score2"];
+	        this.kill = source["kill"];
+	        this.death = source["death"];
+	        this.assist = source["assist"];
+	        this.rating = source["rating"];
+	        this.end_time = source["end_time"];
+	        this.duration_seconds = source["duration_seconds"];
+	        this.demo_available = source["demo_available"];
+	        this.player_count = source["player_count"];
+	    }
+	}
+	export class MatchListResult {
+	    status: string;
+	    steam_id?: string;
+	    matches: MatchItem[];
+	    raw_match_count: number;
+	    skipped_match_count: number;
+	    downloadable_match_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MatchListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.steam_id = source["steam_id"];
+	        this.matches = this.convertValues(source["matches"], MatchItem);
+	        this.raw_match_count = source["raw_match_count"];
+	        this.skipped_match_count = source["skipped_match_count"];
+	        this.downloadable_match_count = source["downloadable_match_count"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

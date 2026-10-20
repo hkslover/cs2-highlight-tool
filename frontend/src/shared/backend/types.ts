@@ -32,6 +32,8 @@ import type {
 import type { PendingChangelog } from "../types/changelog";
 import type {
   FiveEMatchListResult,
+  SteamImportRequest,
+  SteamMatchListResult,
   WanmeiMatchListResult,
 } from "../types/import";
 import type {
@@ -126,12 +128,14 @@ export interface BackendApi {
   GetWorkspaceState: () => Promise<WorkspaceState>;
   ImportFiveEMatch: (matchID: string) => Promise<string[]>;
   ImportManualDownload: (componentID: string) => Promise<StartupState>;
+  ImportSteamMatch: (request: SteamImportRequest) => Promise<string[]>;
   ImportWanmeiMatch: (matchID: string) => Promise<string[]>;
   LaunchDebugGame: (request: DebugLaunchRequest) => Promise<DebugSessionState>;
   ListFiveERecentMatches: (
     playerName: string,
     page: number,
   ) => Promise<FiveEMatchListResult>;
+  ListSteamRecentMatches: () => Promise<SteamMatchListResult>;
   ListWanmeiRecentMatches: (page: number) => Promise<WanmeiMatchListResult>;
   OpenDemoDirectory: () => Promise<void>;
   OpenDemoInFolder: (demoPath: string) => Promise<void>;

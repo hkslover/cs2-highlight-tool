@@ -49,6 +49,19 @@
           <div class="method-card-title">{{ t("main.import.btn_5e") }}</div>
           <div class="method-card-desc">{{ t("main.import.card_5e_desc") }}</div>
         </button>
+
+        <button
+          type="button"
+          class="method-card"
+          :disabled="importing"
+          @click="$router.push({ name: 'import-steam' })"
+        >
+          <div class="method-card-icon">
+            <img :src="steamIconURL" alt="" class="wanmei-icon" />
+          </div>
+          <div class="method-card-title">{{ t("main.import.btn_steam") }}</div>
+          <div class="method-card-desc">{{ t("main.import.card_steam_desc") }}</div>
+        </button>
       </div>
     </n-card>
   </div>
@@ -61,6 +74,7 @@ import { t } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
 import wanmeiIconURL from "@/assets/images/platforms/wanmei.ico";
 import fiveeIconURL from "@/assets/images/platforms/fivee.ico";
+import steamIconURL from "@/assets/images/platforms/steam.svg";
 
 const emit = defineEmits<{
   (e: "demos-selected", paths: string[]): void;
@@ -135,7 +149,7 @@ const FileIcon = {
   min-height: 0;
   padding: 8px 10px 10px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
   align-content: start;
   overflow: auto;

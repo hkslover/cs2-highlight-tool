@@ -142,6 +142,10 @@ export function ImportManualDownload(arg1) {
   return window['go']['app']['App']['ImportManualDownload'](arg1);
 }
 
+export function ImportSteamMatch(arg1) {
+  return window['go']['app']['App']['ImportSteamMatch'](arg1);
+}
+
 export function ImportWanmeiMatch(arg1) {
   return window['go']['app']['App']['ImportWanmeiMatch'](arg1);
 }
@@ -152,6 +156,10 @@ export function LaunchDebugGame(arg1) {
 
 export function ListFiveERecentMatches(arg1, arg2) {
   return window['go']['app']['App']['ListFiveERecentMatches'](arg1, arg2);
+}
+
+export function ListSteamRecentMatches() {
+  return window['go']['app']['App']['ListSteamRecentMatches']();
 }
 
 export function ListWanmeiRecentMatches(arg1) {
