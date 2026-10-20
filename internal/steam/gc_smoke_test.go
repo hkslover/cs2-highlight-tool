@@ -52,6 +52,31 @@ func smokeSteamAPIDirs(t *testing.T) []string {
 	return dirs
 }
 
+// capturingTransport records the raw match list payload for diagnostics.
+type capturingTransport struct {
+	inner      gcTransport
+	onResponse func([]byte)
+}
+
+func (t *capturingTransport) Send(messageType uint32, payload []byte) error {
+	return t.inner.Send(messageType, payload)
+}
+
+func (t *capturingTransport) Receive() (uint32, []byte, bool, error) {
+	messageType, payload, ok, err := t.inner.Receive()
+	if ok && messageType == messageMatchList && t.onResponse != nil {
+		t.onResponse(payload)
+	}
+	return messageType, payload, ok, err
+}
+
+type capturingSession struct {
+	gcSession
+	transport gcTransport
+}
+
+func (s *capturingSession) Transport() gcTransport { return s.transport }
+
 func TestSmokeRecentMatches(t *testing.T) {
 	if os.Getenv("CS2_GC_SMOKE") == "" {
 		t.Skip("CS2_GC_SMOKE is not set")
@@ -67,9 +92,31 @@ func TestSmokeRecentMatches(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), gCSmokeTimeout)
 	defer cancel()
 
-	result, err := ListRecentMatches(ctx, ListOptions{SteamAPIDirs: dirs})
+	// Capture the raw response so an unexpected (or empty) list can be handed
+	// over for analysis with CS2_GC_DUMP=<path>.
+	var rawPayload []byte
+	result, err := listRecentMatches(ctx, ListOptions{SteamAPIDirs: dirs}, func(ctx context.Context, options ListOptions) (gcSession, error) {
+		session, err := newGCSession(ctx, options)
+		if err != nil {
+			return nil, err
+		}
+		return &capturingSession{
+			gcSession: session,
+			transport: &capturingTransport{
+				inner:      session.Transport(),
+				onResponse: func(payload []byte) { rawPayload = payload },
+			},
+		}, nil
+	})
 	if err != nil {
 		t.Fatalf("ListRecentMatches returned error: %v", err)
+	}
+	if dumpPath := os.Getenv("CS2_GC_DUMP"); dumpPath != "" && len(rawPayload) > 0 {
+		if err := os.WriteFile(dumpPath, rawPayload, 0644); err != nil {
+			t.Logf("could not write the raw match list to %s: %v", dumpPath, err)
+		} else {
+			t.Logf("raw match list written to %s (%d bytes)", dumpPath, len(rawPayload))
+		}
 	}
 	t.Logf("status=%s steam_id=%s matches=%d (raw=%d skipped=%d downloadable=%d)",
 		result.Status, result.SteamID, len(result.Matches),
