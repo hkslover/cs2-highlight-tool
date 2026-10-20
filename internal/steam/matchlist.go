@@ -56,6 +56,18 @@ func (item MatchItem) DemoURL() string { return item.demoURL }
 // the game client) use to identify a downloaded match replay.
 func (item MatchItem) DemoName() string { return item.demoName }
 
+// ParseStats reports what the Game Coordinator returned, which makes "the
+// account has no recent official match" distinguishable from "entries arrived
+// but could not be used".
+type ParseStats struct {
+	// RawMatches is the number of match entries in the response.
+	RawMatches int
+	// Skipped is the number of entries dropped as unusable.
+	Skipped int
+	// Downloadable is the number of usable entries that still carry a demo URL.
+	Downloadable int
+}
+
 // ParseMatchList decodes a CMsgGCCStrike15_v2_MatchList payload as written by
 // the Game Coordinator. localSteamID is the signed-in SteamID64 and is only
 // used to derive the "my team" figures; pass 0 when it is unknown.
@@ -63,20 +75,31 @@ func (item MatchItem) DemoName() string { return item.demoName }
 // Every match whose payload is unusable (no identity or no round stats) is
 // skipped instead of failing the whole list.
 func ParseMatchList(raw []byte, localSteamID uint64) ([]MatchItem, error) {
+	items, _, err := ParseMatchListWithStats(raw, localSteamID)
+	return items, err
+}
+
+// ParseMatchListWithStats is ParseMatchList plus the counts used for diagnostics.
+func ParseMatchListWithStats(raw []byte, localSteamID uint64) ([]MatchItem, ParseStats, error) {
 	message := &CMsgGCCStrike15V2_MatchList{}
 	if err := unmarshalMatchList(raw, message); err != nil {
-		return nil, fmt.Errorf("解析比赛列表失败: %w", err)
+		return nil, ParseStats{}, fmt.Errorf("解析比赛列表失败: %w", err)
 	}
 
+	stats := ParseStats{RawMatches: len(message.GetMatches())}
 	items := make([]MatchItem, 0, len(message.GetMatches()))
 	for _, match := range message.GetMatches() {
 		item, ok := buildMatchItem(match, localSteamID)
 		if !ok {
+			stats.Skipped++
 			continue
+		}
+		if item.DemoAvailable {
+			stats.Downloadable++
 		}
 		items = append(items, item)
 	}
-	return items, nil
+	return items, stats, nil
 }
 
 func buildMatchItem(match *CDataGCCStrike15V2_MatchInfo, localSteamID uint64) (MatchItem, bool) {

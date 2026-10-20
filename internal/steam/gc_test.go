@@ -225,6 +225,10 @@ func TestListRecentMatchesUsesLocalAccountAndParsesList(t *testing.T) {
 	if result.Matches[0].ShareCode != "CSGO-3MD4K-ShNFS-p3t6a-dxQJH-f9hWA" {
 		t.Errorf("share code = %q", result.Matches[0].ShareCode)
 	}
+	if result.RawMatchCount != 1 || result.SkippedMatchCount != 0 || result.DownloadableMatchCount != 1 {
+		t.Errorf("diagnostics = raw %d / skipped %d / downloadable %d, want 1/0/1",
+			result.RawMatchCount, result.SkippedMatchCount, result.DownloadableMatchCount)
+	}
 	if !session.closed {
 		t.Error("session was not closed")
 	}

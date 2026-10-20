@@ -71,7 +71,9 @@ func TestSmokeRecentMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRecentMatches returned error: %v", err)
 	}
-	t.Logf("status=%s steam_id=%s matches=%d", result.Status, result.SteamID, len(result.Matches))
+	t.Logf("status=%s steam_id=%s matches=%d (raw=%d skipped=%d downloadable=%d)",
+		result.Status, result.SteamID, len(result.Matches),
+		result.RawMatchCount, result.SkippedMatchCount, result.DownloadableMatchCount)
 	for _, match := range result.Matches {
 		t.Logf("  %s | %s %s | %s | %d:%d %s | kda %d/%d/%d | %ds | ends %s | demo=%v | %s",
 			match.MatchID, match.GameMode, match.MapName, match.ShareCode,
@@ -82,8 +84,11 @@ func TestSmokeRecentMatches(t *testing.T) {
 
 	switch result.Status {
 	case ClientReady:
-		if len(result.Matches) == 0 {
-			t.Log("connected successfully but the account has no recent official match")
+		switch {
+		case result.RawMatchCount == 0:
+			t.Log("the Game Coordinator returned an empty match list: this account has no recent official matchmaking game")
+		case len(result.Matches) == 0:
+			t.Logf("the Game Coordinator returned %d matches but none was usable; report the raw counts above", result.RawMatchCount)
 		}
 	case ClientNotRunning, ClientNotLoggedIn, ClientAPIUnavailable, ClientCS2Running, ClientGCUnavailable:
 		t.Fatalf("Game Coordinator not reachable: status=%s (quit CS2 and make sure Steam is running and signed in)", result.Status)

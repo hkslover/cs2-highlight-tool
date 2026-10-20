@@ -33,10 +33,16 @@ const (
 
 // MatchListResult is the payload returned to the frontend for the import list.
 type MatchListResult struct {
-	Status   ClientStatus `json:"status"`
-	SteamID  string       `json:"steam_id,omitempty"`
-	Nickname string       `json:"nickname,omitempty"`
-	Matches  []MatchItem  `json:"matches"`
+	Status  ClientStatus `json:"status"`
+	SteamID string       `json:"steam_id,omitempty"`
+	Matches []MatchItem  `json:"matches"`
+
+	// Diagnostics reported by the Game Coordinator response. They let the UI and
+	// support tell "this account has no recent official match" apart from "the
+	// response arrived but could not be used".
+	RawMatchCount          int `json:"raw_match_count"`
+	SkippedMatchCount      int `json:"skipped_match_count"`
+	DownloadableMatchCount int `json:"downloadable_match_count"`
 }
 
 // ProgressComponentID returns the download_progress component ID for a match.

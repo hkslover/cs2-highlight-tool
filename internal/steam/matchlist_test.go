@@ -202,6 +202,28 @@ func TestParseMatchListSkipsUnusableEntries(t *testing.T) {
 	}
 }
 
+func TestParseMatchListWithStatsCountsSkippedEntries(t *testing.T) {
+	raw := wrapMatchList(t,
+		&CDataGCCStrike15V2_MatchInfo{}, // no match ID: unusable
+		&CDataGCCStrike15V2_MatchInfo{
+			Matchid:       proto.Uint64(7),
+			Roundstatsall: []*CMsgGCCStrike15V2_MatchmakingServerRoundStats{roundStats(8, "", accountIDs, 4104)},
+		},
+	)
+
+	items, stats, err := ParseMatchListWithStats(raw, 0)
+	if err != nil {
+		t.Fatalf("ParseMatchListWithStats returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want 1", len(items))
+	}
+	// Two entries arrived, one was dropped, and the usable one has no demo link.
+	if stats.RawMatches != 2 || stats.Skipped != 1 || stats.Downloadable != 0 {
+		t.Fatalf("stats = %+v, want raw 2 / skipped 1 / downloadable 0", stats)
+	}
+}
+
 func TestParseMatchListRejectsGarbage(t *testing.T) {
 	items, err := ParseMatchList([]byte{0xFF, 0xFF, 0xFF, 0xFF}, 0)
 	if err == nil {

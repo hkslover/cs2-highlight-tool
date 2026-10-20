@@ -133,14 +133,17 @@ func listRecentMatches(ctx context.Context, options ListOptions, open gcSessionF
 		return statusResultForError(err), nil
 	}
 
-	matches, err := ParseMatchList(response, session.SteamID())
+	matches, stats, err := ParseMatchListWithStats(response, session.SteamID())
 	if err != nil {
 		return nil, err
 	}
 	return &MatchListResult{
-		Status:  ClientReady,
-		SteamID: fmt.Sprintf("%d", session.SteamID()),
-		Matches: matches,
+		Status:                 ClientReady,
+		SteamID:                fmt.Sprintf("%d", session.SteamID()),
+		Matches:                matches,
+		RawMatchCount:          stats.RawMatches,
+		SkippedMatchCount:      stats.Skipped,
+		DownloadableMatchCount: stats.Downloadable,
 	}, nil
 }
 
