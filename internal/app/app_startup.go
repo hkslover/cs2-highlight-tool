@@ -124,6 +124,15 @@ func (a *App) ReinstallStartupComponent(componentID string) (envsetup.StartupSta
 	return svc.ReinstallStartupComponent(componentID)
 }
 
+func (a *App) SelectHLAEChannel(channelID string) (envsetup.StartupState, error) {
+	release, svc, ok := a.beginStartupTask()
+	if !ok {
+		return envsetup.StartupState{Mode: envsetup.ModeWorkspaceInit}, workspaceNotInitializedErr()
+	}
+	defer release()
+	return svc.SelectHLAEChannel(channelID)
+}
+
 func (a *App) ExportStartupLogs() (string, error) {
 	release, svc, ok := a.beginStartupTask()
 	if !ok {

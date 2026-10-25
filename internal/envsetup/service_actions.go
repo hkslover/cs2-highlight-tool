@@ -368,8 +368,13 @@ func isReinstallableComponent(componentID string) bool {
 	}
 }
 
+// reinstallHLAE removes only the active channel directory; other channels
+// stay installed.
 func (s *Service) reinstallHLAE() error {
-	targetDir := filepath.Join(s.dataDir, "hlae")
+	targetDir := filepath.Dir(s.currentConfig().HLAEExe)
+	if !s.isManagedHLAEDir(targetDir) {
+		targetDir = s.hlaeChannelDir(s.currentConfig().HLAEChannel)
+	}
 	if err := os.RemoveAll(targetDir); err != nil {
 		return fmt.Errorf("删除 HLAE 目录失败: %w", err)
 	}

@@ -49,6 +49,7 @@ export namespace app {
 	    enable_voice: boolean;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
@@ -70,6 +71,7 @@ export namespace app {
 	    pov_kill_feed_only: boolean;
 	    block_kill_feed: boolean;
 	    noflash_strength: number;
+	    effective_motion_blur_capture_fps?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClipSettings(source);
@@ -85,6 +87,7 @@ export namespace app {
 	        this.enable_voice = source["enable_voice"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
@@ -106,6 +109,7 @@ export namespace app {
 	        this.pov_kill_feed_only = source["pov_kill_feed_only"];
 	        this.block_kill_feed = source["block_kill_feed"];
 	        this.noflash_strength = source["noflash_strength"];
+	        this.effective_motion_blur_capture_fps = source["effective_motion_blur_capture_fps"];
 	    }
 	}
 	export class DebugCommandRequest {
@@ -272,6 +276,7 @@ export namespace app {
 	    record_fps: number;
 	    record_quality: string;
 	    video_preset: string;
+	    motion_blur_enabled: boolean;
 	    keep_intermediate_files: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -283,6 +288,7 @@ export namespace app {
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
 	        this.video_preset = source["video_preset"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.keep_intermediate_files = source["keep_intermediate_files"];
 	    }
 	}
@@ -417,6 +423,7 @@ export namespace app {
 	    noflash_strength: number;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    video_preset: string;
 	    launch_resolution: string;
 	
@@ -441,6 +448,7 @@ export namespace app {
 	        this.noflash_strength = source["noflash_strength"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.video_preset = source["video_preset"];
 	        this.launch_resolution = source["launch_resolution"];
 	    }
@@ -1190,6 +1198,7 @@ export namespace config {
 	    cs2_dir: string;
 	    cs2_exe: string;
 	    hlae_exe: string;
+	    hlae_channel?: string;
 	    plugin_dll: string;
 	    ffmpeg_dir: string;
 	    fivee_player_name: string;
@@ -1203,6 +1212,7 @@ export namespace config {
 	    auto_add_victim_view: boolean;
 	    record_fps: number;
 	    record_quality: string;
+	    motion_blur_enabled: boolean;
 	    edit_fps: number;
 	    edit_quality: string;
 	    video_preset: string;
@@ -1236,6 +1246,7 @@ export namespace config {
 	        this.cs2_dir = source["cs2_dir"];
 	        this.cs2_exe = source["cs2_exe"];
 	        this.hlae_exe = source["hlae_exe"];
+	        this.hlae_channel = source["hlae_channel"];
 	        this.plugin_dll = source["plugin_dll"];
 	        this.ffmpeg_dir = source["ffmpeg_dir"];
 	        this.fivee_player_name = source["fivee_player_name"];
@@ -1249,6 +1260,7 @@ export namespace config {
 	        this.auto_add_victim_view = source["auto_add_victim_view"];
 	        this.record_fps = source["record_fps"];
 	        this.record_quality = source["record_quality"];
+	        this.motion_blur_enabled = source["motion_blur_enabled"];
 	        this.edit_fps = source["edit_fps"];
 	        this.edit_quality = source["edit_quality"];
 	        this.video_preset = source["video_preset"];
@@ -1614,6 +1626,28 @@ export namespace demo {
 
 export namespace envsetup {
 	
+	export class ChannelOption {
+	    id: string;
+	    name: string;
+	    note: string;
+	    tag: string;
+	    local_version: string;
+	    installed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChannelOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.note = source["note"];
+	        this.tag = source["tag"];
+	        this.local_version = source["local_version"];
+	        this.installed = source["installed"];
+	    }
+	}
 	export class ComponentStatus {
 	    id: string;
 	    name: string;
@@ -1623,6 +1657,8 @@ export namespace envsetup {
 	    path: string;
 	    error: string;
 	    manual_url: string;
+	    channel?: string;
+	    channels?: ChannelOption[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ComponentStatus(source);
@@ -1638,7 +1674,27 @@ export namespace envsetup {
 	        this.path = source["path"];
 	        this.error = source["error"];
 	        this.manual_url = source["manual_url"];
+	        this.channel = source["channel"];
+	        this.channels = this.convertValues(source["channels"], ChannelOption);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SelfUpdateState {
 	    status: string;

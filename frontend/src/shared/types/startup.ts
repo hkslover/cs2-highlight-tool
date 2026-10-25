@@ -70,6 +70,17 @@ export interface ComponentStatus {
  path: string;
  error: string;
  manual_url: string;
+ channel?: string;
+ channels?: ChannelOption[];
+}
+
+export interface ChannelOption {
+ id: string;
+ name: string;
+ note: string;
+ tag: string;
+ local_version: string;
+ installed: boolean;
 }
 
 export interface ProgressMessage {

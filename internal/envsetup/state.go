@@ -91,6 +91,19 @@ type ComponentStatus struct {
 	Path          string `json:"path"`
 	Error         string `json:"error"`
 	ManualURL     string `json:"manual_url"`
+	// Channel and Channels are only populated for HLAE: the active channel ID
+	// and every channel the release source publishes.
+	Channel  string          `json:"channel,omitempty"`
+	Channels []ChannelOption `json:"channels,omitempty"`
+}
+
+type ChannelOption struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Note         string `json:"note"`
+	Tag          string `json:"tag"`
+	LocalVersion string `json:"local_version"`
+	Installed    bool   `json:"installed"`
 }
 
 type LogMessage struct {
@@ -149,6 +162,9 @@ func newStartupState(cfg *config.Config, currentVersion string) StartupState {
 
 func (s StartupState) clone() StartupState {
 	s.Steps = append([]ComponentStatus(nil), s.Steps...)
+	for i := range s.Steps {
+		s.Steps[i].Channels = append([]ChannelOption(nil), s.Steps[i].Channels...)
+	}
 	s.Ads = append([]StartupAd(nil), s.Ads...)
 	s.Config = *config.Clone(&s.Config)
 	return s

@@ -164,6 +164,7 @@ export interface BackendApi {
     settings: ClipActionSettings,
   ) => Promise<ClipActionSettings>;
   SaveClipSettings: (settings: ClipSettings) => Promise<ClipSettings>;
+  SelectHLAEChannel: (channelID: string) => Promise<StartupState>;
   SendDebugConsoleCommand: (
     request: DebugCommandRequest,
   ) => Promise<DebugCommandResponse>;
