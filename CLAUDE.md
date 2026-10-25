@@ -1,90 +1,77 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository.
 
-## Build/Run/Test Commands
+**`AGENTS.md` is the source of truth.** The root file is imported below; `internal/AGENTS.md` and `frontend/AGENTS.md` add backend/frontend rules and are loaded through `internal/CLAUDE.md` / `frontend/CLAUDE.md` when you work in those trees. This file is only a quick index: if it disagrees with an `AGENTS.md`, the `AGENTS.md` wins. When a change touches contracts (Wails methods, fields, events, states, download strategy, directory roles), update the affected `AGENTS.md` files, not this one.
+
+@AGENTS.md
+
+## Commands
 
 ```bash
-# Live development (hot-reload frontend + Go backend)
-wails dev
+wails dev                      # live development
+wails build                    # production build
+wails generate module          # regenerate frontend/wailsjs after changing Go-exposed methods/models
 
-# Production build
-wails build
+go test ./...                  # required for any backend change
+go vet ./...
+go test ./internal/envsetup ./internal/release   # startup state machine / release / download fallback
 
-# Backend tests (all packages)
-go test ./...
-
-# Backend tests (specific packages — required for envsetup/release changes)
-go test ./internal/envsetup ./internal/release
-
-# Frontend type-check + build (required before any frontend change)
-cd frontend && npm run build
+cd frontend && npm run build   # vue-tsc + vite; required for any frontend change
+cd frontend && npm test        # Node-native domain/adapter tests + TS contract checks
 ```
+
+Cross-layer or contract changes need all three: `go test ./...`, `npm test`, `npm run build`. CI (`.github/workflows/ci.yml`) runs these on windows-latest. Tests and builds do not prove real Wails events, Vue interaction, or Windows HLAE/CS2 injection, recording and environment restore — report those as unverified.
 
 ## Tech Stack
 
-Wails v2 + Go 1.24 + Vue 3 + TypeScript + Naive UI + vue-router@4 (hash mode).
+Wails v2 + Go (version in `go.mod`) + Vue 3 + TypeScript (strict) + Naive UI + vue-router 4 (hash mode). Windows desktop tool: workspace init → startup environment → import → pick clips → produce → edit.
 
-## High-Level Architecture
+## Code Map
 
 ```
-main.go                          # Wails bootstrap
+main.go                     Wails bootstrap
 internal/
-  app/                           # Wails binding layer — top of dep tree, no business logic
-  envsetup/                      # Startup state machine (component detect/dl/install)
-  producews/                     # WebSocket server (OS-assigned loopback port) for HLAE/CS2 game comm
-  clipsjson/                     # HLAE plugin JSON builder from kill data
-  demo/                          # CS2 .dem parser (demoinfocs-golang v5)
-  config/                        # config.json read/write, defaults, path normalization
-  release/                       # Unified release API client, version compare, asset select
-  endpoints/                     # Source registry, GeoIP gh-proxy decisions, URL rewrites
-  download/                      # HTTP download with progress, zip/7z extraction
-  logging/                       # Structured slog adapter with sanitization
+  app/                      Wails boundary + orchestration (public request/response types live here)
+  appdata/                  workspace dir validation, Windows registry, legacy cleanup
+  envsetup/                 startup state machine, self-update, HLAE/plugin/ffmpeg/CS2 checks & installs
+  config/                   config.json defaults/normalization + per-workspace config.Store transactions
+  release/ endpoints/ download/   release snapshot, download URL strategy, download/extract/atomic replace
+  demo/                     demo parsing, kill facts, full-round POV
+  wanmei/ fivee/            platform match lookup + demo download
+  plugingen/ clipsjson/     side-effect-free generation planning + plugin JSON actions
+  producews/                produce WebSocket, queue, take state, diagnostics
+  producegame/ producemerge/  game env prepare/restore, take merge
+  edit/                     edit planning, filter graphs, ffprobe/FFmpeg runners (no Wails)
+  ffmpegprofile/ procutil/  encoder detection/fallback, process utils
+  logging/ changelog/       structured slog + sanitization, embedded changelog
 frontend/src/
-  app/                           # Shell (AppShell.vue), router.ts, TopBar, MainApp
-  features/startup/              # Startup wizard UI
-  features/import/               # Demo import, parsing, material selection
-  features/clips/                # Kill/clip selection page
-  features/produce/              # Recording/queue management
-  features/settings/             # Clip settings panel
-  shared/                        # types.ts (all shared TS interfaces), i18n/
-  wailsjs/                       # Auto-generated Go↔JS bindings (NEVER hand-edit)
+  app/                      shell, navigation, router.ts
+  features/                 workspace-init, startup, import, clips, produce, edit, settings, debug, ads, changelog
+  domains/                  headless cross-page state (TS only, no SFC)
+  shared/backend/           the only typed Wails call adapter
+  shared/types/             hand-written TS contracts mirroring Go models
+  shared/ui/, shared/i18n/  shared presentational components, locales
+frontend/tests/             Node-native unit tests and type contract checks
+frontend/wailsjs/           generated bindings
+tools/hud-pov-vpk/          POV HUD VPK template and build
 ```
 
-**Dependency direction:** `app` → `envsetup`/`clipsjson`/`demo`/`producews`/`config`/`release`. Lower packages (`endpoints`, `download`, `logging`) never import `app`. Frontend: `app` → `features` → `shared` (shared never depends on features/app).
+Routes (hash): `/` → `/import` (children `/import/wanmei`, `/import/5e`), `/clips`, `/produce`, `/edit`, `/settings`, `/debug` (only after debug mode is unlocked).
 
-**Routes (hash mode):** `/` → redirects to `/import`; `/import` (with nested `/import/wanmei`, `/import/5e`); `/clips`; `/produce`; `/settings`.
+## Hard Constraints (summary — details in AGENTS.md)
 
-## Hard Constraints
+- Never hand-edit `frontend/wailsjs/**`, `frontend/src/auto-imports.d.ts`, `frontend/src/components.d.ts`; change the Go source and regenerate.
+- Do not rename or add to: component IDs `hlae|plugin|ffmpeg|cs2`; statuses `pending|checking|downloading|installing|ready|warning|failed|needs_action`; `mode` `workspace_init|startup|main`; `phase` `detecting_source|waiting_source|running_tasks|ready`.
+- i18n: only edit `frontend/src/shared/i18n/zh-CN.json`; `en-US.json` is maintained by the user.
+- Frontend calls the backend only through `@/shared/backend/` (no ad-hoc `callBackend`/`any`); import Vue APIs explicitly from `vue`; use `@/` for `src/**` imports.
+- `<dataDir>` (user-chosen workspace) is distinct from `<exeDir>`; all components, config, demos, outputs and logs live under `<dataDir>`.
+- Config reads/writes go through the shared `config.Store`; no blocking I/O, network or event emission inside `Service.mu` or the Store lock; call `emitState()` after startup state changes.
+- HLAE/plugin local versions come from the install dir's `changelog.xml`, never from config.
+- Do not restore `PROJECT_STRUCTURE.md`, and do not grow this file into a second rule book.
 
-Do NOT hand-edit these auto-generated files:
-- `frontend/wailsjs/**`
-- `frontend/src/auto-imports.d.ts`
-- `frontend/src/components.d.ts`
+## Wails Events
 
-Immutable identifiers and enums (do NOT rename without explicit request):
-- Component IDs: `hlae`, `plugin`, `ffmpeg`, `cs2`
-- Statuses: `pending`, `checking`, `downloading`, `installing`, `ready`, `warning`, `failed`, `needs_action`
-- Phases: `detecting_source`, `waiting_source`, `running_tasks`, `ready`
-- Wails events: `startup_state_changed`, `download_progress`, `compose_progress`, `produce_ws_state_changed`, `produce_queue_state_changed`, `produce_take_status_changed`
+`startup_state_changed`, `download_progress`, `log`, `produce_ws_state_changed`, `produce_queue_state_changed`, `produce_take_status_changed`, `produce_take_file_changed`, `produce_history_changed`, `compose_progress`, `debug_session_state_changed`. Frontend-local events (`clip-settings-saved`, `open-produce-history`) live in `frontend/src/shared/events.ts`.
 
-i18n: Only modify `zh-CN.json`. The `en-US.json` file is maintained separately by the user.
-
-Import alias: Use `@/` for `frontend/src/**` imports.
-
-## Key Conventions
-
-- **HLAE/plugin local version:** Must be read from installation directory's `changelog.xml` (first `<version>` element), not from persisted `config.json`.
-- **Logging:** All startup logs go through `internal/logging` (slog adapter). Sensitive values (tokens, auth headers, home paths) are automatically sanitized. Trace fields: `component`, `stage`, `action`, `source`, `attempt`, `error`, `elapsed_ms`.
-- **Unified release source:** A single release API snapshot is fetched at startup and consumed by all components. For CN or unknown GeoIP, component downloads race `mirror_url` and `url` in parallel and the first completed link wins; non-CN uses `github_url` only. No update-source-level fallback.
-- **Concurrency:** Use existing `mu`/`configMu` mutexes for `Service.state`, `Service.logs`, `Service.config`. No blocking I/O inside locks. Always call `emitState()` after state mutation.
-- **Wails binding boundary:** Frontend accesses all backend methods via `window.go.app.App.*` and receives push events via `runtime.EventsOn(...)`. New Wails-exposed methods are stable public contracts — do not rename without coordination.
-
-## Stable Wails Public Methods (on `internal/app.App`)
-
-Workspace: `GetWorkspaceState`, `PickWorkspaceDir`, `ValidateWorkspaceDir`, `SetWorkspaceDir`, `ResetWorkspace`, `ExitApp`
-Startup: `GetStartupState`, `RunStartupChecks`, `RetryStartupComponent`, `ReinstallStartupComponent`, `OpenManualDownload`, `ImportManualDownload`, `PickCS2Path`, `EnterMainApp`, `ExportStartupLogs`
-Demo: `PickDemoFiles`, `ParseDemoFile`
-Clips: `GetClipSettings`, `SaveClipSettings`, `GeneratePluginJSON`, `GeneratePluginJSONBatch`, `GeneratePluginJSONBatchAndLaunchHLAE`
-Produce: `GetProduceWSState`, `GetProduceQueueState`, `GetProduceTakeSnapshot`, `GetProduceHistorySnapshot`, `GetProduceTakeFiles`, `OpenProducedClipInFolder`, `ExportProduceHistoryVideos`
-Material: `GetClipMode`, `SaveClipMode`, `SaveClipProject`, `LoadClipProject`, `PickMaterialDirectory`, `ScanMaterialClips`, `AutoMatchMaterials`, `ComposeClipProject`, `CancelCompose`, `GenerateMaterialPluginJSON`
+Public Wails methods are stable contracts. Check the current list in `internal/app/` and the per-area entries in `AGENTS.md` rather than a copy here.
