@@ -23,6 +23,7 @@
 - 统一 Release 快照后先检查自身更新。确认发现更新并进入 `needs_action` 时，组件保持未启动语义；自更新检查失败可继续组件检查。
 - 广告解析失败不得阻断启动，只向前端暴露有效的 Sponsored Card。广告是纯图模型：`validateAndNormalizeAd` 只要求 `placement/click_url/image_url`，manifest 中多余的 `sponsor/title/rich_html` 必须被忽略而不是触发丢弃。
 - HLAE/插件版本读安装目录的 `changelog.xml`，不得改为配置版本号。
+- HLAE 通道语义见根文件。通道 ID 由 `release.IsValidChannelID` 限制为单个安全路径段（拒绝 `.` 开头，从而与 `ReplaceDirWithContents` 的 `.<name>.staging-`/`.backup-` 事务目录区分）；读取各通道安装版本属于磁盘 I/O，须在 `Service.mu` 外完成后再 `updateStep`。
 - 下载顺序遵循根文件；统一源请求失败可回退本地已安装组件并使用 warning，但不得伪造远端版本成功。不得恢复 `executeWithSourceFallback` / `orderedRetrySources` 旧流程或 gh-proxy 终极兜底。
 
 ## 并发、进程与收尾

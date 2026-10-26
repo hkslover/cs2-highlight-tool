@@ -296,11 +296,16 @@ func (s *Service) ensureHLAEWithFallback() error {
 	localVersion, localErr := resolveInstalledHLAEVersion(cfg.HLAEExe)
 	if localErr == nil {
 		message := "最新版本获取失败，当前使用本地版本，可能导致后续功能异常"
+		// The selected channel may not be the one in use; show the active one.
+		activeChannel := s.hlaeChannelIDForExe(cfg.HLAEExe)
 		s.updateStep(componentHLAE, func(step *ComponentStatus) {
 			step.Status = statusWarning
 			step.LocalVersion = localVersion
 			step.Path = cfg.HLAEExe
 			step.Error = message
+			if activeChannel != "" {
+				step.Channel = activeChannel
+			}
 		})
 		s.emitLogWithFields("warning", fmt.Sprintf("HLAE: %s", message), logFields{
 			Component: componentHLAE,

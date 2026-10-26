@@ -1,3 +1,4 @@
+import type { SelectOption } from "naive-ui";
 import { t } from "@/shared/i18n";
 import type { ComponentStatus, ProgressMessage } from "@/shared/types";
 
@@ -198,6 +199,30 @@ export function taskVersionMeta(
     });
   }
   return "";
+}
+
+export function showChannelSelect(component?: ComponentStatus): boolean {
+  return component?.id === "hlae" && (component.channels?.length ?? 0) > 1;
+}
+
+export interface ChannelSelectOption extends SelectOption {
+  label: string;
+  value: string;
+  note: string;
+  installed: boolean;
+}
+
+export function channelSelectOptions(component: ComponentStatus): ChannelSelectOption[] {
+  return (component.channels || []).map((channel) => ({
+    label: `${channel.name || channel.id} · ${versionWithPrefix(channel.tag)}`,
+    value: channel.id,
+    note: (channel.note || "").trim(),
+    installed: channel.installed,
+  }));
+}
+
+export function canSelectChannel(task: TaskItem): boolean {
+  return !["checking", "downloading", "installing"].includes(task.status);
 }
 
 export function importHint(componentID: string): string {

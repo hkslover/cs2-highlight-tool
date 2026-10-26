@@ -37,12 +37,24 @@ const (
 )
 
 type ComponentCandidate struct {
-	Repo   string
-	Source string
-	OK     bool
-	Status int
-	Error  string
-	Info   *Info
+	Repo     string
+	Source   string
+	OK       bool
+	Status   int
+	Error    string
+	Info     *Info
+	Channels []Channel
+	Versions map[string]*Info
+}
+
+// Channel pins a component to one synced version (e.g. a legacy HLAE build
+// for an older CS2). Clients persist the channel ID, never the tag, so the
+// release console can move a channel without client changes.
+type Channel struct {
+	ID   string
+	Name string
+	Note string
+	Tag  string
 }
 
 type UnifiedLatest struct {
@@ -72,11 +84,20 @@ type manifestReleasePayload struct {
 	Assets  []manifestAssetPayload `json:"assets"`
 }
 
+type manifestChannelPayload struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Note string `json:"note"`
+	Tag  string `json:"tag"`
+}
+
 type manifestDependencyPayload struct {
-	Name      string                 `json:"name"`
-	Repo      string                 `json:"repo"`
-	LatestTag string                 `json:"latest_tag"`
-	Latest    manifestReleasePayload `json:"latest"`
+	Name      string                            `json:"name"`
+	Repo      string                            `json:"repo"`
+	LatestTag string                            `json:"latest_tag"`
+	Latest    manifestReleasePayload            `json:"latest"`
+	Channels  []manifestChannelPayload          `json:"channels"`
+	Versions  map[string]manifestReleasePayload `json:"versions"`
 }
 
 type manifestPayload struct {
@@ -116,6 +137,31 @@ func (u *UnifiedLatest) ComponentCandidates(componentID string, source string) [
 func (u *UnifiedLatest) ComponentInfoBySource(componentID string, source string) (*Info, bool) {
 	candidates := u.ComponentCandidates(componentID, source)
 	return pickBestInfo(candidates)
+}
+
+// ComponentChannels returns the channels published for a component, in
+// manifest order.
+func (u *UnifiedLatest) ComponentChannels(componentID string) []Channel {
+	for _, candidate := range u.ComponentCandidates(componentID, SourceGitHub) {
+		if len(candidate.Channels) > 0 {
+			return append([]Channel(nil), candidate.Channels...)
+		}
+	}
+	return nil
+}
+
+// ComponentVersionInfo returns the release info of one synced version.
+func (u *UnifiedLatest) ComponentVersionInfo(componentID string, tag string) (*Info, bool) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return nil, false
+	}
+	for _, candidate := range u.ComponentCandidates(componentID, SourceGitHub) {
+		if info, ok := candidate.Versions[tag]; ok && hasUsableAsset(info) {
+			return cloneInfo(info), true
+		}
+	}
+	return nil, false
 }
 
 func (u *UnifiedLatest) ComponentSourceError(componentID string, source string) string {
@@ -235,6 +281,8 @@ func parseManifestDependency(dependency manifestDependencyPayload, dependencyKey
 	tagName := firstNonEmpty(dependency.Latest.TagName, dependency.Latest.Tag, dependency.LatestTag)
 	htmlURL := defaultReleasePage(repo, tagName)
 	assets := convertManifestAssets(dependency.Latest.Assets)
+	channels := convertManifestChannels(dependency.Channels)
+	versions := convertManifestVersions(repo, dependency.Versions)
 
 	ok := len(assets) > 0
 	errorMessage := ""
@@ -254,12 +302,76 @@ func parseManifestDependency(dependency manifestDependencyPayload, dependencyKey
 	}
 
 	return ComponentCandidate{
-		Repo:   repo,
-		Source: SourceGitHub,
-		OK:     ok,
-		Error:  errorMessage,
-		Info:   info,
+		Repo:     repo,
+		Source:   SourceGitHub,
+		OK:       ok,
+		Error:    errorMessage,
+		Info:     info,
+		Channels: channels,
+		Versions: versions,
 	}
+}
+
+// convertManifestChannels drops channels whose ID could not be used as a
+// directory name or that point at no tag, and keeps the first of duplicates.
+func convertManifestChannels(in []manifestChannelPayload) []Channel {
+	out := make([]Channel, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, channel := range in {
+		id := strings.TrimSpace(channel.ID)
+		tag := strings.TrimSpace(channel.Tag)
+		if !IsValidChannelID(id) || tag == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, Channel{
+			ID:   id,
+			Name: firstNonEmpty(channel.Name, id),
+			Note: strings.TrimSpace(channel.Note),
+			Tag:  tag,
+		})
+	}
+	return out
+}
+
+func convertManifestVersions(repo string, in map[string]manifestReleasePayload) map[string]*Info {
+	out := make(map[string]*Info, len(in))
+	for key, version := range in {
+		tagName := firstNonEmpty(version.TagName, version.Tag, key)
+		info := &Info{
+			TagName: tagName,
+			HTMLURL: defaultReleasePage(repo, tagName),
+			Assets:  convertManifestAssets(version.Assets),
+			Repo:    repo,
+			Source:  SourceGitHub,
+		}
+		out[strings.TrimSpace(key)] = info
+		if tagName != strings.TrimSpace(key) {
+			if _, exists := out[tagName]; !exists {
+				out[tagName] = info
+			}
+		}
+	}
+	return out
+}
+
+// IsValidChannelID reports whether a channel ID is safe to use as a single
+// path segment.
+func IsValidChannelID(id string) bool {
+	if id == "" || len(id) > 64 || id[0] == '.' {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func defaultReleasePage(repo string, tagName string) string {

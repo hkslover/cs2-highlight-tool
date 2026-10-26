@@ -150,13 +150,27 @@
               {{ task.error }}
             </n-text>
 
-            <n-text
-              v-if="taskVersionMeta(task)"
-              depth="3"
-              class="task-meta"
+            <div
+              v-if="taskVersionMeta(task) || showChannelSelect(task.component)"
+              class="task-meta-row"
             >
-              {{ taskVersionMeta(task) }}
-            </n-text>
+              <n-text depth="3" class="task-meta">
+                {{ taskVersionMeta(task) }}
+              </n-text>
+              <n-select
+                v-if="task.component && showChannelSelect(task.component)"
+                class="channel-select"
+                size="tiny"
+                :value="task.component.channel"
+                :options="channelSelectOptions(task.component)"
+                :render-label="renderChannelLabel"
+                :render-option="renderChannelOption"
+                :disabled="busy || !canSelectChannel(task)"
+                :consistent-menu-width="false"
+                :theme-overrides="channelSelectTheme"
+                @update:value="selectChannel"
+              />
+            </div>
 
             <div v-if="showProgress(task)" class="task-progress">
               <n-progress
@@ -223,6 +237,13 @@ const {
   showPercent,
   importHint,
   cs2ActionText,
+  showChannelSelect,
+  channelSelectOptions,
+  channelSelectTheme,
+  renderChannelLabel,
+  renderChannelOption,
+  canSelectChannel,
+  selectChannel,
   retry,
   reinstall,
   openManual,
@@ -346,6 +367,21 @@ const {
 
 .task-meta {
   font-size: 12px;
+}
+
+/* The channel select sits on the version line, sized to the 12px meta text
+   so the HLAE card keeps the same height as the others. */
+.task-meta-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.channel-select {
+  flex: 0 0 auto;
+  width: 180px;
 }
 
 .task-progress {

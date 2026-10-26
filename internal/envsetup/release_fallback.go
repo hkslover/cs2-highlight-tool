@@ -46,7 +46,10 @@ func (s *Service) collectReleaseAssetCandidates(componentID string, primarySourc
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", strings.ToUpper(string(primarySource)), err)
 	}
+	return s.releaseAssetCandidatesFromInfo(primarySource, info, selectAsset)
+}
 
+func (s *Service) releaseAssetCandidatesFromInfo(primarySource DownloadSource, info *release.Info, selectAsset func(*release.Info) (release.Asset, bool)) ([]releaseAssetCandidate, error) {
 	asset, ok := selectAsset(info)
 	if !ok {
 		return nil, fmt.Errorf("%s: Release 中未找到可用资产", strings.ToUpper(string(primarySource)))
