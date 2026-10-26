@@ -160,7 +160,6 @@
       "steam_status_api_unavailable": "Could not find steam_api64.dll in the CS2 install directory. Please check the configured CS2 path.",
       "steam_status_unsupported": "Steam official match import is not supported on this system.",
       "steam_list_empty": "This account has no recent official matches. You can paste a share code to import a specific match.",
-      "steam_diagnostics": "Valve returned {raw} matches, {skipped} could not be parsed, {downloadable} can still be downloaded.",
       "steam_manual_hint": "Supports pasting share codes or match IDs, one per line",
       "steam_manual_placeholder": "e.g. CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx",
       "steam_manual_import_action": "Download & Import",

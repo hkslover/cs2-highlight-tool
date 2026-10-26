@@ -52,13 +52,6 @@
         >
           {{ t("main.import.steam_list_empty") }}
         </n-text>
-        <n-text
-          v-if="diagnosticsText"
-          depth="3"
-          class="list-hint"
-        >
-          {{ diagnosticsText }}
-        </n-text>
 
         <div class="manual-import-box">
           <n-space vertical :size="6">
@@ -116,7 +109,6 @@ const {
   rows,
   statusHint,
   accountText,
-  diagnosticsText,
   listEmpty,
   runningImportCount,
   queuedImportCount,

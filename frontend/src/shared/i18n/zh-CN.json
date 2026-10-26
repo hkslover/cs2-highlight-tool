@@ -247,7 +247,6 @@
       "steam_status_api_unavailable": "未在 CS2 安装目录找到 steam_api64.dll。请检查配置的 CS2 路径。",
       "steam_status_unsupported": "当前系统不支持 Steam 官方比赛导入。",
       "steam_list_empty": "该账号最近没有官方匹配比赛。可粘贴分享码导入指定比赛。",
-      "steam_diagnostics": "Valve 返回 {raw} 条，其中 {skipped} 条无法解析，{downloadable} 条仍可下载。",
       "steam_manual_hint": "支持粘贴分享码或比赛 ID（换行分隔）",
       "steam_manual_placeholder": "例如：CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx",
       "steam_manual_import_action": "下载并导入",

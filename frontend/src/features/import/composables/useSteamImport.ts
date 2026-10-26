@@ -77,15 +77,6 @@ export function useSteamImport(onDemosSelected?: (paths: string[]) => void) {
   const listEmpty = computed(
     () => status.value === "ready" && rows.value.length === 0,
   );
-  const diagnosticsText = computed(() => {
-    const value = result.value;
-    if (!value || value.status !== "ready" || value.raw_match_count === 0) return "";
-    return t("main.import.steam_diagnostics", {
-      raw: value.raw_match_count,
-      skipped: value.skipped_match_count,
-      downloadable: value.downloadable_match_count,
-    });
-  });
 
   function showError(content: string) {
     message.error(content);
@@ -270,7 +261,6 @@ export function useSteamImport(onDemosSelected?: (paths: string[]) => void) {
     status,
     statusHint,
     accountText,
-    diagnosticsText,
     listEmpty,
     runningImportCount,
     queuedImportCount,
