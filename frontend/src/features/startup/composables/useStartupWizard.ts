@@ -1,5 +1,5 @@
-import { computed } from "vue";
-import { useDialog, useMessage } from "naive-ui";
+import { computed, h, type VNode } from "vue";
+import { NTooltip, useDialog, useMessage, type SelectOption } from "naive-ui";
 import { t } from "@/shared/i18n";
 import { backend } from "@/shared/backend";
 import type {
@@ -26,6 +26,10 @@ import {
   taskVersionMeta,
   importHint,
   cs2ActionText,
+  showChannelSelect,
+  channelSelectOptions,
+  canSelectChannel,
+  type ChannelSelectOption,
   progressFor,
   type TagType,
   type MessageType,
@@ -79,6 +83,64 @@ export function useStartupWizard(props: {
 
   function reinstall(componentID: string) {
     void backend.ReinstallStartupComponent(componentID);
+  }
+
+  // Same height as the 12px version text so the card height does not change.
+  const channelSelectTheme = {
+    peers: {
+      InternalSelection: { heightTiny: "20px", fontSizeTiny: "12px" },
+    },
+  };
+
+  // Downloaded channels are marked with a local-disk icon; a check mark would
+  // read as the select's own "selected" mark.
+  function renderChannelLabel(option: SelectOption): VNode {
+    const channel = option as ChannelSelectOption;
+    const children: VNode[] = [h("span", channel.label)];
+    if (channel.installed) {
+      children.push(
+        h(
+          "svg",
+          {
+            width: 13,
+            height: 13,
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": 2,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            role: "img",
+            "aria-label": t("startup.channel.installed"),
+            style: { color: "#85d3a7", flex: "0 0 auto" },
+          },
+          [
+            h("path", { d: "M5.5 6h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z" }),
+            h("path", { d: "M3 13h18" }),
+            h("path", { d: "M17 16.5h.01" }),
+          ],
+        ),
+      );
+    }
+    return h("span", { style: { alignItems: "center", display: "inline-flex", gap: "6px" } }, children);
+  }
+
+  // Note and download state are shown on hover rather than inline.
+  function renderChannelOption({ node, option }: { node: VNode; option: SelectOption }): VNode {
+    const channel = option as ChannelSelectOption;
+    const lines = [channel.note, channel.installed ? t("startup.channel.installed") : ""].filter(Boolean);
+    if (lines.length === 0) {
+      return node;
+    }
+    return h(NTooltip, { placement: "left" }, { trigger: () => node, default: () => lines.join(" · ") });
+  }
+
+  async function selectChannel(channelID: string) {
+    try {
+      await backend.SelectHLAEChannel(channelID);
+    } catch (err) {
+      message.error(t("startup.toast.select_channel_failed", { error: String(err) }));
+    }
   }
 
   function openManual(componentID: string) {
@@ -183,6 +245,13 @@ export function useStartupWizard(props: {
     showPercent: (task: TaskItem) => showPercent(task, props.progressMap),
     importHint,
     cs2ActionText,
+    showChannelSelect,
+    channelSelectOptions,
+    channelSelectTheme,
+    renderChannelLabel,
+    renderChannelOption,
+    canSelectChannel,
+    selectChannel,
     retry,
     reinstall,
     openManual,

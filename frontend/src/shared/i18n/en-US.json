@@ -623,6 +623,9 @@
       "self_update_meta": "Current: {current} | Latest: {latest}",
       "component_meta": "Current: {local} | Remote: {remote}"
     },
+    "channel": {
+      "installed": "Downloaded"
+    },
     "import_hint": {
       "hlae": "Select the .zip archive downloaded from the HLAE release page. Do not select an extracted folder or exe.",
       "plugin": "Select the plugin .zip downloaded from the release page. The archive must include server.dll.",
@@ -637,7 +640,8 @@
     "toast": {
       "enter_main_failed": "Failed to enter main page: {error}",
       "logs_exported": "Logs exported: {path}",
-      "export_logs_failed": "Failed to export logs: {error}"
+      "export_logs_failed": "Failed to export logs: {error}",
+      "select_channel_failed": "Failed to switch HLAE version: {error}"
     }
   },
   "workspace": {

@@ -266,6 +266,10 @@ export function SaveClipSettings(arg1) {
   return window['go']['app']['App']['SaveClipSettings'](arg1);
 }
 
+export function SelectHLAEChannel(arg1) {
+  return window['go']['app']['App']['SelectHLAEChannel'](arg1);
+}
+
 export function SendDebugConsoleCommand(arg1) {
   return window['go']['app']['App']['SendDebugConsoleCommand'](arg1);
 }

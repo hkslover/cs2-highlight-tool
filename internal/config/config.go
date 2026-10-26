@@ -17,6 +17,7 @@ type Config struct {
 	CS2Dir                 string              `json:"cs2_dir"`
 	CS2Exe                 string              `json:"cs2_exe"`
 	HLAEExe                string              `json:"hlae_exe"`
+	HLAEChannel            string              `json:"hlae_channel,omitempty"`
 	PluginDLL              string              `json:"plugin_dll"`
 	FFmpegDir              string              `json:"ffmpeg_dir"`
 	FiveEPlayerName        string              `json:"fivee_player_name"`
@@ -239,6 +240,7 @@ func ApplyDefaults(cfg *Config, dataDir string) {
 	cfg.CS2Dir = CleanPath(cfg.CS2Dir)
 	cfg.CS2Exe = CleanPath(cfg.CS2Exe)
 	cfg.FiveEPlayerName = strings.TrimSpace(cfg.FiveEPlayerName)
+	cfg.HLAEChannel = strings.TrimSpace(cfg.HLAEChannel)
 	if cfg.HLAEExe == "" {
 		cfg.HLAEExe = base.HLAEExe
 	} else {

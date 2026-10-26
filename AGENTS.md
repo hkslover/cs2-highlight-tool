@@ -28,7 +28,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/logging/`、`internal/changelog/` | 结构化日志与脱敏、内嵌版本更新说明 |
 | `frontend/src/app/` | 应用壳、导航、hash 路由 |
 | `frontend/src/features/` | `workspace-init`、`startup`、`import`、`clips`、`produce`、`edit`、`settings`、`debug`、`ads`、`changelog` |
-| `frontend/src/domains/` | 跨页面领域状态与无头业务逻辑（`clip-selection`、`demo`、`edit`、`production`、`settings`；仅 TypeScript，不放 Vue SFC） |
+| `frontend/src/domains/` | 跨页面领域状态与无头业务逻辑（`clip-selection`、`debug`、`demo`、`edit`、`production`、`settings`；仅 TypeScript，不放 Vue SFC） |
 | `frontend/src/shared/` | 通用类型、状态、视角映射、事件常量、i18n |
 | `frontend/src/shared/backend/` | 强类型 Wails 调用适配层、后端方法契约与统一边界错误 |
 | `frontend/src/shared/ui/` | 跨 feature 复用的展示组件；业务页面组件仍归属对应 `features/` |
@@ -72,12 +72,13 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 - `<exeDir>` 与 `<dataDir>` 必须区分：前者定位程序和自更新替换目标。`ResetWorkspace` 会删除当前整个工作目录并清除注册表记录，不等同于清理 Demo 或 outputs。
 - `internal/app/workspace_session.go` 的私有工作目录实例固定 root、generation、envsetup service 与生命周期 context；后台任务须先登记，Reset/Shutdown 先关闭准入并按既有制作/文件占用规则取消、等待或拒绝，旧实例不得在新工作目录提交后写文件或发射启动事件。
 - 每个工作目录实例只创建一个 `internal/config.Store`，由 App 与 `envsetup.Service` 共享；Store 锁覆盖最新配置读取、默认/兼容归一化、mutate 和原子保存，网络、探测与事件不得进入 Store 锁。工作目录关闭时 Store 永久关闭，旧实例不得重新落盘；锁顺序保持为工作目录准入 → Store，事件在 Store 解锁后发射。
-- `GetStartupState`、`RunStartupChecks`、`RetryStartupComponent`、`ReinstallStartupComponent`、`CancelStartupDownload`、`OpenManualDownload`、`ImportManualDownload`、`PickCS2Path`、`EnterMainApp`、`OpenExternalURL`、`ExportStartupLogs` 的入口为 `internal/app/app_startup.go`。
+- `GetStartupState`、`RunStartupChecks`、`RetryStartupComponent`、`ReinstallStartupComponent`、`CancelStartupDownload`、`OpenManualDownload`、`ImportManualDownload`、`PickCS2Path`、`SelectHLAEChannel`、`EnterMainApp`、`OpenExternalURL`、`ExportStartupLogs` 的入口为 `internal/app/app_startup.go`。
 - 状态源为 `GetStartupState` 和 `startup_state_changed`，模型见 `internal/envsetup/state.go`。`mode` 为 `workspace_init|startup|main`；`phase` 为 `detecting_source|waiting_source|running_tasks|ready`；二者不可混用。
 - 组件 ID：`hlae`、`plugin`、`ffmpeg`、`cs2`。组件/启动状态：`pending`、`checking`、`downloading`、`installing`、`ready`、`warning`、`failed`、`needs_action`。
 - 启动时实时 GeoIP 检测，统一更新源固定为 `github`，地区结果不持久化。先获取统一 Release 快照，再检查软件自身更新；确认 `self_update.available=true` 时必须先更新软件，不启动组件检查/安装。自更新检查失败保持非致命语义。
 - 组件下载策略：CN 或 GeoIP 失败/为空时，`mirror_url` 与 `url` 并行竞速，先成功完成的链路胜出并取消另一条；非 CN 仅 `github_url`。竞速全部失败才报错，不恢复多源自动回退或 gh-proxy 终极兜底。统一源失败可使用本地已安装组件并标记 warning，不伪造远端成功。
 - HLAE、插件本地版本均来自各自安装目录 `changelog.xml` 首个 `<version>`，不以配置持久化版本为真值。
+- HLAE 版本通道：manifest 依赖的 `channels[]`（`id/name/note/tag`）把通道固定到 `versions[tag]`；仅 HLAE 消费，插件与软件本体忽略。配置持久化通道 `hlae_channel`（ID 而非 tag，空值为默认 `main`），`hlae_exe` 指向当前生效通道的 `HLAE.exe`。默认通道安装在 `<dataDir>/hlae`，其他通道在 `<dataDir>/hlae_channels/<id>/`，各通道独立安装、互不覆盖；目标版本与通道目录 `changelog.xml` 版本**完全相等**才视为就绪（本地更新的版本对旧通道同样需要替换），已安装通道切换只改 `hlae_exe` 不下载。所选通道下线或其版本缺失时本次回退默认通道（`ComponentStatus.error` 提示，不改写用户选择），默认通道缺失时跟随 `latest`。HLAE 启动步骤的 `ComponentStatus.channel/channels[]`（`id/name/note/tag/local_version/installed`）由后端下发，`SelectHLAEChannel(channelID)` 在非运行状态持久化通道并重跑 HLAE 检查；切换下载失败时沿用本地已生效版本并标 warning，`channel` 显示实际生效通道。录制依赖的 `<HLAE目录>/ffmpeg/ffmpeg.ini` 须写入每个已安装通道目录；重新安装只删除当前生效通道目录。入口见 `internal/envsetup/hlae_channel.go`。
 - HLAE/FFmpeg 目录安装使用 `internal/download.ReplaceDirWithContents` 的提交事务：先在目标同卷创建本次唯一 staging 并完成复制，再将旧目标移到本次唯一 backup，最后 rename 提交；备份 rename、提交或恢复失败不得主动删除旧版本，恢复失败须保留 staging/backup 并返回双重错误及路径。提交成功后的 backup 清理失败只作为告警并保留 backup，不得被当成安装失败触发破坏性重试；历史遗留 `.old` 或事务目录不属于本次所有权，不得无条件删除。组件必需文件由 envsetup 在提交前验证，`ReplaceDirWithContentsWithReport` 的清理告警由调用方记录。该事务不宣称覆盖进程在两次 rename 之间崩溃的自动恢复。
 - `StartupState.ads[]` 仅包含有效的 Sponsored Card（支持 `main_steps_top_banner` 顶部横幅与 `main_entry_popup` 进入主界面弹窗），且为纯图广告：下发字段只有 `click_url/image_url/image_alt`，`image_url` 支持远程 `http(s)` 与 `data:image/...`。Release manifest 继续返回的 `sponsor/title/rich_html` 由客户端忽略，既不作必填也不因此丢弃该条，服务端无需改字段。点击走外部浏览器，广告失败不得阻断启动。
 

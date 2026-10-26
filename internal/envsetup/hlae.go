@@ -39,8 +39,13 @@ func (s *Service) ensureHLAE(source DownloadSource) error {
 	releaseURL := endpoints.APIURLFor(componentHLAE, string(source))
 	fetchStarted := s.logStepStart(componentHLAE, "fetch_release", "from_unified_snapshot", string(source), 0, map[string]string{
 		"api_url": releaseURL,
+		"channel": cfg.HLAEChannel,
 	})
-	candidates, err := s.collectReleaseAssetCandidates(componentHLAE, source, release.SelectHLAEAsset)
+	target, err := s.resolveHLAETarget(source, cfg.HLAEChannel)
+	var candidates []releaseAssetCandidate
+	if err == nil {
+		candidates, err = s.releaseAssetCandidatesFromInfo(source, target.Info, release.SelectHLAEAsset)
+	}
 	if err != nil {
 		s.logStepFail(componentHLAE, "fetch_release", "from_unified_snapshot", string(source), 0, fetchStarted, err, map[string]string{
 			"api_url": releaseURL,
@@ -55,8 +60,21 @@ func (s *Service) ensureHLAE(source DownloadSource) error {
 	assetURL := candidates[0].AssetURL
 	s.logStepDone(componentHLAE, "fetch_release", "from_unified_snapshot", string(source), 0, fetchStarted, map[string]string{
 		"tag":             info.TagName,
+		"channel":         target.ChannelID,
 		"selected_source": string(candidates[0].Source),
 	})
+	if target.Notice != "" {
+		s.emitLogWithFields("warning", target.Notice, logFields{
+			Component: componentHLAE,
+			Stage:     "fetch_release",
+			Action:    "channel_fallback",
+			Source:    string(source),
+			Meta: map[string]string{
+				"selected_channel": cfg.HLAEChannel,
+				"channel":          target.ChannelID,
+			},
+		})
+	}
 
 	selectStarted := s.logStepStart(componentHLAE, "select_asset", "pick", string(source), 0, nil)
 	s.logStepDone(componentHLAE, "select_asset", "pick", string(source), 0, selectStarted, map[string]string{
@@ -65,24 +83,39 @@ func (s *Service) ensureHLAE(source DownloadSource) error {
 	})
 
 	latest := firstNonEmpty(info.TagName, asset.Name)
+	channelOptions := s.hlaeChannelOptions(s.releaseSnapshotChannels())
 	s.updateStep(componentHLAE, func(step *ComponentStatus) {
 		step.RemoteVersion = latest
 		step.ManualURL = infoManualURL(componentHLAE, source, info)
+		step.Channel = target.ChannelID
+		step.Channels = channelOptions
 	})
-	if localReady && release.CompareVersions(localVersion, latest) >= 0 {
+
+	// A channel pins one exact version, so only an exact match counts as
+	// installed: a newer build is wrong for a legacy channel.
+	targetExe := filepath.Join(target.Dir, "HLAE.exe")
+	targetVersion, targetErr := resolveInstalledHLAEVersion(targetExe)
+	if targetErr == nil && release.CompareVersions(targetVersion, latest) == 0 {
+		cfg, err = s.activateInstalledHLAE(targetExe)
+		if err != nil {
+			return err
+		}
 		s.updateStep(componentHLAE, func(step *ComponentStatus) {
 			step.Status = statusReady
-			step.LocalVersion = localVersion
+			step.LocalVersion = targetVersion
 			step.Path = cfg.HLAEExe
+			step.Error = target.Notice
 		})
-		s.emitLogWithFields("info", "本地 HLAE 已是最新版本", logFields{
+		s.emitLogWithFields("info", "本地 HLAE 已是目标版本", logFields{
 			Component: componentHLAE,
 			Stage:     "ready",
 			Action:    "skip_install",
 			Source:    string(source),
 			Meta: map[string]string{
-				"local_version":  localVersion,
+				"channel":        target.ChannelID,
+				"local_version":  targetVersion,
 				"remote_version": latest,
+				"path":           cfg.HLAEExe,
 			},
 		})
 		ffmpegExe := filepath.Join(s.dataDir, "ffmpeg", "bin", "ffmpeg.exe")
@@ -93,13 +126,55 @@ func (s *Service) ensureHLAE(source DownloadSource) error {
 	}
 
 	s.updateStep(componentHLAE, func(step *ComponentStatus) { step.Status = statusDownloading })
-	if err := s.downloadAndInstallWithFallback(componentHLAE, latest, candidates, s.installHLAEFromArchive); err != nil {
+	install := func(archivePath string) error {
+		return s.installHLAEFromArchiveTo(archivePath, target.Dir)
+	}
+	if err := s.downloadAndInstallWithFallback(componentHLAE, latest, candidates, install); err != nil {
 		return fmt.Errorf("下载 HLAE 失败: %w", err)
+	}
+	s.refreshHLAEChannelOptions(target.ChannelID)
+	if target.Notice != "" {
+		s.updateStep(componentHLAE, func(step *ComponentStatus) { step.Error = target.Notice })
 	}
 	return nil
 }
 
+// activateInstalledHLAE points config at an already installed channel.
+func (s *Service) activateInstalledHLAE(hlaeExe string) (config.Config, error) {
+	cfg := s.currentConfig()
+	if strings.EqualFold(filepath.Clean(cfg.HLAEExe), filepath.Clean(hlaeExe)) {
+		return cfg, nil
+	}
+	next, err := s.persistConfig(func(next *config.Config) error {
+		next.HLAEExe = hlaeExe
+		return nil
+	})
+	if err != nil {
+		return cfg, err
+	}
+	s.emitLogWithFields("info", "已切换到本地已安装的 HLAE", logFields{
+		Component: componentHLAE,
+		Stage:     "persist_config",
+		Action:    "activate_installed",
+		Meta: map[string]string{
+			"config_hlae_exe": next.HLAEExe,
+		},
+	})
+	return *next, nil
+}
+
+// installHLAEFromArchive installs a manually imported archive into the
+// selected channel directory.
 func (s *Service) installHLAEFromArchive(archivePath string) error {
+	channelID := normalizeHLAEChannelID(s.currentConfig().HLAEChannel)
+	if err := s.installHLAEFromArchiveTo(archivePath, s.hlaeChannelDir(channelID)); err != nil {
+		return err
+	}
+	s.refreshHLAEChannelOptions(channelID)
+	return nil
+}
+
+func (s *Service) installHLAEFromArchiveTo(archivePath string, targetDir string) error {
 	s.updateStep(componentHLAE, func(step *ComponentStatus) { step.Status = statusInstalling })
 	extractDir := filepath.Join(s.dataDir, "temp", "hlae_extract")
 	_ = os.RemoveAll(extractDir)
@@ -136,7 +211,10 @@ func (s *Service) installHLAEFromArchive(archivePath string) error {
 		return err
 	}
 	root := filepath.Dir(hlaeExe)
-	targetDir := filepath.Join(s.dataDir, "hlae")
+	if err := os.MkdirAll(filepath.Dir(targetDir), 0755); err != nil {
+		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
+		return err
+	}
 	replaceReport, err := download.ReplaceDirWithContentsWithReport(root, targetDir)
 	if err != nil {
 		s.logStepFail(componentHLAE, "validate", "verify_archive", string(s.currentSource()), 0, validateStarted, err, nil)
@@ -333,11 +411,16 @@ func validateHLAEFfmpegIni(hlaeDir, expectedFfmpegExe string) error {
 	return fmt.Errorf("ffmpeg.ini 中未找到 Path 配置")
 }
 
+// tryWriteHLAEFfmpegIni keeps <channel dir>/ffmpeg/ffmpeg.ini in every
+// installed channel pointing at our ffmpeg; HLAE reads it next to HLAE.exe
+// when recording.
 func (s *Service) tryWriteHLAEFfmpegIni(ffmpegExePath string) {
-	hlaeDir := filepath.Join(s.dataDir, "hlae")
-	if _, err := os.Stat(hlaeDir); err != nil {
-		return
+	for _, hlaeDir := range s.hlaeInstallDirs() {
+		s.tryWriteHLAEFfmpegIniIn(hlaeDir, ffmpegExePath)
 	}
+}
+
+func (s *Service) tryWriteHLAEFfmpegIniIn(hlaeDir, ffmpegExePath string) {
 	if err := validateHLAEFfmpegIni(hlaeDir, ffmpegExePath); err == nil {
 		return
 	}
@@ -347,6 +430,9 @@ func (s *Service) tryWriteHLAEFfmpegIni(ffmpegExePath string) {
 			Stage:     "ffmpeg_ini",
 			Action:    "write_failed",
 			Error:     err.Error(),
+			Meta: map[string]string{
+				"hlae_dir": hlaeDir,
+			},
 		})
 		return
 	}

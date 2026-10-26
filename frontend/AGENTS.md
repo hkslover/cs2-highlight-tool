@@ -30,6 +30,7 @@
 - `workspace_init` 消费工作目录初始化接口；已初始化与否由后端返回，目录合法性由 `ValidateWorkspaceDir` 校验。
 - 状态文本、tag、进度及按钮可用性须匹配根文件枚举和 `running/self_update/can_enter_main` 语义；只在 checking/downloading/installing 等活跃状态展示进度条。
 - `self_update` 归一化逻辑须可解释且兼容后端状态；改变状态展示时同步文档和验证步骤。
+- HLAE 版本通道下拉框只消费后端下发的 `channel/channels[]`，至少两个通道时展示在版本信息行右侧，高度与该行文字一致以保持各卡片等高（已下载以本地磁盘图标标识，不用与选中标记冲突的对号；通道备注与下载状态只在悬浮选项时提示）；`running` 或 HLAE 处于 checking/downloading/installing 时禁用，切换调用 `SelectHLAEChannel`，不在前端推断已下载状态或本地回退。
 - 广告支持 `main_steps_top_banner`（主流程顶部横幅）与 `main_entry_popup`（进入主界面时的纯图弹窗），均为纯图卡片：整块图片即点击目标，不渲染任何文本层、不使用 `v-html`（`rich_html` 不再进入前端契约，也无净化流程）。顶部横幅槽位高度固定 `113px`：最小窗口下素材盒为 `890×111`（约 `8:1`，同 728×90 Leaderboard 家族），广告主规格为 2 倍图 `1780×222`；窗口宽高比与素材比例的差异由「模糊背景（`cover`+`blur`）+ 前景原图（`contain`）」双层渲染吸收，不得改回用 `cover` 裁切主图。弹窗广告在进入主界面时弹出，图片等比自适应且保留右上角关闭按钮，关闭后会话内不再重复弹出。点击均走外部浏览器，图片加载失败按广告失败处理并移除该条。窗口下限 `920×680`，布局按此下限设计，不在导入方式卡片区混入广告入口。
 - gameinfo 健康状态以 `GetGameInfoHealth` / `RepairGameInfo` 为来源，不自行读文件或推断状态。
 

@@ -147,6 +147,7 @@ export const backend: TypedBackendApi = {
   RunStartupChecks: bindBackendMethod("RunStartupChecks"),
   SaveClipActionSettings: bindBackendMethod("SaveClipActionSettings"),
   SaveClipSettings: bindBackendMethod("SaveClipSettings"),
+  SelectHLAEChannel: bindBackendMethod("SelectHLAEChannel"),
   SendDebugConsoleCommand: bindBackendMethod("SendDebugConsoleCommand"),
   SetWorkspaceDir: bindBackendMethod("SetWorkspaceDir"),
   StartDebugRecording: bindBackendMethod("StartDebugRecording"),
