@@ -4,6 +4,7 @@ import {envsetup} from '../models';
 import {app} from '../models';
 import {producews} from '../models';
 import {fivee} from '../models';
+import {steam} from '../models';
 import {wanmei} from '../models';
 import {demo} from '../models';
 
@@ -77,11 +78,15 @@ export function ImportFiveEMatch(arg1:string):Promise<Array<string>>;
 
 export function ImportManualDownload(arg1:string):Promise<envsetup.StartupState>;
 
+export function ImportSteamMatch(arg1:app.SteamImportRequest):Promise<Array<string>>;
+
 export function ImportWanmeiMatch(arg1:string):Promise<Array<string>>;
 
 export function LaunchDebugGame(arg1:app.DebugLaunchRequest):Promise<app.DebugSessionState>;
 
 export function ListFiveERecentMatches(arg1:string,arg2:number):Promise<fivee.FiveEMatchListResult>;
+
+export function ListSteamRecentMatches():Promise<steam.MatchListResult>;
 
 export function ListWanmeiRecentMatches(arg1:number):Promise<wanmei.WanmeiMatchListResult>;
 

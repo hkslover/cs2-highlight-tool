@@ -84,6 +84,17 @@ func newHTTPClient() *http.Client {
 	return &http.Client{Transport: transport}
 }
 
+// HTTPStatusError reports a non-2xx response from a file download. The status
+// code is typed so callers can tell "the resource is gone" (404, an expired
+// replay link) from a transient failure without parsing the message text.
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("下载失败，状态码: %d", e.StatusCode)
+}
+
 func File(url, targetPath string, emitProgress ProgressFunc) error {
 	return FileWithContext(context.Background(), url, targetPath, emitProgress)
 }
@@ -119,7 +130,7 @@ func FileWithContext(ctx context.Context, url, targetPath string, emitProgress P
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
+		return &HTTPStatusError{StatusCode: resp.StatusCode}
 	}
 
 	out, err := os.Create(targetPath)

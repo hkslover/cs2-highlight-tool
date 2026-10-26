@@ -1127,6 +1127,20 @@ export namespace app {
 	}
 	
 	
+	export class SteamImportRequest {
+	    match_id: string;
+	    share_code: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SteamImportRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.match_id = source["match_id"];
+	        this.share_code = source["share_code"];
+	    }
+	}
 	export class WorkActivity {
 	    produce_busy: boolean;
 	    storage_busy: boolean;
@@ -1997,6 +2011,91 @@ export namespace producews {
 	        this.last_error = source["last_error"];
 	        this.updated_at_ms = source["updated_at_ms"];
 	    }
+	}
+
+}
+
+export namespace steam {
+	
+	export class MatchItem {
+	    match_id: string;
+	    reservation_id: string;
+	    share_code: string;
+	    map_name: string;
+	    game_mode: string;
+	    score1: number;
+	    score2: number;
+	    kill: number;
+	    death: number;
+	    assist: number;
+	    rating: number;
+	    end_time: string;
+	    duration_seconds: number;
+	    demo_available: boolean;
+	    player_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MatchItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.match_id = source["match_id"];
+	        this.reservation_id = source["reservation_id"];
+	        this.share_code = source["share_code"];
+	        this.map_name = source["map_name"];
+	        this.game_mode = source["game_mode"];
+	        this.score1 = source["score1"];
+	        this.score2 = source["score2"];
+	        this.kill = source["kill"];
+	        this.death = source["death"];
+	        this.assist = source["assist"];
+	        this.rating = source["rating"];
+	        this.end_time = source["end_time"];
+	        this.duration_seconds = source["duration_seconds"];
+	        this.demo_available = source["demo_available"];
+	        this.player_count = source["player_count"];
+	    }
+	}
+	export class MatchListResult {
+	    status: string;
+	    steam_id?: string;
+	    matches: MatchItem[];
+	    raw_match_count: number;
+	    skipped_match_count: number;
+	    downloadable_match_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MatchListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.steam_id = source["steam_id"];
+	        this.matches = this.convertValues(source["matches"], MatchItem);
+	        this.raw_match_count = source["raw_match_count"];
+	        this.skipped_match_count = source["skipped_match_count"];
+	        this.downloadable_match_count = source["downloadable_match_count"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

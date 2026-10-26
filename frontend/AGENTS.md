@@ -9,7 +9,8 @@
 - `tests/` 包含 Node 原生领域单元测试和 TypeScript 契约检查；不把测试运行时产物提交到仓库。
 - 路由入口为 `src/app/router.ts`，使用 hash 模式。导入、片段、制作三步骤为 `/import`、`/clips`、`/produce`；另有 `/edit`、`/settings`。
 - `/debug` 是调试工作台路由，仅在品牌点击 10 次激活 debug（`useDebugSettings().debugEnabled`）后可用：导航第五步与 `MainApp.vue` 的步骤映射同步条件渲染，未激活时 hash 直接访问 `/debug` 会被重定向到 `/import`。
-- `/import` 是导入方式入口，子路由为 `/import/wanmei`、`/import/5e`；本地文件选择由入口按钮触发，不增加文件导入子路由。`ImportPage.vue` 通过嵌套 router-view 渲染子页面。
+- `/import` 是导入方式入口，子路由为 `/import/wanmei`、`/import/5e`、`/import/steam`；本地文件选择由入口按钮触发，不增加文件导入子路由。`ImportPage.vue` 通过嵌套 router-view 渲染子页面。
+- Steam 官方匹配页（`features/import/pages/SteamImport.vue` + `useSteamImport.ts`）只消费后端 `SteamMatchListResult.status` 状态枚举（不按文案猜状态），列表无分页；手动输入支持分享码或比赛 ID，分享码可导入不在列表中的比赛。`demo_available=false` 的行禁用导入；下载进度复用 `download_progress`（`steam_import_` 前缀），分享码手动导入因前端不知道解析后的比赛 ID，只显示不确定进度。
 - 工作目录初始化与启动向导由应用状态控制，不能擅自改成与后端 mode 冲突的本地阶段。
 - 优先使用 `@/` 引用 `src/**`，减少深层相对路径。
 

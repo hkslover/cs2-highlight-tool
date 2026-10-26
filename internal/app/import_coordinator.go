@@ -14,6 +14,7 @@ type platformImportPlatform string
 const (
 	platformImportFiveE  platformImportPlatform = "5e"
 	platformImportWanmei platformImportPlatform = "wanmei"
+	platformImportSteam  platformImportPlatform = "steam"
 )
 
 // platformImportKey is the normalized identity of one platform import. Callers

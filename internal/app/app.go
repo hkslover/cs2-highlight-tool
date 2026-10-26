@@ -38,6 +38,11 @@ type App struct {
 	// (guarded by serviceMu) so tasks from a removed workspace can never be
 	// joined by a new one.
 	platformImports *platformImportCoordinator
+	// steamMatches caches the official match demo URLs of the last list response
+	// for the installed workspace identity, so importing a listed match needs no
+	// further Game Coordinator round trip. Created lazily and dropped with the
+	// workspace identity (guarded by serviceMu).
+	steamMatches *steamMatchSnapshot
 
 	produceStateMu sync.Mutex
 	produceState   produceSessionState

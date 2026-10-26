@@ -9,6 +9,7 @@
 - 配置默认值、归一化和兼容处理集中在 `config/config.go`；同一工作目录的读改写事务由 `config.Store` 统一串行化并由 App 注入 `envsetup.Service`；应用层设置映射在 `app/clip_settings.go`。
 - Demo 事实与整局 POV 解析在 `demo/`；`plugingen/` 的 `NormalizeSelectedItems`、`BuildPlan`、整局 POV 转换与历史过滤只接收显式快照并保持无副作用；`app/plugin_generate*.go` 负责 Wails DTO 适配、工作目录/配置准入、JSON/take/history 写入和 HLAE 启动编排；插件动作仍由 `clipsjson/` 构建。
 - 平台导入协调（同键去重、等待者、结果固定与清理）在 `app/import_coordinator.go`，由工作目录身份持有并在切换/重置时替换；`fivee`、`wanmei` 只负责来源解析、下载解压与缓存提交，不互相依赖。
+- `steam/` 负责 Steam 官方匹配的来源解析（Game Coordinator 请求与重试、GC protobuf 子集解码、分享码、`demo.bz2` 下载与原子提交），不得依赖 `app`/Wails；本地 `steam_api64.dll` 只在运行时从用户 CS2 安装目录加载（`steamapi.go` 候选路径 + `steamapi_windows.go` 导出校验与绑定），不得内嵌、释放或执行任何 Valve 二进制；非 Windows 平台由 `gc_other.go` 返回 `ErrUnsupportedOS`。修改 `proto/cs2gc.proto` 后按文件头注释的 `protoc` 命令重新生成 `cs2gc.pb.go` 并提交生成物；GC 虚表读取使用 `ReadProcessMemory` 而不是 `unsafe` 指针运算，以避免 `go vet` 的 `unsafeptr` 误用检查。App 层 `app_steam.go` 负责 CS2 运行检测（只返回 `cs2_running`，不关闭进程）、按 `cfg.CS2Exe` 目录加载 DLL、维护列表 demo URL 快照（`app.steamMatches`，随工作目录身份替换）并接入 `(steam, matchID)` 导入协调；快照命中时下载不经过 Game Coordinator，因此 CS2 运行中也能导入已列出的比赛。
 - 会话、清理和文件占用分别从 `app/produce_session.go`、`app/produce_cleanup.go`、`app/work_activity.go` 查起；WebSocket 状态与协议在 `producews/`。
 - `edit/` 承担不依赖 App/Wails 的剪辑模型、裁剪/转场/filter graph 规划、ffprobe 解析和 context-aware FFmpeg runner；它只接收显式媒体事实、编码选择、命令工厂与进度回调，不读取配置、切换 workspace、发 Wails 事件或登记 history。`app/app_edit.go`、`app/edit_ffmpeg.go` 仅负责 DTO/配置/准入/路径预留与提交/history/事件适配。
 - Windows 专用行为与其他平台实现通过现有平台文件分开维护；非 Windows 测试不能替代 Windows 运行验证。
