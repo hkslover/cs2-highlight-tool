@@ -59,7 +59,7 @@
 | `clip_players[]`、`death_players[]` | 按击杀者/被害者两种分组视角 |
 | 整局 POV 计划（`full_round_pov.go`） | 每回合一个 take；死亡后 +1s，存活到下一回合前 1s |
 
-**缺口**：只有 `kill.Distance` 一个标量，**没有逐 tick 的玩家位置/朝向时间序列**。这是 2D 回放、自动运镜、热力图、竖屏跟随裁剪的共同前置条件（`demoinfocs-golang v5` 能提供，只是当前没采）。
+**缺口**：只有 `kill.Distance` 一个标量，**没有逐 tick 的玩家位置/朝向时间序列**。这是 2D 回放、自动运镜、热力图、竖屏跟随裁剪的共同前置条件（`demoinfocs-golang v6` 能提供，只是当前没采）。
 
 ### 1.4 片段选择（`frontend/src/domains/clip-selection`、`shared/kill-filter.ts`）
 

@@ -31,7 +31,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.27"
 
       # main.go embeds frontend/dist, which is generated and gitignored, so a
       # bare checkout cannot build the root package. The root package has no

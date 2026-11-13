@@ -3,7 +3,7 @@ package demo
 import (
 	"sort"
 
-	common "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
+	common "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/common"
 )
 
 // Weapon class buckets attached to every ClipKill so the clip page can filter by

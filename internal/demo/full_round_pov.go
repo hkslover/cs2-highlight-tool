@@ -1,15 +1,16 @@
 package demo
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
-	dem "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
-	common "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
-	events "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
+	dem "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs"
+	common "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/common"
+	events "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/events"
 )
 
 const (
@@ -191,7 +192,7 @@ func ParseFullRoundPOVPlan(demoPath string, targetSteamID uint64) (*FullRoundPOV
 		})
 	})
 
-	if err := parser.ParseToEnd(); err != nil {
+	if err := parser.ParseToEnd(context.Background()); err != nil {
 		return nil, fmt.Errorf("解析 demo 失败: %w", err)
 	}
 

@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	dem "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
-	common "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
-	events "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
-	msg "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/msg"
+	dem "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs"
+	common "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/common"
+	events "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/events"
+	msg "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/msg"
 )
 
 // Metadata holds summary information parsed from a .dem file.
@@ -392,7 +393,7 @@ func ParseMetadata(demoPath string) (*Metadata, error) {
 		})
 	})
 
-	if err := parser.ParseToEnd(); err != nil {
+	if err := parser.ParseToEnd(context.Background()); err != nil {
 		return nil, fmt.Errorf("解析 demo 失败: %w", err)
 	}
 
