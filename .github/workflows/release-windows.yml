@@ -41,7 +41,7 @@ jobs:
         run: go test ./...
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
 
       - name: Install UPX
         run: choco install upx -y
