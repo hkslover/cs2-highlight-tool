@@ -855,6 +855,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if !initial.HideChatMessages {
 		t.Fatalf("hide_chat_messages should default to true: %+v", initial)
 	}
+	if !initial.BrandEnabled {
+		t.Fatalf("brand_enabled should default to true: %+v", initial)
+	}
 	if initial.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false: %+v", initial)
 	}
@@ -929,6 +932,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	if !saved.HideChatMessages {
 		t.Fatalf("hide_chat_messages should persist true: %+v", saved)
 	}
+	if saved.BrandEnabled {
+		t.Fatalf("brand_enabled should persist false: %+v", saved)
+	}
 	if !saved.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should persist true: %+v", saved)
 	}
@@ -978,6 +984,9 @@ func TestClipSettings_GetAndSave(t *testing.T) {
 	}
 	if !loaded.HideChatMessages {
 		t.Fatalf("saved hide_chat_messages mismatch: %+v", loaded)
+	}
+	if loaded.BrandEnabled {
+		t.Fatalf("saved brand_enabled mismatch: %+v", loaded)
 	}
 	if !loaded.UseShoulderCamera {
 		t.Fatalf("saved use_shoulder_camera mismatch: %+v", loaded)

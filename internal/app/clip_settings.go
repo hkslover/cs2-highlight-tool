@@ -35,6 +35,7 @@ type ClipSettings struct {
 	HidePlayerAvatars     bool    `json:"hide_player_avatars"`
 	HideChatMessages      bool    `json:"hide_chat_messages"`
 	UseShoulderCamera     bool    `json:"use_shoulder_camera"`
+	BrandEnabled          bool    `json:"brand_enabled"`
 	PovHudEnabled         bool    `json:"pov_hud_enabled"`
 	PovRadarEnabled       bool    `json:"pov_radar_enabled"`
 	SkyBlackout           bool    `json:"sky_blackout"`
@@ -135,6 +136,7 @@ func (a *App) SaveClipSettings(input ClipSettings) (*ClipSettings, error) {
 		cfg.HidePlayerAvatars = settings.HidePlayerAvatars
 		cfg.HideChatMessages = settings.HideChatMessages
 		cfg.UseShoulderCamera = settings.UseShoulderCamera
+		cfg.BrandEnabled = settings.BrandEnabled
 		cfg.PovHudEnabled = settings.PovHudEnabled
 		cfg.PovRadarEnabled = settings.PovRadarEnabled
 		cfg.SkyBlackout = settings.SkyBlackout

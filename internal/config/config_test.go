@@ -78,6 +78,29 @@ func TestHideChatMessagesDefaultsOnAndPreservesExplicitOff(t *testing.T) {
 	}
 }
 
+func TestBrandEnabledDefaultsOnAndPreservesExplicitOff(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg, err := LoadOrCreate(path, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.BrandEnabled {
+		t.Fatal("new config should enable brand watermark by default")
+	}
+	cfg.BrandEnabled = false
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadOrCreate(path, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BrandEnabled {
+		t.Fatal("explicitly disabled brand_enabled must remain disabled after reload")
+	}
+}
+
 // TestConcurrentStoreUpdatesAlwaysLeaveValidJSON 验证并发写入的最终状态。
 //
 // 这里必须经过 Store：它是生产路径上唯一的写入序列化点，而裸并发调用 Save
@@ -453,6 +476,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	if !cfg.HideChatMessages {
 		t.Fatalf("hide_chat_messages should default to true for legacy configs")
 	}
+	if !cfg.BrandEnabled {
+		t.Fatalf("brand_enabled should default to true for legacy configs")
+	}
 	if cfg.UseShoulderCamera {
 		t.Fatalf("use_shoulder_camera should default to false")
 	}
@@ -484,6 +510,9 @@ func TestLoadOrCreate_FillsClipActionSettingsForLegacyConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(saved), `"hide_chat_messages": true`) {
 		t.Fatalf("saved config should contain enabled hide_chat_messages, got: %s", string(saved))
+	}
+	if !strings.Contains(string(saved), `"brand_enabled": true`) {
+		t.Fatalf("saved config should contain enabled brand_enabled, got: %s", string(saved))
 	}
 	if !strings.Contains(string(saved), "use_shoulder_camera") {
 		t.Fatalf("saved config should contain use_shoulder_camera, got: %s", string(saved))

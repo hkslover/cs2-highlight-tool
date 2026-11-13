@@ -45,8 +45,8 @@ type povSessionState struct {
 
 // gameInfoPrepOptions is the explicit search-path contract of one game
 // environment preparation. The formal produce pipeline always enables the
-// plugin and brand paths and follows cfg.PovHudEnabled; the debug workbench
-// derives every entry from its own launch request.
+// plugin path and follows cfg.BrandEnabled and cfg.PovHudEnabled; the debug
+// workbench derives every entry from its own launch request.
 type gameInfoPrepOptions struct {
 	InjectPlugin  bool
 	BrandEnabled  bool
@@ -60,7 +60,7 @@ func (a *App) prepareGameInfoForProduce() error {
 	}
 	return a.prepareGameInfoForProduceWithOptions(gameInfoPrepOptions{
 		InjectPlugin:  true,
-		BrandEnabled:  true,
+		BrandEnabled:  cfg.BrandEnabled,
 		PovHudEnabled: cfg.PovHudEnabled,
 	})
 }

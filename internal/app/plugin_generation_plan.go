@@ -102,6 +102,7 @@ func clipSettingsFromConfig(cfg *config.Config, recordOutputDir string) ClipSett
 		HidePlayerAvatars:  cfg.HidePlayerAvatars,
 		HideChatMessages:   cfg.HideChatMessages,
 		UseShoulderCamera:  cfg.UseShoulderCamera,
+		BrandEnabled:       cfg.BrandEnabled,
 		PovHudEnabled:      cfg.PovHudEnabled,
 		PovRadarEnabled:    cfg.PovRadarEnabled,
 		SkyBlackout:        cfg.SkyBlackout,

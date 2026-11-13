@@ -58,7 +58,7 @@ const SearchPathPlugin = "csgo/plugin"
 // when the user enables POV HUD mode for recording.
 const SearchPathPOV = "csgo/pov.vpk"
 
-// SearchPathBrand is always mounted for recording, before the optional POV HUD.
+// SearchPathBrand is mounted when branding is enabled, before the optional POV HUD.
 const SearchPathBrand = "csgo/brand.vpk"
 
 // InjectPluginSearchPath inserts the "Game\tcsgo/plugin" search path line into

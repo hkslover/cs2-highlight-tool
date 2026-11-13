@@ -443,6 +443,7 @@
       "hide_player_avatars": "Hide Player Avatars",
       "hide_chat_messages": "Hide Chat Messages",
       "use_shoulder_camera": "Use shoulder camera",
+      "brand_enabled": "Enable Tool Watermark",
       "pov_hud_enabled": "Enable POV HUD",
       "pov_radar_enabled": "Enable POV Radar",
       "pov_radar_hint": "This is a beta feature and may stop working after game updates. If the game crashes, disable this feature.",

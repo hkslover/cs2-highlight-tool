@@ -5,6 +5,7 @@ import {
   applySwitchSettingValue,
   getSearchableSliderPercent,
   isSearchableSliderSetting,
+  settingMatchesSearch,
   sliderPercentToStrength,
   strengthToSliderPercent,
 } from "../node_modules/.cache/cs2-highlight-tool-backend-tests/domains/settings/settings-schema.js";
@@ -51,7 +52,13 @@ test("every searchable setting key exists on the clip settings contract", () => 
       `defaults are missing ${item.key}`,
     );
   }
+  assert.equal(defaults.brand_enabled, true);
   assert.equal(defaults.noflash_strength, 0);
+
+  const brandItem = itemByKey("brand_enabled");
+  assert.equal(brandItem.kind, "switch");
+  assert.equal(settingMatchesSearch(brandItem, "启用工具水印", "启用工具水印"), true);
+  assert.equal(settingMatchesSearch(brandItem, "水印", "启用工具水印"), true);
 });
 
 test("the kill-feed block and POV switches stay mutually exclusive", () => {

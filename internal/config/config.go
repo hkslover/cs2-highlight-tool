@@ -45,6 +45,7 @@ type Config struct {
 	HidePlayerAvatars      bool                `json:"hide_player_avatars"`
 	HideChatMessages       bool                `json:"hide_chat_messages"`
 	UseShoulderCamera      bool                `json:"use_shoulder_camera"`
+	BrandEnabled           bool                `json:"brand_enabled"`
 	PovHudEnabled          bool                `json:"pov_hud_enabled"`
 	PovRadarEnabled        bool                `json:"pov_radar_enabled"`
 	SkyBlackout            bool                `json:"sky_blackout"`
@@ -118,6 +119,7 @@ func Default(dataDir string) *Config {
 		HidePlayerAvatars:  false,
 		HideChatMessages:   true,
 		UseShoulderCamera:  false,
+		BrandEnabled:       true,
 		PovHudEnabled:      true,
 		PovRadarEnabled:    false,
 		SkyBlackout:        true,

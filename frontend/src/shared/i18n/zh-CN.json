@@ -556,6 +556,7 @@
       "hide_player_avatars": "隐藏玩家头像",
       "hide_chat_messages": "隐藏聊天信息",
       "use_shoulder_camera": "使用越肩视角",
+      "brand_enabled": "启用工具水印",
       "pov_hud_enabled": "启用 POV HUD",
       "pov_radar_enabled": "启用 POV雷达",
       "pov_radar_hint": "该功能为 beta 测试功能，可能随着游戏更新失效。如果游戏崩溃，请关闭该功能。",
