@@ -153,6 +153,28 @@ test("hide chat messages is saved by the shared draft and cleared for a new work
   assert.equal(calls.length, 2);
 });
 
+test("brand watermark toggle defaults on and persists changes through the shared draft", async () => {
+  const { store, calls } = storeWith({ brand_enabled: false });
+  assert.equal(store.draftSettings.brand_enabled, true);
+  await store.init();
+  assert.equal(store.draftSettings.brand_enabled, false);
+
+  store.draftSettings.brand_enabled = true;
+  await store.flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].brand_enabled, true);
+  assert.equal(store.confirmedSettings.value.brand_enabled, true);
+
+  store.draftSettings.brand_enabled = false;
+  await store.flush();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].brand_enabled, false);
+
+  store.resetForWorkspace();
+  assert.equal(store.draftSettings.brand_enabled, true);
+  await store.dispose();
+});
+
 test("dispose waits for an in-flight save and drains an edit made during close", async () => {
   const base = settings();
   const saves = [];

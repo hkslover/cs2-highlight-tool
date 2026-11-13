@@ -418,8 +418,9 @@ func TestDebugUnknownPIDRetainsEnvironmentUntilExit(t *testing.T) {
 	}
 }
 
-// TestPrepareGameInfoForProduceKeepsPluginAndBrand pins the formal produce
-// contract after the debug parameterization: plugin and brand stay forced.
+// TestPrepareGameInfoForProduceKeepsPluginAndBrand pins the default formal
+// produce contract after the debug parameterization: plugin and default-on
+// brand search paths are mounted.
 func TestPrepareGameInfoForProduceKeepsPluginAndBrand(t *testing.T) {
 	exeDir := t.TempDir()
 	app := newTestApp(t, exeDir)

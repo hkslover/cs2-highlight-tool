@@ -218,6 +218,7 @@ const clipSettings = ref<ClipSettings>({
   hide_player_avatars: false,
   hide_chat_messages: true,
   use_shoulder_camera: false,
+  brand_enabled: true,
   pov_hud_enabled: true,
   pov_radar_enabled: false,
   sky_blackout: true,

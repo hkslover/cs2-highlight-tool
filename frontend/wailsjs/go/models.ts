@@ -63,6 +63,7 @@ export namespace app {
 	    hide_player_avatars: boolean;
 	    hide_chat_messages: boolean;
 	    use_shoulder_camera: boolean;
+	    brand_enabled: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
 	    sky_blackout: boolean;
@@ -101,6 +102,7 @@ export namespace app {
 	        this.hide_player_avatars = source["hide_player_avatars"];
 	        this.hide_chat_messages = source["hide_chat_messages"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
+	        this.brand_enabled = source["brand_enabled"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.sky_blackout = source["sky_blackout"];
@@ -1240,6 +1242,7 @@ export namespace config {
 	    hide_player_avatars: boolean;
 	    hide_chat_messages: boolean;
 	    use_shoulder_camera: boolean;
+	    brand_enabled: boolean;
 	    pov_hud_enabled: boolean;
 	    pov_radar_enabled: boolean;
 	    sky_blackout: boolean;
@@ -1288,6 +1291,7 @@ export namespace config {
 	        this.hide_player_avatars = source["hide_player_avatars"];
 	        this.hide_chat_messages = source["hide_chat_messages"];
 	        this.use_shoulder_camera = source["use_shoulder_camera"];
+	        this.brand_enabled = source["brand_enabled"];
 	        this.pov_hud_enabled = source["pov_hud_enabled"];
 	        this.pov_radar_enabled = source["pov_radar_enabled"];
 	        this.sky_blackout = source["sky_blackout"];

@@ -216,7 +216,11 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 	a.resetProduceTakeFiles(result.Results)
 	envEpoch := a.beginProduceEnvironmentPrep()
 
-	if err := a.prepareGameInfoForProduce(); err != nil {
+	if err := a.prepareGameInfoWithConfig(generation.cfg, gameInfoPrepOptions{
+		InjectPlugin:  true,
+		BrandEnabled:  generation.cfg.BrandEnabled,
+		PovHudEnabled: generation.cfg.PovHudEnabled,
+	}); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
@@ -225,7 +229,7 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		}
 		return result, nil
 	}
-	if err := a.preparePluginDLLForProduce(); err != nil {
+	if err := a.preparePluginDLLWithConfig(generation.cfg); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
@@ -234,7 +238,7 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		}
 		return result, nil
 	}
-	if err := a.preparePovForProduce(); err != nil {
+	if err := a.preparePovWithConfig(generation.cfg, generation.cfg.PovHudEnabled); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
@@ -244,7 +248,7 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		return result, nil
 	}
 
-	if err := a.prepareBrandForProduce(); err != nil {
+	if err := a.prepareBrandWithConfig(generation.cfg, generation.cfg.BrandEnabled); err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()
 		result.LaunchedDemoPath = launchDemoPath
@@ -254,7 +258,10 @@ func (a *App) GeneratePluginJSONBatchAndLaunchHLAE(req GeneratePluginJSONBatchRe
 		return result, nil
 	}
 
-	cs2PID, err := a.launchHLAEGame()
+	cs2PID, err := a.launchHLAEGameWithOptions(generation.cfg, hlaeLaunchOptions{
+		LaunchResolution: generation.clipSettings.LaunchResolution,
+		PluginEnabled:    true,
+	})
 	if err != nil {
 		result.LaunchStarted = false
 		result.LaunchError = err.Error()

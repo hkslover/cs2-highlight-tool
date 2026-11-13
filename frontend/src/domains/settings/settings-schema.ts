@@ -7,6 +7,7 @@ export type SearchableSwitchSettingKey =
   | "hide_player_avatars"
   | "hide_chat_messages"
   | "use_shoulder_camera"
+  | "brand_enabled"
   | "pov_hud_enabled"
   | "pov_radar_enabled"
   | "sky_blackout"
@@ -88,6 +89,12 @@ export const SEARCHABLE_CLIP_SETTINGS: readonly SearchableClipSettingItem[] = [
     labelKey: "main.settings.use_shoulder_camera",
     kind: "switch",
     aliases: ["越肩视角", "shoulder camera", "camera"],
+  },
+  {
+    key: "brand_enabled",
+    labelKey: "main.settings.brand_enabled",
+    kind: "switch",
+    aliases: ["启用工具水印", "工具水印", "品牌水印", "水印", "tool watermark", "brand", "watermark"],
   },
   {
     key: "pov_hud_enabled",
