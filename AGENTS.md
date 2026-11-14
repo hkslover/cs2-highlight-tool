@@ -23,6 +23,7 @@ CS2 Demo 导入、片段选择、自动录制与后期拼接的 Windows 桌面�
 | `internal/producews/` | 制作 WebSocket、队列、take 状态与诊断 |
 | `internal/producegame/`、`internal/producemerge/` | 游戏环境准备与恢复、录制产物合并 |
 | `tools/hud-pov-vpk/` | POV HUD VPK 模板、可编辑血条样式与可复现构建/校验；默认更新 `internal/producegame/assets/pov.vpk` |
+| `tools/wanmei-probe/` | 完美平台 Demo 获取与下载 7 步全链路本地 Web 诊断工具（独立运行，不影响主应用） |
 | `internal/edit/` | 无 Wails 副作用的剪辑事实归一化、转场/filter graph 规划、ffprobe 与 FFmpeg 执行器 |
 | `internal/ffmpegprofile/`、`internal/procutil/` | 编码能力探测与回退、平台进程工具 |
 | `internal/logging/`、`internal/changelog/` | 结构化日志与脱敏、内嵌版本更新说明 |

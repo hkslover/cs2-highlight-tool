@@ -136,6 +136,9 @@ func TestListRecentMatches_Ready(t *testing.T) {
 			if req.Header.Get("token") != token {
 				t.Fatalf("request token header = %q, want %q", req.Header.Get("token"), token)
 			}
+			if gotVersion := req.Header.Get("appversion"); gotVersion != "4.2.2" {
+				t.Fatalf("request appversion header = %q, want %q", gotVersion, "4.2.2")
+			}
 			requestBody, err := io.ReadAll(req.Body)
 			if err != nil {
 				t.Fatalf("read request body failed: %v", err)
