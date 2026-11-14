@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>完美平台 Demo 链路诊断工具 (wanmei-probe)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-head">
+        <div>
+          <h1>完美平台 Demo 全链路诊断</h1>
+          <p class="subtitle">
+            对照 <code>internal/wanmei</code> 逐段验证与抓包定位
+            <span id="env-badge" class="env-badge"></span>
+          </p>
+        </div>
+        <div class="topbar-actions">
+          <label class="inline-check" title="勾选后一键全链路到 Step 7 时只拉取响应头和前 4KB 魔数，不下载完整压缩包">
+            <input type="checkbox" id="pipeline-head-only" />
+            <span>全链路 Step 7 仅探测 4KB</span>
+          </label>
+          <button id="btn-run-all" class="btn btn-primary">一键全链路验证 (1→7)</button>
+          <button id="btn-stop-all" class="btn btn-danger" disabled>停止</button>
+          <button id="btn-reset-defaults" class="btn btn-ghost">恢复默认参数</button>
+        </div>
+      </div>
+
+      <nav class="stepper" aria-label="步骤导航">
+        <button class="step-pill" data-step="1"><span class="dot"></span><span>1. 本地登录态</span><small class="pill-ms" id="ms-1"></small></button>
+        <button class="step-pill" data-step="2"><span class="dot"></span><span>2. 解码 Token</span><small class="pill-ms" id="ms-2"></small></button>
+        <button class="step-pill" data-step="3"><span class="dot"></span><span>3. 战绩列表</span><small class="pill-ms" id="ms-3"></small></button>
+        <button class="step-pill" data-step="4"><span class="dot"></span><span>4. 公网 IP</span><small class="pill-ms" id="ms-4"></small></button>
+        <button class="step-pill" data-step="5"><span class="dot"></span><span>5. 签名 URL</span><small class="pill-ms" id="ms-5"></small></button>
+        <button class="step-pill" data-step="6"><span class="dot"></span><span>6. 换 OSS 直链</span><small class="pill-ms" id="ms-6"></small></button>
+        <button class="step-pill" data-step="7"><span class="dot"></span><span>7. 下载解压</span><small class="pill-ms" id="ms-7"></small></button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Step 1 -->
+    <section class="card" id="card-1">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 1</span>
+          <h2>本地登录态</h2>
+          <span class="suspect-tag">可能变化：端口 / CORS 白名单 / nonce</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-1">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="1">运行 Step 1</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="1" title="从 Step 1 连续执行到 Step 7">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-2">
+          <span>本地接口 URL</span>
+          <input type="text" id="s1-url" />
+        </label>
+        <label class="field">
+          <span>Origin 头</span>
+          <input type="text" id="s1-origin" />
+        </label>
+        <label class="field">
+          <span>Referer 头</span>
+          <input type="text" id="s1-referer" />
+        </label>
+      </div>
+      <details class="sub-details">
+        <summary>高级选项（超时 / 自定义请求头）</summary>
+        <div class="form-grid">
+          <label class="field">
+            <span>超时 (秒)</span>
+            <input type="number" id="s1-timeout" min="1" max="60" value="5" />
+          </label>
+          <label class="field span-3">
+            <span>自定义请求头 (每行 Key: Value)</span>
+            <textarea id="s1-headers" rows="2" placeholder="例如：X-Nonce: 123456"></textarea>
+          </label>
+        </div>
+      </details>
+      <div id="result-1" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="card" id="card-2">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 2</span>
+          <h2>解码 Token</h2>
+          <span class="suspect-tag">可能变化：^&lt;hex&gt;$ 格式 / XOR / 分段</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-2">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="2">运行 Step 2</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="2">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-4">
+          <span>Encoded Token（Step 1 自动填入，也可手动粘贴）</span>
+          <input type="text" id="s2-encoded" class="mono" placeholder="^...$" />
+        </label>
+      </div>
+      <div id="result-2" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="card" id="card-3">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 3</span>
+          <h2>战绩列表</h2>
+          <span class="suspect-tag suspect-hot">头号嫌疑：appversion（当前 4.2.2，旧版 3.7.7）</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-3">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="3">运行 Step 3</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="3">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          <span>appversion</span>
+          <input type="text" id="s3-appversion" class="mono" />
+          <div class="preset-row" id="s3-appversion-presets">
+            <button type="button" class="chip-btn" data-appversion="4.2.2">4.2.2 (现行)</button>
+            <button type="button" class="chip-btn" data-appversion="3.7.7">3.7.7 (旧版)</button>
+            <button type="button" class="chip-btn" data-appversion="1.0.26111211">1.0.26111211</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>platform</span>
+          <input type="text" id="s3-platform" class="mono" />
+        </label>
+        <label class="field">
+          <span>page</span>
+          <input type="number" id="s3-page" min="1" value="1" />
+        </label>
+        <label class="field">
+          <span>pageSize</span>
+          <input type="number" id="s3-pagesize" min="1" max="50" value="11" />
+        </label>
+        <label class="field span-2">
+          <span>token（来自 Step 2）</span>
+          <input type="text" id="s3-token" class="mono" />
+        </label>
+        <label class="field">
+          <span>mySteamId（自己，来自 Step 2）</span>
+          <input type="text" id="s3-steamid" class="mono" />
+        </label>
+        <label class="field">
+          <span>toSteamId（目标玩家，留空同自己）</span>
+          <input type="text" id="s3-tosteamid" class="mono" placeholder="留空默认同 mySteamId" />
+        </label>
+      </div>
+      <details class="sub-details">
+        <summary>高级选项（接口 URL / gameType / season / 请求头）</summary>
+        <div class="form-grid">
+          <label class="field span-2">
+            <span>接口 URL</span>
+            <input type="text" id="s3-url" class="mono" />
+          </label>
+          <label class="field">
+            <span>gameType</span>
+            <input type="text" id="s3-gametype" class="mono" />
+          </label>
+          <label class="field">
+            <span>gameTypeStr</span>
+            <input type="text" id="s3-gametypestr" class="mono" />
+          </label>
+          <label class="field">
+            <span>appTheme</span>
+            <input type="text" id="s3-apptheme" class="mono" />
+          </label>
+          <label class="field">
+            <span>csgoSeasonId</span>
+            <input type="text" id="s3-season" class="mono" />
+          </label>
+          <label class="field">
+            <span>pvpType</span>
+            <input type="number" id="s3-pvptype" />
+          </label>
+          <label class="field">
+            <span>dataSource</span>
+            <input type="number" id="s3-datasource" />
+          </label>
+          <label class="field">
+            <span>t 时间戳（留空自动）</span>
+            <input type="text" id="s3-ts" class="mono" placeholder="留空取当前 unix 秒" />
+          </label>
+          <label class="field">
+            <span>超时 (秒)</span>
+            <input type="number" id="s3-timeout" min="1" max="60" value="15" />
+          </label>
+          <label class="field span-2">
+            <span>自定义请求头 (每行 Key: Value)</span>
+            <textarea id="s3-headers" rows="2"></textarea>
+          </label>
+        </div>
+      </details>
+      <div id="result-3" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 4 -->
+    <section class="card" id="card-4">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 4</span>
+          <h2>公网 IP</h2>
+          <span class="suspect-tag">只影响 Step 6 签名</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-4">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="4">运行 Step 4</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="4">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-3">
+          <span>IP 查询接口 URL</span>
+          <input type="text" id="s4-url" class="mono" />
+        </label>
+        <label class="field">
+          <span>超时 (秒)</span>
+          <input type="number" id="s4-timeout" min="1" max="60" value="8" />
+        </label>
+      </div>
+      <div id="result-4" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 5 -->
+    <section class="card" id="card-5">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 5</span>
+          <h2>生成签名 Demo URL</h2>
+          <span class="suspect-tag">可能变化：appid / secret / 参数名</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-5">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="5">运行 Step 5</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="5">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-2">
+          <span>match_id / download_match_id（来自 Step 3，或手填 PVP@...）</span>
+          <input type="text" id="s5-matchid" class="mono" placeholder="例如 9208138716569380236" />
+        </label>
+        <label class="field">
+          <span>cup_id</span>
+          <input type="text" id="s5-cupid" class="mono" />
+        </label>
+        <label class="field">
+          <span>a (appid)</span>
+          <input type="text" id="s5-appid" class="mono" />
+        </label>
+        <label class="field span-4">
+          <span>access_token（来自 Step 2）</span>
+          <input type="text" id="s5-token" class="mono" />
+        </label>
+      </div>
+      <details class="sub-details">
+        <summary>签名参数与密钥（demoBaseURL / secret / r / t）</summary>
+        <div class="form-grid">
+          <label class="field span-2">
+            <span>demoBaseURL</span>
+            <input type="text" id="s5-baseurl" class="mono" />
+          </label>
+          <label class="field span-2">
+            <span>secret</span>
+            <input type="text" id="s5-secret" class="mono" />
+          </label>
+          <label class="field">
+            <span>r (randnum，留空自动)</span>
+            <input type="text" id="s5-r" class="mono" />
+          </label>
+          <label class="field">
+            <span>t (timestamp，留空自动)</span>
+            <input type="text" id="s5-t" class="mono" />
+          </label>
+          <label class="field span-2 checkbox-field">
+            <input type="checkbox" id="s5-skip-numeric" />
+            <span>跳过纯数字 match_id 校验（排查非数字 ID 时使用）</span>
+          </label>
+        </div>
+      </details>
+      <div id="result-5" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 6 -->
+    <section class="card" id="card-6">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 6</span>
+          <h2>换取 OSS 直链</h2>
+          <span class="suspect-tag">可能变化：200 JSON 代替 302 / IP 校验</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-6">IDLE</span>
+          <button class="btn btn-sm btn-secondary" data-run-step="6">运行 Step 6</button>
+          <button class="btn btn-sm btn-ghost" data-run-from="6">从此处往后跑</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-4">
+          <span>签名 Demo URL（来自 Step 5）</span>
+          <input type="text" id="s6-url" class="mono" />
+        </label>
+        <label class="field">
+          <span>steam_id（来自 Step 2）</span>
+          <input type="text" id="s6-steamid" class="mono" />
+        </label>
+        <label class="field">
+          <span>公网 ip_addr（来自 Step 4）</span>
+          <input type="text" id="s6-ip" class="mono" />
+        </label>
+        <label class="field">
+          <span>server_time（来自 Step 2）</span>
+          <input type="text" id="s6-servertime" class="mono" />
+        </label>
+        <label class="field">
+          <span>Referer 头</span>
+          <input type="text" id="s6-referer" class="mono" />
+        </label>
+      </div>
+      <details class="sub-details">
+        <summary>高级选项（覆盖签名 / 自动跟随重定向 / 超时）</summary>
+        <div class="form-grid">
+          <label class="field span-2">
+            <span>手动指定 X-PWA-Signature（留空则按 AES-CBC 自动算）</span>
+            <input type="text" id="s6-manual-sig" class="mono" />
+          </label>
+          <label class="field">
+            <span>超时 (秒)</span>
+            <input type="number" id="s6-timeout" min="1" max="60" value="8" />
+          </label>
+          <label class="field checkbox-field">
+            <input type="checkbox" id="s6-follow" />
+            <span>跟随 302（默认关闭以观测 302）</span>
+          </label>
+          <label class="field span-4">
+            <span>自定义请求头 (每行 Key: Value)</span>
+            <textarea id="s6-headers" rows="2"></textarea>
+          </label>
+        </div>
+      </details>
+      <div id="result-6" class="result-area hidden"></div>
+    </section>
+
+    <!-- Step 7 -->
+    <section class="card" id="card-7">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">STEP 7</span>
+          <h2>下载与解压验证</h2>
+          <span class="suspect-tag">可能变化：zip 变 7z / 直接 .dem</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-7">IDLE</span>
+          <button class="btn btn-sm btn-secondary" id="btn-s7-full">完整下载并解压</button>
+          <button class="btn btn-sm btn-ghost" id="btn-s7-head">仅探测头 4KB</button>
+          <button class="btn btn-sm btn-danger hidden" id="btn-s7-cancel">取消</button>
+          <button class="btn btn-sm btn-ghost" id="btn-s7-cleanup">清理临时文件</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field span-3">
+          <span>OSS 下载直链（来自 Step 6）</span>
+          <input type="text" id="s7-url" class="mono" />
+        </label>
+        <label class="field">
+          <span>match_id（用于临时文件名）</span>
+          <input type="text" id="s7-matchid" class="mono" placeholder="probe" />
+        </label>
+      </div>
+      <div class="sub-options">
+        <label class="inline-check">
+          <input type="checkbox" id="s7-fallback" checked />
+          <span>若 <code>UnzipWithContext</code> 失败，自动用 <code>Extract7z</code> / <code>RAW_DEM</code> 诊断真实格式</span>
+        </label>
+      </div>
+      <div id="result-7" class="result-area hidden"></div>
+    </section>
+
+    <!-- Native internal/wanmei Check -->
+    <section class="card card-muted" id="card-native">
+      <div class="card-head">
+        <div class="card-title-group">
+          <span class="step-num">NATIVE</span>
+          <h2>原生 <code>internal/wanmei</code> 直接调用对比</h2>
+          <span class="suspect-tag">直接运行未修改的业务包入口</span>
+        </div>
+        <div class="card-actions">
+          <span class="status-badge" id="badge-native">IDLE</span>
+          <button class="btn btn-sm btn-secondary" id="btn-native-matches">调用 ListRecentMatches</button>
+          <button class="btn btn-sm btn-secondary" id="btn-native-import">调用 ImportDemoContext</button>
+          <button class="btn btn-sm btn-danger hidden" id="btn-native-cancel">取消</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          <span>页码 (ListRecentMatches)</span>
+          <input type="number" id="native-page" min="1" value="1" />
+        </label>
+        <label class="field span-3">
+          <span>match_id (ImportDemoContext，将写入独立临时目录避免命中旧缓存)</span>
+          <input type="text" id="native-matchid" class="mono" placeholder="可先在 Step 3 选择战绩，或直接填写 PVP@..." />
+        </label>
+      </div>
+      <div id="result-native" class="result-area hidden"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
