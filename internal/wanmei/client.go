@@ -434,7 +434,7 @@ func fetchRecentMatchesContext(ctx context.Context, token string, steamID string
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("token", token)
 	req.Header.Set("t", strconv.FormatInt(time.Now().Unix(), 10))
-	req.Header.Set("appversion", "3.7.7")
+	req.Header.Set("appversion", "4.2.2")
 	req.Header.Set("platform", "ios")
 	req.Header.Set("appTheme", "0")
 	req.Header.Set("gameType", "1,2")
